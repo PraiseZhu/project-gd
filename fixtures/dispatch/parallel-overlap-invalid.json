@@ -1,0 +1,101 @@
+{
+  "dispatch_id": "parallel-overlap-invalid",
+  "source_master_plan": "fixtures/dispatch/parallel-overlap-invalid.json",
+  "goal_chain": {
+    "PROJECT_GOAL": "validator fixture goal placeholder",
+    "CHAIN_GOAL": "trigger parallel-overlap violation",
+    "PHASE_GOAL": "two parallel tracks share owned_paths in parent/child relationship"
+  },
+  "max_parallel_planning": 2,
+  "max_parallel_execution": 2,
+  "max_parallel_review": 2,
+  "max_parallel_validation": 2,
+  "tracks": [
+    {
+      "track_id": "t1",
+      "mode": "execute",
+      "agent_role": "child_executor",
+      "owned_paths": [
+        "fixtures/dispatch/_workdir/shared"
+      ],
+      "forbidden_paths": [
+        "/Users/praise/.claude/**"
+      ],
+      "required_context": [
+        "docs/gd-v7-multi-agent-dispatch.md"
+      ],
+      "deliverables": [
+        {
+          "path": "fixtures/dispatch/_workdir/shared/t1.json",
+          "kind": "file",
+          "must_exist": true
+        }
+      ],
+      "blocked_by": [],
+      "can_parallel_with": [
+        "t2"
+      ],
+      "sc_refs": [
+        "SC-1"
+      ],
+      "verify": [
+        {
+          "sc_ref": "SC-1",
+          "method": "command",
+          "cmd": "test -d fixtures/dispatch/_workdir/shared"
+        }
+      ]
+    },
+    {
+      "track_id": "t2",
+      "mode": "execute",
+      "agent_role": "child_executor",
+      "owned_paths": [
+        "fixtures/dispatch/_workdir/shared/sub"
+      ],
+      "forbidden_paths": [
+        "/Users/praise/.claude/**"
+      ],
+      "required_context": [
+        "docs/gd-v7-multi-agent-dispatch.md"
+      ],
+      "deliverables": [
+        {
+          "path": "fixtures/dispatch/_workdir/shared/sub/t2.json",
+          "kind": "file",
+          "must_exist": true
+        }
+      ],
+      "blocked_by": [],
+      "can_parallel_with": [
+        "t1"
+      ],
+      "sc_refs": [
+        "SC-2"
+      ],
+      "verify": [
+        {
+          "sc_ref": "SC-2",
+          "method": "command",
+          "cmd": "test -d fixtures/dispatch/_workdir/shared/sub"
+        }
+      ]
+    }
+  ],
+  "waves": [
+    {
+      "wave_id": "w1",
+      "track_ids": [
+        "t1",
+        "t2"
+      ],
+      "description": "parallel exec (will fail validator)"
+    }
+  ],
+  "merge_gates": [
+    {
+      "gate_id": "G1",
+      "description": "child output format compliant"
+    }
+  ]
+}

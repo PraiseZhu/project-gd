@@ -1,0 +1,388 @@
+#!/usr/bin/env bash
+# bin/rev — Goal-Driven Anti-Fill Lab sync review runner
+# Usage:
+#   bin/rev plan <plan-file> [--baseline-key KEY] [--dry-run]
+#   bin/rev code <execution-result.md> --baseline-file <b.json> --baseline-key <key> [--dry-run]
+#   bin/rev code <execution-result.md> [--baseline-key KEY] [--dry-run]
+#   bin/rev --help
+set -euo pipefail
+
+GD_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+# Guard: writer/helper must not call live runtime scripts
+for f in "$GD_ROOT/scripts/rev-result-writer.sh" "$GD_ROOT/scripts/rev-baseline.py"; do
+    [[ -f "$f" ]] || continue
+    if grep -qE 'codex-watch|codex-send-wait' "$f" 2>/dev/null; then
+        echo "ERROR: live runtime reference found in $f — aborting" >&2
+        exit 1
+    fi
+done
+
+usage() {
+    cat <<'EOF'
+bin/rev — /rev sync review runner (lab-only)
+
+Usage:
+  bin/rev plan <plan-file> [--baseline-key KEY] [--dry-run]
+  bin/rev code <execution-result.md> \
+      --baseline-file <baseline.json> --baseline-key <key> [--dry-run]
+  bin/rev code <execution-result.md> [--baseline-key KEY] [--dry-run]
+  bin/rev --help
+
+Subcommands:
+  plan <file>   Goal-Driven plan review via codex exec --ephemeral
+  code <file>   Execution result conformance review (Phase 3)
+  --help        Show this help
+
+Modes for code:
+  Fixture mode : --baseline-file + --baseline-key  (Phase 3 fixture tests)
+  Runtime mode : --baseline-key only               (reads baselines/<key>/latest-rev-baseline.json)
+  Default key  : omit --baseline-key               (key = gd-<sha12> of GD_ROOT)
+
+Environment:
+  REV_CODEX_TIMEOUT   Codex timeout in seconds (default: 240)
+EOF
+}
+
+# --------------------------------------------------------------------------- #
+# Argument parsing — subcommand
+# --------------------------------------------------------------------------- #
+
+SUBCMD="${1:-}"
+shift || true
+
+case "$SUBCMD" in
+    --help|-h)
+        usage
+        exit 0
+        ;;
+    plan|code)
+        ;;
+    "")
+        usage
+        exit 1
+        ;;
+    *)
+        echo "ERROR: unknown subcommand: $SUBCMD" >&2
+        usage >&2
+        exit 1
+        ;;
+esac
+
+# Common options
+ARTIFACT=""
+BASELINE_KEY=""
+DRY_RUN=0
+# code-only options
+BASELINE_FILE=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --help|-h)
+            usage
+            exit 0
+            ;;
+        --baseline-key)
+            BASELINE_KEY="$2"
+            shift 2
+            ;;
+        --baseline-file)
+            BASELINE_FILE="$2"
+            shift 2
+            ;;
+        --dry-run)
+            DRY_RUN=1
+            shift
+            ;;
+        -*)
+            echo "ERROR: unknown option: $1" >&2
+            exit 1
+            ;;
+        *)
+            if [[ -z "$ARTIFACT" ]]; then
+                ARTIFACT="$1"
+            else
+                echo "ERROR: unexpected argument: $1" >&2
+                exit 1
+            fi
+            shift
+            ;;
+    esac
+done
+
+if [[ -z "$ARTIFACT" ]]; then
+    echo "ERROR: $SUBCMD <file> required" >&2
+    exit 1
+fi
+
+# --------------------------------------------------------------------------- #
+# Path validation — artifact must be inside GD_ROOT
+# --------------------------------------------------------------------------- #
+
+ARTIFACT_ABS="$(cd "$(dirname "$ARTIFACT")" && pwd)/$(basename "$ARTIFACT")"
+
+if [[ "$ARTIFACT_ABS" != "$GD_ROOT"/* ]]; then
+    echo "ERROR: artifact path must be inside GD_ROOT ($GD_ROOT)" >&2
+    echo "  got: $ARTIFACT_ABS" >&2
+    exit 1
+fi
+
+if [[ ! -f "$ARTIFACT_ABS" ]]; then
+    echo "ERROR: file not found: $ARTIFACT_ABS" >&2
+    exit 1
+fi
+
+# --------------------------------------------------------------------------- #
+# Baseline key default
+# --------------------------------------------------------------------------- #
+
+if [[ -z "$BASELINE_KEY" ]]; then
+    BASELINE_KEY="gd-$(python3 -c "import hashlib, os; print(hashlib.sha256(os.path.realpath('$GD_ROOT').encode()).hexdigest()[:12])")"
+fi
+
+# --------------------------------------------------------------------------- #
+# Run directory
+# --------------------------------------------------------------------------- #
+
+mkdir -p "$GD_ROOT/results"
+RUN_DIR="$(mktemp -d "$GD_ROOT/results/$(date -u +%Y%m%dT%H%M%SZ)-${SUBCMD}.XXXXXX")"
+RUN_ID="$(basename "$RUN_DIR")"
+
+PROMPT_PATH="$RUN_DIR/prompt.md"
+RAW_PATH="$RUN_DIR/raw-output.txt"
+
+# --------------------------------------------------------------------------- #
+# PLAN subcommand
+# --------------------------------------------------------------------------- #
+
+if [[ "$SUBCMD" == "plan" ]]; then
+
+    CANDIDATE_BASELINE="$RUN_DIR/candidate-baseline.json"
+
+    # Extract candidate baseline
+    python3 "$GD_ROOT/scripts/rev-baseline.py" extract \
+        "$ARTIFACT_ABS" \
+        --project-goal-file "$GD_ROOT/PROJECT_GOAL.md" \
+        --out "$CANDIDATE_BASELINE"
+
+    # Build prompt — 5 fixed Markdown sections
+    REVIEW_STD="$GD_ROOT/prompts/rev-review-standard.md"
+    PROJECT_GOAL_LINE="$(grep -E '^PROJECT_GOAL:' "$GD_ROOT/PROJECT_GOAL.md" | head -1)"
+
+    {
+        printf '## Review Standard\n\n'
+        cat "$REVIEW_STD"
+        printf '\n\n## Candidate Baseline\n\n'
+        cat "$CANDIDATE_BASELINE"
+        printf '\n\n## Review Context\n\n'
+        printf 'PROJECT_GOAL_SOURCE: %s\n' "$GD_ROOT/PROJECT_GOAL.md"
+        printf '%s\n' "$PROJECT_GOAL_LINE"
+        printf 'REVIEW_DOMAIN: ai_infra\n'
+        printf 'REVIEW_FOCUS: Goal-Driven Anti-Fill plan review\n'
+        printf 'IN_SCOPE: plan goal chain, SC-* completeness, step mapping, anti-fill rules\n'
+        printf 'OUT_OF_SCOPE: execution result conformance (Phase 3), A/B comparison (Phase 4)\n'
+        printf '\n\n## Artifact\n\n'
+        cat "$ARTIFACT_ABS"
+        printf '\n\n## Output Contract\n\n'
+        printf 'Output exactly one line: REV_VERDICT: APPROVED|REQUIRES_CHANGES|FAILED\n'
+        printf 'Do NOT output bare VERDICT: (triggers live hook regex).\n'
+        printf 'See Review Standard section 1.1 for full output contract.\n'
+    } > "$PROMPT_PATH"
+
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        echo "DRY_RUN: true"
+        echo "审查结果摘要：dry-run 模式，未调用 Codex，prompt 已生成"
+        echo "结果文件：$RUN_DIR/prompt.md"
+        exit 0
+    fi
+
+    # Invoke shared Codex runner
+    TIMEOUT_SECS="${REV_CODEX_TIMEOUT:-240}"
+    STDERR_PATH="$RUN_DIR/codex-stderr.txt"
+
+    set +e
+    python3 "$GD_ROOT/scripts/rev-codex-exec.py" \
+        "$PROMPT_PATH" "$RAW_PATH" \
+        --gd-root "$GD_ROOT" \
+        --timeout "$TIMEOUT_SECS" \
+        --stderr-path "$STDERR_PATH"
+    PYTHON_EXIT=$?
+    set -e
+
+    # Call writer (handles nonzero/timeout raw — still produces result.json)
+    "$GD_ROOT/scripts/rev-result-writer.sh" \
+        --kind plan \
+        --artifact "$ARTIFACT_ABS" \
+        --run-dir "$RUN_DIR" \
+        --candidate-baseline "$CANDIDATE_BASELINE" \
+        --baseline-key "$BASELINE_KEY"
+
+    VERDICT="$(grep -oE '^REV_VERDICT: (APPROVED|REQUIRES_CHANGES|FAILED)' "$RUN_DIR/result.md" 2>/dev/null | head -1 | cut -d' ' -f2- || true)"
+    if [[ -z "$VERDICT" ]]; then
+        VERDICT="$(python3 -c "import json; d=json.load(open('$RUN_DIR/result.json')); print(d.get('verdict','UNKNOWN'))" 2>/dev/null || echo 'UNKNOWN')"
+    fi
+
+    echo "审查结果摘要：Phase 2 /rev plan review 完成"
+    echo "REV_VERDICT: $VERDICT"
+    echo "结果文件：$RUN_DIR/result.md"
+    exit 0
+fi
+
+# --------------------------------------------------------------------------- #
+# CODE subcommand (Phase 3)
+# --------------------------------------------------------------------------- #
+
+# Resolve baseline
+CONFORMANCE_PATH="$RUN_DIR/conformance.json"
+
+if [[ -n "$BASELINE_FILE" ]]; then
+    # Fixture mode: --baseline-file + --baseline-key both required
+    BASELINE_ABS="$(cd "$(dirname "$BASELINE_FILE")" && pwd)/$(basename "$BASELINE_FILE")"
+    if [[ "$BASELINE_ABS" != "$GD_ROOT"/* ]]; then
+        echo "ERROR: --baseline-file must be inside GD_ROOT ($GD_ROOT)" >&2
+        exit 1
+    fi
+    if [[ ! -f "$BASELINE_ABS" ]]; then
+        echo "ERROR: --baseline-file not found: $BASELINE_ABS" >&2
+        exit 1
+    fi
+    # Verify baseline_key in JSON matches --baseline-key
+    JSON_KEY="$(python3 -c "import json; d=json.load(open('$BASELINE_ABS')); print(d.get('goal_chain',{}).get('task',''))" 2>/dev/null || echo '')"
+    # (key consistency check: execution JSON's baseline_key must match —
+    #  extract from artifact's JSON block if present, else skip at this stage
+    #  since conformance validator checks plan_hash which is deterministic)
+    CANDIDATE_BASELINE="$BASELINE_ABS"
+else
+    # Runtime mode: look up baselines/<key>/latest-rev-baseline.json
+    RUNTIME_BASELINE="$GD_ROOT/baselines/$BASELINE_KEY/latest-rev-baseline.json"
+    if [[ ! -f "$RUNTIME_BASELINE" ]]; then
+        echo "ERROR: baseline not found for key '$BASELINE_KEY': $RUNTIME_BASELINE" >&2
+        echo "  Run: bin/rev plan <plan-file> --baseline-key $BASELINE_KEY" >&2
+        echo "  (or use --baseline-file for fixture mode)" >&2
+        exit 1
+    fi
+    CANDIDATE_BASELINE="$RUNTIME_BASELINE"
+fi
+
+# --------------------------------------------------------------------------- #
+# Local conformance gate
+# --------------------------------------------------------------------------- #
+
+set +e
+python3 "$GD_ROOT/scripts/rev-execution.py" validate \
+    "$ARTIFACT_ABS" \
+    --baseline "$CANDIDATE_BASELINE" \
+    --out "$CONFORMANCE_PATH" 2>&1
+CONF_EXIT=$?
+set -e
+
+if [[ "$CONF_EXIT" -ne 0 ]]; then
+    # Conformance failed — write local gate result, do NOT call Codex
+    cat > "$RAW_PATH" <<EOF
+source=local_conformance_gate
+conformance_errors=$(python3 -c "import json; d=json.load(open('$CONFORMANCE_PATH')); print(len(d['errors']))" 2>/dev/null || echo '?')
+
+REV_VERDICT: REQUIRES_CHANGES
+REVIEW_KIND: code
+REVIEW_DOMAIN: ai_infra
+
+## 本地 Conformance Gate 拒绝
+
+执行结果未通过本地 SC 覆盖验证。详见 conformance.json。
+$(python3 -c "import json; d=json.load(open('$CONFORMANCE_PATH')); [print('- ' + e) for e in d['errors']]" 2>/dev/null || true)
+EOF
+
+    "$GD_ROOT/scripts/rev-result-writer.sh" \
+        --kind code \
+        --artifact "$ARTIFACT_ABS" \
+        --run-dir "$RUN_DIR" \
+        --candidate-baseline "$CANDIDATE_BASELINE" \
+        --baseline-key "$BASELINE_KEY"
+
+    VERDICT="REQUIRES_CHANGES"
+    echo "审查结果摘要：本地 conformance gate 拒绝，未调用 Codex"
+    echo "REV_VERDICT: $VERDICT"
+    echo "结果文件：$RUN_DIR/result.md"
+    exit 0
+fi
+
+# Conformance passed
+
+if [[ "$DRY_RUN" -eq 1 ]]; then
+    # Build code prompt for inspection, then stop
+    REVIEW_STD="$GD_ROOT/prompts/rev-review-standard.md"
+
+    {
+        printf '## Review Standard\n\n'
+        cat "$REVIEW_STD"
+        printf '\n\n## Conformance Summary\n\n'
+        cat "$CONFORMANCE_PATH"
+        printf '\n\n## Baseline\n\n'
+        cat "$CANDIDATE_BASELINE"
+        printf '\n\n## Review Context\n\n'
+        printf 'REVIEW_DOMAIN: ai_infra\n'
+        printf 'REVIEW_FOCUS: evidence quality and correctness, not presence (presence already verified by local gate)\n'
+        printf '\n\n## Artifact\n\n'
+        cat "$ARTIFACT_ABS"
+        printf '\n\n## Output Contract\n\n'
+        printf 'Output exactly one line: REV_VERDICT: APPROVED|REQUIRES_CHANGES|FAILED\n'
+        printf 'Do NOT output bare VERDICT:.\n'
+        printf 'See Review Standard section 1.1 and 6.1 for full output contract.\n'
+    } > "$PROMPT_PATH"
+
+    echo "DRY_RUN: true"
+    echo "审查结果摘要：conformance gate 通过，dry-run 模式，未调用 Codex"
+    echo "conformance.json: $CONFORMANCE_PATH"
+    echo "prompt.md: $PROMPT_PATH"
+    exit 0
+fi
+
+# Build code review prompt
+REVIEW_STD="$GD_ROOT/prompts/rev-review-standard.md"
+
+{
+    printf '## Review Standard\n\n'
+    cat "$REVIEW_STD"
+    printf '\n\n## Conformance Summary\n\n'
+    cat "$CONFORMANCE_PATH"
+    printf '\n\n## Baseline\n\n'
+    cat "$CANDIDATE_BASELINE"
+    printf '\n\n## Review Context\n\n'
+    printf 'REVIEW_DOMAIN: ai_infra\n'
+    printf 'REVIEW_FOCUS: evidence quality and correctness, not presence (presence already verified by local gate)\n'
+    printf '\n\n## Artifact\n\n'
+    cat "$ARTIFACT_ABS"
+    printf '\n\n## Output Contract\n\n'
+    printf 'Output exactly one line: REV_VERDICT: APPROVED|REQUIRES_CHANGES|FAILED\n'
+    printf 'Do NOT output bare VERDICT:.\n'
+    printf 'See Review Standard section 1.1 and 6.1 for full output contract.\n'
+} > "$PROMPT_PATH"
+
+# Invoke shared Codex runner
+TIMEOUT_SECS="${REV_CODEX_TIMEOUT:-240}"
+STDERR_PATH="$RUN_DIR/codex-stderr.txt"
+
+set +e
+python3 "$GD_ROOT/scripts/rev-codex-exec.py" \
+    "$PROMPT_PATH" "$RAW_PATH" \
+    --gd-root "$GD_ROOT" \
+    --timeout "$TIMEOUT_SECS" \
+    --stderr-path "$STDERR_PATH"
+PYTHON_EXIT=$?
+set -e
+
+"$GD_ROOT/scripts/rev-result-writer.sh" \
+    --kind code \
+    --artifact "$ARTIFACT_ABS" \
+    --run-dir "$RUN_DIR" \
+    --candidate-baseline "$CANDIDATE_BASELINE" \
+    --baseline-key "$BASELINE_KEY"
+
+VERDICT="$(grep -oE '^REV_VERDICT: (APPROVED|REQUIRES_CHANGES|FAILED)' "$RUN_DIR/result.md" 2>/dev/null | head -1 | cut -d' ' -f2- || true)"
+if [[ -z "$VERDICT" ]]; then
+    VERDICT="$(python3 -c "import json; d=json.load(open('$RUN_DIR/result.json')); print(d.get('verdict','UNKNOWN'))" 2>/dev/null || echo 'UNKNOWN')"
+fi
+
+echo "审查结果摘要：Phase 3 /rev code review 完成"
+echo "REV_VERDICT: $VERDICT"
+echo "结果文件：$RUN_DIR/result.md"

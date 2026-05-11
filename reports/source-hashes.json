@@ -1,0 +1,22 @@
+{
+  "recorded_at": "2026-05-09T14:35:29Z",
+  "purpose": "Phase 1 start — whitelist snapshot of protected sources",
+  "hashes": {
+    "PROJECT_GOAL.md": "34acb50ca3ab913c6e4c5bbe52fe1a651ca9652d41febc24bd846204dbc92c16",
+    "CLAUDE.md": "f5122a52c7290d40561f973e5543ca654234058ecc36fdecd761cd7d8ae56e84",
+    "codex_watch_source": {
+      "path": "~/.claude/handoff/bin/codex-watch",
+      "hash": "d3fd4e3fa9a8f3e56dfe82d9d58b7fff057fd0ea002929a7cd78889d6bdacd99",
+      "note": "L58-160 build_review_prompt() heredoc extracted as old-review-prompt-readonly.md in Phase 4"
+    },
+    "live_plan_template": {
+      "path": "~/.claude/templates/plan-template.md",
+      "hash": "e34d3cd37952e5b1b1db3bd1c64988f519e27c104630ad19ccccb2a899473313",
+      "parity_status": "PASS_identical"
+    },
+    "codex_plan_template": {
+      "path": "Codex/templates/plan-template.md",
+      "hash": "e34d3cd37952e5b1b1db3bd1c64988f519e27c104630ad19ccccb2a899473313"
+    }
+  }
+}

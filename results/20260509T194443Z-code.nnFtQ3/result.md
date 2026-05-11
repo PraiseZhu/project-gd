@@ -1,0 +1,22 @@
+# ucode Review Result
+
+REV_VERDICT: REQUIRES_CHANGES
+REVIEW_KIND: code
+REVIEW_DOMAIN: ai_infra
+run_id: 20260509T194443Z-code.nnFtQ3
+timestamp: 2026-05-09T19:44:44Z
+
+## Raw Output
+
+source=local_conformance_gate
+conformance_errors=2
+
+REV_VERDICT: REQUIRES_CHANGES
+REVIEW_KIND: code
+REVIEW_DOMAIN: ai_infra
+
+## 本地 Conformance Gate 拒绝
+
+执行结果未通过本地 SC 覆盖验证。详见 conformance.json。
+- plan_hash mismatch: execution has '0000000000000000000000000000000000000000000000000000000000000000', baseline has '6af6e99aead16f67dfa676e989cce08fc229631cc9d58b898d27f8e919becb02'
+- SC-2: evidence lacks backtick anchor — must contain `exit`, `stdout`, `stderr`, `diff`, `→`, `result.*` or a file path like `/path/to/file.ext`

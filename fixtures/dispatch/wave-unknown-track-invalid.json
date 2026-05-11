@@ -1,0 +1,64 @@
+{
+  "dispatch_id": "wave-unknown-track-invalid",
+  "source_master_plan": "fixtures/dispatch/wave-unknown-track-invalid.json",
+  "goal_chain": {
+    "PROJECT_GOAL": "validator fixture goal placeholder",
+    "CHAIN_GOAL": "trigger waves[].track_ids reference to nonexistent track",
+    "PHASE_GOAL": "wave w1 references t99 which is not declared in tracks[]"
+  },
+  "max_parallel_planning": 2,
+  "max_parallel_execution": 2,
+  "max_parallel_review": 2,
+  "max_parallel_validation": 2,
+  "tracks": [
+    {
+      "track_id": "t1",
+      "mode": "execute",
+      "agent_role": "child_executor",
+      "owned_paths": [
+        "fixtures/dispatch/_workdir/wave-unknown/t1"
+      ],
+      "forbidden_paths": [
+        "/Users/praise/.claude/**"
+      ],
+      "required_context": [
+        "docs/gd-v7-multi-agent-dispatch.md"
+      ],
+      "deliverables": [
+        {
+          "path": "fixtures/dispatch/_workdir/wave-unknown/t1/out.json",
+          "kind": "file",
+          "must_exist": true
+        }
+      ],
+      "blocked_by": [],
+      "can_parallel_with": [],
+      "sc_refs": [
+        "SC-1"
+      ],
+      "verify": [
+        {
+          "sc_ref": "SC-1",
+          "method": "command",
+          "cmd": "test -f fixtures/dispatch/_workdir/wave-unknown/t1/out.json"
+        }
+      ]
+    }
+  ],
+  "waves": [
+    {
+      "wave_id": "w1",
+      "track_ids": [
+        "t1",
+        "t99"
+      ],
+      "description": "wave references nonexistent t99"
+    }
+  ],
+  "merge_gates": [
+    {
+      "gate_id": "G1",
+      "description": "child output format compliant"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "proposal_id": "missing-task-packets-fixture",
+  "parent_dispatch_id": "valid-fixture",
+  "parent_track_id": "t1",
+  "agent_role": "child_planner",
+  "output_status": "completed",
+  "summary_cn": "本 fixture 故意 output_status=completed 但 task_packets 为空 — 应被 validator reject",
+  "task_packets": [],
+  "sc_refs": [],
+  "verify": [],
+  "blocked_reason": null
+}

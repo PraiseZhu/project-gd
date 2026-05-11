@@ -1,0 +1,7 @@
+{
+  "passed": false,
+  "errors": [
+    "Missing SCs from baseline: ['SC-3']",
+    "SC-2: evidence lacks backtick anchor — must contain `exit`, `stdout`, `stderr`, `diff`, `→`, `result.*` or a file path like `/path/to/file.ext`"
+  ]
+}

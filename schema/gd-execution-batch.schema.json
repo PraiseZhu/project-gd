@@ -1,0 +1,157 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "gd-execution-batch.schema.json",
+  "title": "GD Execution Batch",
+  "description": "/gd v7 执行批次数据结构（Plan 5）。validator 不读此文件——所有结构/类型/required 检查在 gd-validate-execution-batch.py 手写 if-else 实现；本文件仅作文档与未来 Codex review 参考。",
+  "type": "object",
+  "required": [
+    "batch_id",
+    "dispatch_id",
+    "wave_ref",
+    "batch_created_at",
+    "execution_mode",
+    "task_results"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "batch_id": {
+      "type": "string",
+      "description": "全局唯一，格式 batch-<dispatch_id>-wave<N>",
+      "minLength": 5
+    },
+    "dispatch_id": {
+      "type": "string",
+      "description": "来源 dispatch map 的 dispatch_id",
+      "minLength": 1
+    },
+    "wave_ref": {
+      "type": "string",
+      "description": "对应 dispatch map 的 wave_id",
+      "minLength": 1
+    },
+    "batch_created_at": {
+      "type": "string",
+      "description": "ISO 8601 UTC 时间戳"
+    },
+    "execution_mode": {
+      "type": "string",
+      "enum": ["dry_run", "human_exec", "agent_exec"],
+      "description": "Plan 5 仅支持 human_exec；agent_exec 为 pending_future_plan"
+    },
+    "task_results": {
+      "type": "array",
+      "description": "每个元素对应 wave 内一个 track 的执行结果",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/definitions/task_result"
+      }
+    }
+  },
+  "definitions": {
+    "task_result": {
+      "type": "object",
+      "required": [
+        "task_id",
+        "track_ref",
+        "exec_status",
+        "not_run_reason",
+        "deliverables_produced",
+        "verify_results",
+        "gd_execution_status_json"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "task_id": {
+          "type": "string",
+          "description": "批次内唯一",
+          "minLength": 1
+        },
+        "track_ref": {
+          "type": "string",
+          "description": "必须在 dispatch map tracks 中存在",
+          "minLength": 1
+        },
+        "exec_status": {
+          "type": "string",
+          "enum": [
+            "not_started",
+            "in_progress",
+            "completed",
+            "completed_with_skips",
+            "failed",
+            "blocked",
+            "skipped"
+          ]
+        },
+        "not_run_reason": {
+          "type": ["string", "null"],
+          "description": "exec_status ∈ {skipped, blocked} 时必填；其他情况为 null"
+        },
+        "deliverables_produced": {
+          "type": "array",
+          "description": "已产出交付物列表（可为空）",
+          "items": {
+            "$ref": "#/definitions/deliverable_produced"
+          }
+        },
+        "verify_results": {
+          "type": "array",
+          "description": "SC verify 结果（非空）",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/verify_result"
+          }
+        },
+        "gd_execution_status_json": {
+          "type": "object",
+          "description": "机器可读执行状态块，与 exec_status 必须一致",
+          "required": ["task_id", "exec_status", "sc_results"],
+          "properties": {
+            "task_id": {"type": "string"},
+            "exec_status": {"type": "string"},
+            "sc_results": {
+              "type": "object",
+              "description": "SC-N -> pass|fail|skip 映射",
+              "additionalProperties": {
+                "type": "string",
+                "enum": ["pass", "fail", "skip"]
+              }
+            }
+          }
+        }
+      }
+    },
+    "deliverable_produced": {
+      "type": "object",
+      "required": ["path", "kind", "verified"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "kind": {
+          "type": "string",
+          "enum": ["file", "directory", "report"]
+        },
+        "verified": {"type": "boolean"}
+      }
+    },
+    "verify_result": {
+      "type": "object",
+      "required": ["sc_ref", "method", "cmd", "result"],
+      "properties": {
+        "sc_ref": {"type": "string", "minLength": 1},
+        "method": {
+          "type": "string",
+          "enum": ["command", "path", "assertion", "test"]
+        },
+        "cmd": {"type": "string", "minLength": 3},
+        "result": {
+          "type": "string",
+          "enum": ["PASS", "FAIL", "SKIP"]
+        },
+        "exit_code": {
+          "type": ["integer", "null"],
+          "description": "method=command 时必填"
+        }
+      }
+    }
+  }
+}

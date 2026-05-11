@@ -1,0 +1,4 @@
+# Plan 6.5-C audit wave-union fixture
+# 含 t1 和 t2 paths；--wave-union --wave-id w1 时 union {t1, t2} 都应 pass
+fixtures/dispatch/_workdir/t1/result.json
+fixtures/dispatch/_workdir/t2/result.json

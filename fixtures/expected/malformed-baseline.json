@@ -1,0 +1,15 @@
+{
+  "goal_chain": {
+    "project": "在不破坏现有 /review 链路的前提下，用 Project GD/ 建设 lab-only /rev 同步 review runner，验证 Goal-Driven + Anti-Fill 长模板机制是否能减少\"格式完整但计划不具体\"的 AI 填表问题。",
+    "chain": "如果没有同步 runner，标准只停留在文档层",
+    "phase": "bin/rev 可以完成一次 plan review",
+    "task": "运行 bin/rev plan 后 result.json 存在"
+  },
+  "success_criteria": [
+    {"id": "SC-1", "text": "bin/rev 存在", "verify": "test -x bin/rev"}
+  ],
+  "plan_hash": "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+  "non_goals": [],
+  "accepted_decisions": [],
+  "template_parity": "this field is forbidden by schema"
+}

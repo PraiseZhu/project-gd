@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://praise.local/gd-v7/gd-review-result.schema.json",
+  "title": "GD Review Result",
+  "description": "Schema for plan/code review artifacts. Uses GD_REVIEW_DECISION (NOT bare VERDICT).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "template_kind",
+    "reviewer",
+    "review_target",
+    "review_kind",
+    "review_run_status",
+    "gd_review_decision",
+    "scope_checked",
+    "findings",
+    "merge_notes",
+    "timestamp"
+  ],
+  "properties": {
+    "template_kind": {
+      "type": "string",
+      "enum": ["gd-plan-review", "gd-execution-review"]
+    },
+    "reviewer": {
+      "type": "string",
+      "pattern": "^(claude_main|claude_subagent_[a-z0-9_]+|codex)$"
+    },
+    "review_target": { "type": "string", "minLength": 1 },
+    "review_kind": { "type": "string", "enum": ["plan", "code"] },
+    "review_run_status": {
+      "type": "string",
+      "enum": ["completed", "completed_with_constraint", "degraded", "failed_to_run"]
+    },
+    "gd_review_decision": {
+      "type": "string",
+      "enum": ["APPROVED", "REQUIRES_CHANGES", "FAILED"]
+    },
+    "scope_checked": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["facet", "result"],
+        "properties": {
+          "facet": { "type": "string", "minLength": 3 },
+          "result": { "type": "string", "enum": ["pass", "fail", "n_a"] },
+          "evidence": { "type": "string", "maxLength": 60 }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["severity", "title", "sc_refs", "evidence", "impact", "required_fix", "verify"],
+        "properties": {
+          "severity": { "type": "string", "enum": ["P1", "P2"] },
+          "title": { "type": "string", "minLength": 5 },
+          "sc_refs": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "pattern": "^SC-[0-9]+$" }
+          },
+          "evidence": { "type": "string", "minLength": 5 },
+          "impact": { "type": "string", "minLength": 5 },
+          "required_fix": { "type": "string", "minLength": 5 },
+          "verify": { "type": "string", "minLength": 5 }
+        }
+      }
+    },
+    "merge_notes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["conflict_with_other_reviewer"],
+      "properties": {
+        "conflict_with_other_reviewer": { "type": "boolean" },
+        "arbitration_reason": { "type": "string" },
+        "degraded_reason": { "type": "string" }
+      }
+    },
+    "residual_risk": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
+      "description": "ISO 8601 UTC timestamp (e.g., 2026-05-11T08:56:58Z)."
+    }
+  }
+}

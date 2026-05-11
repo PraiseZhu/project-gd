@@ -1,0 +1,10 @@
+{
+  "old_review_prompt_source": "/Users/praise/.claude/handoff/bin/codex-watch",
+  "old_review_prompt_source_sha256": "d3fd4e3fa9a8f3e56dfe82d9d58b7fff057fd0ea002929a7cd78889d6bdacd99",
+  "extracted_lines": "58-160",
+  "extracted_sha256": "6ca451b49eaf7405e4ee893d323bf7fe85fe0ba658897f64f85b2efdad447f47",
+  "rev_review_standard_sha256": "6ace39fdff28b067e5a045dc468be318ceb5e8184751a50f8e97b3853fd66a48",
+  "old_review_command_sha256": "d2f45761505a108412da6cd38e1dac8f90cc469694b43c0b725fd65b7fe8c4cf",
+  "captured_at": "2026-05-10T00:00:00Z",
+  "notes": "old_review_prompt_source_sha256 = sha256 of entire codex-watch file; extracted_sha256 = sha256 of lines 58-160 only (build_review_prompt function)"
+}

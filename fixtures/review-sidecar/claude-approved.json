@@ -1,0 +1,19 @@
+{
+  "template_kind": "gd-plan-review",
+  "reviewer": "claude_main",
+  "review_target": "fixtures/plans/sample-plan.md",
+  "review_kind": "plan",
+  "review_run_status": "completed",
+  "gd_review_decision": "APPROVED",
+  "scope_checked": [
+    {"facet": "目标链完整性", "result": "pass", "evidence": "PROJECT_GOAL/CHAIN_GOAL/PHASE_GOAL 三层"},
+    {"facet": "SC 编号化", "result": "pass", "evidence": "SC-1..SC-6 全部含 verify"},
+    {"facet": "失败模式枚举", "result": "pass", "evidence": "8 项失败模式列出"}
+  ],
+  "findings": [],
+  "merge_notes": {
+    "conflict_with_other_reviewer": false
+  },
+  "residual_risk": [],
+  "timestamp": "2026-05-11T08:00:00Z"
+}

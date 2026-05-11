@@ -1,0 +1,64 @@
+{
+  "dispatch_id": "missing-context-invalid",
+  "source_master_plan": "fixtures/dispatch/missing-context-invalid.json",
+  "goal_chain": {
+    "PROJECT_GOAL": "validator fixture goal placeholder",
+    "CHAIN_GOAL": "trigger missing-context violation",
+    "PHASE_GOAL": "required_context references a static file that does not exist"
+  },
+  "max_parallel_planning": 2,
+  "max_parallel_execution": 2,
+  "max_parallel_review": 2,
+  "max_parallel_validation": 2,
+  "tracks": [
+    {
+      "track_id": "t1",
+      "mode": "execute",
+      "agent_role": "child_executor",
+      "owned_paths": [
+        "fixtures/dispatch/_workdir/missing-ctx"
+      ],
+      "forbidden_paths": [
+        "/Users/praise/.claude/**"
+      ],
+      "required_context": [
+        "docs/gd-v7-multi-agent-dispatch.md",
+        "fixtures/dispatch/_nonexistent_static_file.txt"
+      ],
+      "deliverables": [
+        {
+          "path": "fixtures/dispatch/_workdir/missing-ctx/out.json",
+          "kind": "file",
+          "must_exist": true
+        }
+      ],
+      "blocked_by": [],
+      "can_parallel_with": [],
+      "sc_refs": [
+        "SC-1"
+      ],
+      "verify": [
+        {
+          "sc_ref": "SC-1",
+          "method": "command",
+          "cmd": "test -f fixtures/dispatch/_workdir/missing-ctx/out.json"
+        }
+      ]
+    }
+  ],
+  "waves": [
+    {
+      "wave_id": "w1",
+      "track_ids": [
+        "t1"
+      ],
+      "description": "single track with bad static context"
+    }
+  ],
+  "merge_gates": [
+    {
+      "gate_id": "G1",
+      "description": "child output format compliant"
+    }
+  ]
+}

@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://praise.local/gd-v7/gd-execution-status.schema.json",
+  "title": "GD Execution Status",
+  "description": "EXEC_STATUS schema for execution result artifacts. Distinct from GD_REVIEW_DECISION (review artifacts only).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "template_kind",
+    "result_id",
+    "task_id",
+    "executor_role",
+    "executed_at",
+    "exec_status",
+    "sc_acceptance",
+    "files_added",
+    "files_modified",
+    "owned_paths_writes_only",
+    "forbidden_paths_touched",
+    "out_of_scope_writes",
+    "handoff"
+  ],
+  "properties": {
+    "template_kind": { "const": "gd-execution-result" },
+    "result_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+    "task_id": { "type": "string" },
+    "parent_step": { "type": "string" },
+    "parent_plan": { "type": "string" },
+    "executor_role": {
+      "type": "string",
+      "enum": ["claude_main", "claude_subagent", "codex"]
+    },
+    "executed_at": { "type": "string", "format": "date-time" },
+    "exec_status": {
+      "type": "string",
+      "enum": ["completed", "completed_with_constraint", "blocked", "failed"]
+    },
+    "sc_acceptance": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sc_ref", "status"],
+        "properties": {
+          "sc_ref": { "type": "string", "pattern": "^SC-[0-9]+$" },
+          "status": { "type": "string", "enum": ["pass", "fail", "not_run", "n_a"] },
+          "evidence": { "type": "string", "description": "Required when status=pass" },
+          "not_run_reason": { "type": "string", "description": "Required when status=not_run" }
+        }
+      }
+    },
+    "files_added": { "type": "array", "items": { "type": "string" } },
+    "files_modified": { "type": "array", "items": { "type": "string" } },
+    "files_unchanged_in_scope": { "type": "array", "items": { "type": "string" } },
+    "owned_paths_writes_only": { "type": "boolean" },
+    "forbidden_paths_touched": { "type": "array", "items": { "type": "string" } },
+    "out_of_scope_writes": { "type": "array", "items": { "type": "string" } },
+    "handoff": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["result_path", "status_field", "summary"],
+      "properties": {
+        "result_path": { "type": "string" },
+        "status_field": {
+          "type": "string",
+          "enum": ["completed", "completed_with_constraint", "blocked", "failed"]
+        },
+        "summary": { "type": "string", "minLength": 5 },
+        "blockers": { "type": "string" }
+      }
+    },
+    "known_limitations": { "type": "array", "items": { "type": "string" } }
+  }
+}

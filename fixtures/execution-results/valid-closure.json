@@ -1,0 +1,31 @@
+{
+  "closure_id": "closure-batch-valid-fixture-wave1-20260511",
+  "source_batch": "batch-valid-fixture-wave1",
+  "closure_status": "closed",
+  "track_results": [
+    {
+      "track_id": "t1",
+      "exec_status": "completed",
+      "sc_pass_count": 1,
+      "sc_fail_count": 0,
+      "sc_skip_count": 0
+    },
+    {
+      "track_id": "t2",
+      "exec_status": "completed",
+      "sc_pass_count": 1,
+      "sc_fail_count": 0,
+      "sc_skip_count": 0
+    }
+  ],
+  "failed_tracks": [],
+  "not_run_aggregation": {
+    "total": 0,
+    "skipped": 0,
+    "blocked": 0,
+    "in_progress": 0
+  },
+  "next_action": null,
+  "constraint_notes": null,
+  "generated_at": "2026-05-11T07:33:35Z"
+}

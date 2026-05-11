@@ -1,0 +1,7 @@
+37f60ff468a6eca3b289d45cd8b5b67804fb0d00fa50517981ab962477834c83  prompts/gd-review-standard.md
+3aa49b0a3f1566fc0a04dd4c6f79ddc8f6112afc654efe4c984178f227eecd00  templates/gd-plan-review-template.md
+e0219bf66868ab9a8832f374e61020a2687eb0d5858ad72df34d35f75a362c84  templates/gd-execution-review-template.md
+09e4e4ce08c0e6f8e86186d1ab21e2112d61ee03b703a0748491d06075af1c06  commands/gd.md
+dad0c69a8aeabd6ac38e97fc81a5cc8bc08a56f30ca7c5963a7b9208b231e0ab  docs/gd-v7-claude-command.md
+c074671fc9924b69ebd85422b1f3025c71d26ad58392e059758aea1bcb59496c  docs/gd-v7-shared-core-index.md
+45df394dc7a1687d8b97153ef1267e3d566df7e2f618f544e953a9a80a4bd983  manifest.gd-v7.json

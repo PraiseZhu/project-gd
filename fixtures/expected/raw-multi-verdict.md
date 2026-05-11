@@ -1,0 +1,6 @@
+REV_VERDICT: APPROVED
+REVIEW_KIND: plan
+
+Some analysis text here.
+
+REV_VERDICT: REQUIRES_CHANGES

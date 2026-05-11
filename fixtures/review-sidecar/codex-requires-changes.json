@@ -1,0 +1,29 @@
+{
+  "template_kind": "gd-plan-review",
+  "reviewer": "codex",
+  "review_target": "fixtures/plans/sample-plan.md",
+  "review_kind": "plan",
+  "review_run_status": "completed",
+  "gd_review_decision": "REQUIRES_CHANGES",
+  "scope_checked": [
+    {"facet": "目标链完整性", "result": "pass", "evidence": "完整"},
+    {"facet": "SC 编号化", "result": "fail", "evidence": "SC-3 缺 verify"}
+  ],
+  "findings": [
+    {
+      "severity": "P2",
+      "title": "SC-3 缺验收命令",
+      "sc_refs": ["SC-3"],
+      "evidence": "plan §测试计划 SC-3 行只写 '人工确认'",
+      "impact": "无法机器化验收，依赖人工易漂移",
+      "required_fix": "补可执行命令或断言",
+      "verify": "执行命令 exit 0"
+    }
+  ],
+  "merge_notes": {
+    "conflict_with_other_reviewer": true,
+    "arbitration_reason": "Codex 发现 SC-3 verify 缺失，Claude 漏判"
+  },
+  "residual_risk": [],
+  "timestamp": "2026-05-11T08:02:00Z"
+}

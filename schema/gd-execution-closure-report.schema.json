@@ -1,0 +1,83 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "gd-execution-closure-report.schema.json",
+  "title": "GD Execution Closure Report",
+  "description": "/gd v7 执行批次收口报告数据结构（Plan 5 Patch #1）。validator 不读此文件——所有结构/类型/required 检查在 gd-validate-execution-batch.py 手写 if-else 实现；本文件仅作文档与未来 Codex review 参考。",
+  "type": "object",
+  "required": [
+    "closure_id",
+    "source_batch",
+    "closure_status",
+    "track_results",
+    "failed_tracks",
+    "not_run_aggregation",
+    "generated_at"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "closure_id": {
+      "type": "string",
+      "description": "格式：closure-<batch_id>-<YYYYMMDD>",
+      "minLength": 8
+    },
+    "source_batch": {
+      "type": "string",
+      "description": "来源 batch_id",
+      "minLength": 1
+    },
+    "closure_status": {
+      "type": "string",
+      "enum": ["closed", "closed_with_constraints", "blocked", "failed"],
+      "description": "批次收口状态（CLOSURE_STATUS）"
+    },
+    "track_results": {
+      "type": "array",
+      "description": "每个 track 的收口摘要（非空）",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["track_id", "exec_status", "sc_pass_count", "sc_fail_count", "sc_skip_count"],
+        "properties": {
+          "track_id": {"type": "string"},
+          "exec_status": {
+            "type": "string",
+            "enum": ["completed", "completed_with_skips", "failed", "skipped", "blocked"]
+          },
+          "sc_pass_count": {"type": "integer", "minimum": 0},
+          "sc_fail_count": {"type": "integer", "minimum": 0},
+          "sc_skip_count": {"type": "integer", "minimum": 0}
+        }
+      }
+    },
+    "failed_tracks": {
+      "type": "array",
+      "description": "exec_status ∉ {completed, completed_with_skips} 的 track_id 列表",
+      "items": {"type": "string"}
+    },
+    "not_run_aggregation": {
+      "type": "object",
+      "description": "未完成 task 的分类统计",
+      "required": ["total", "skipped", "blocked", "in_progress"],
+      "properties": {
+        "total": {"type": "integer", "minimum": 0},
+        "skipped": {"type": "integer", "minimum": 0},
+        "blocked": {"type": "integer", "minimum": 0},
+        "in_progress": {"type": "integer", "minimum": 0}
+      }
+    },
+    "next_action": {
+      "type": ["string", "null"],
+      "description": "closure_status ∈ {blocked, failed} 时必填，描述人工干预路径",
+      "minLength": 10
+    },
+    "constraint_notes": {
+      "type": ["string", "null"],
+      "description": "closure_status = closed_with_constraints 时必填",
+      "minLength": 10
+    },
+    "generated_at": {
+      "type": "string",
+      "description": "ISO 8601 UTC 时间戳"
+    }
+  }
+}

@@ -1,0 +1,64 @@
+{
+  "dispatch_id": "sc-verify-mismatch-invalid",
+  "source_master_plan": "fixtures/dispatch/sc-verify-mismatch-invalid.json",
+  "goal_chain": {
+    "PROJECT_GOAL": "validator fixture goal placeholder",
+    "CHAIN_GOAL": "trigger sc_refs vs verify[].sc_ref mismatch",
+    "PHASE_GOAL": "track t1 declares sc_refs=[SC-1] but verify only references SC-999"
+  },
+  "max_parallel_planning": 2,
+  "max_parallel_execution": 2,
+  "max_parallel_review": 2,
+  "max_parallel_validation": 2,
+  "tracks": [
+    {
+      "track_id": "t1",
+      "mode": "execute",
+      "agent_role": "child_executor",
+      "owned_paths": [
+        "fixtures/dispatch/_workdir/sc-mismatch/t1"
+      ],
+      "forbidden_paths": [
+        "/Users/praise/.claude/**"
+      ],
+      "required_context": [
+        "docs/gd-v7-multi-agent-dispatch.md"
+      ],
+      "deliverables": [
+        {
+          "path": "fixtures/dispatch/_workdir/sc-mismatch/t1/out.json",
+          "kind": "file",
+          "must_exist": true
+        }
+      ],
+      "blocked_by": [],
+      "can_parallel_with": [],
+      "sc_refs": [
+        "SC-1"
+      ],
+      "verify": [
+        {
+          "sc_ref": "SC-999",
+          "method": "command",
+          "cmd": "echo placeholder",
+          "expect": "placeholder"
+        }
+      ]
+    }
+  ],
+  "waves": [
+    {
+      "wave_id": "w1",
+      "track_ids": [
+        "t1"
+      ],
+      "description": "single track with sc_refs vs verify mismatch"
+    }
+  ],
+  "merge_gates": [
+    {
+      "gate_id": "G1",
+      "description": "child output format compliant"
+    }
+  ]
+}

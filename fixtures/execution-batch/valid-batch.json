@@ -1,0 +1,67 @@
+{
+  "batch_id": "batch-valid-fixture-wave1",
+  "dispatch_id": "valid-fixture",
+  "wave_ref": "w1",
+  "batch_created_at": "2026-05-11T00:00:00Z",
+  "execution_mode": "human_exec",
+  "task_results": [
+    {
+      "task_id": "t1",
+      "track_ref": "t1",
+      "exec_status": "completed",
+      "not_run_reason": null,
+      "deliverables_produced": [
+        {
+          "path": "fixtures/dispatch/_workdir/t1/result.json",
+          "kind": "file",
+          "verified": true
+        }
+      ],
+      "verify_results": [
+        {
+          "sc_ref": "SC-1",
+          "method": "command",
+          "cmd": "test -f fixtures/dispatch/_workdir/t1/result.json",
+          "result": "PASS",
+          "exit_code": 0
+        }
+      ],
+      "gd_execution_status_json": {
+        "task_id": "t1",
+        "exec_status": "completed",
+        "sc_results": {
+          "SC-1": "pass"
+        }
+      }
+    },
+    {
+      "task_id": "t2",
+      "track_ref": "t2",
+      "exec_status": "completed",
+      "not_run_reason": null,
+      "deliverables_produced": [
+        {
+          "path": "fixtures/dispatch/_workdir/t2/result.json",
+          "kind": "file",
+          "verified": true
+        }
+      ],
+      "verify_results": [
+        {
+          "sc_ref": "SC-2",
+          "method": "command",
+          "cmd": "test -f fixtures/dispatch/_workdir/t2/result.json",
+          "result": "PASS",
+          "exit_code": 0
+        }
+      ],
+      "gd_execution_status_json": {
+        "task_id": "t2",
+        "exec_status": "completed",
+        "sc_results": {
+          "SC-2": "pass"
+        }
+      }
+    }
+  ]
+}

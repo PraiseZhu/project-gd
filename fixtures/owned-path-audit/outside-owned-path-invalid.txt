@@ -1,0 +1,5 @@
+# Plan 6.5-C audit negative fixture
+# 一条 path 越界（落到 t2 owned scope）+ 一条 protected runtime
+fixtures/dispatch/_workdir/t1/result.json
+fixtures/dispatch/_workdir/t2/wrong-place.json
+/Users/praise/.claude/commands/gd.md

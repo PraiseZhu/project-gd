@@ -1,0 +1,16 @@
+{
+  "goal_chain": {
+    "project": "lab-only /rev runner",
+    "chain": "chain goal placeholder",
+    "phase": "phase goal placeholder",
+    "task": "task goal placeholder"
+  },
+  "success_criteria": [
+    {
+      "id": "SC-1",
+      "text": "dummy criterion",
+      "verify": "echo ok"
+    }
+  ],
+  "plan_hash": "0000000000000000000000000000000000000000000000000000000000000000"
+}

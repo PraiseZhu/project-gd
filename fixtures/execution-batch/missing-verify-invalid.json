@@ -1,0 +1,22 @@
+{
+  "batch_id": "batch-missing-verify-wave1",
+  "dispatch_id": "valid-fixture",
+  "wave_ref": "w1",
+  "batch_created_at": "2026-05-11T00:00:00Z",
+  "execution_mode": "human_exec",
+  "task_results": [
+    {
+      "task_id": "t1",
+      "track_ref": "t1",
+      "exec_status": "completed",
+      "not_run_reason": null,
+      "deliverables_produced": [],
+      "verify_results": [],
+      "gd_execution_status_json": {
+        "task_id": "t1",
+        "exec_status": "completed",
+        "sc_results": {}
+      }
+    }
+  ]
+}

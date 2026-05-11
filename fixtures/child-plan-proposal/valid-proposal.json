@@ -1,0 +1,24 @@
+{
+  "proposal_id": "valid-fixture-t1-abc123",
+  "parent_dispatch_id": "valid-fixture",
+  "parent_track_id": "t1",
+  "agent_role": "child_planner",
+  "output_status": "completed",
+  "summary_cn": "为 t1 track 生成 1 个 task packet：在 _workdir/t1 下产出 result.json，验收 SC-1 通过 test -f 检查。",
+  "task_packets": [
+    {
+      "task_id": "t1-produce-result",
+      "owned_paths": ["fixtures/dispatch/_workdir/t1"],
+      "required_context": ["docs/gd-v7-multi-agent-dispatch.md"]
+    }
+  ],
+  "sc_refs": ["SC-1"],
+  "verify": [
+    {
+      "sc_ref": "SC-1",
+      "method": "command",
+      "cmd": "test -f fixtures/dispatch/_workdir/t1/result.json"
+    }
+  ],
+  "blocked_reason": null
+}

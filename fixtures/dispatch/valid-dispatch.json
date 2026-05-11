@@ -1,0 +1,157 @@
+{
+  "dispatch_id": "valid-fixture",
+  "source_master_plan": "fixtures/dispatch/valid-dispatch.json",
+  "goal_chain": {
+    "PROJECT_GOAL": "validator fixture goal placeholder for stdlib-only checks",
+    "CHAIN_GOAL": "shared core validation chain placeholder",
+    "PHASE_GOAL": "demonstrate a passing dispatch map with two parallel tracks and one merge"
+  },
+  "max_parallel_planning": 2,
+  "max_parallel_execution": 2,
+  "max_parallel_review": 2,
+  "max_parallel_validation": 2,
+  "tracks": [
+    {
+      "track_id": "t1",
+      "mode": "execute",
+      "agent_role": "child_executor",
+      "owned_paths": [
+        "fixtures/dispatch/_workdir/t1"
+      ],
+      "forbidden_paths": [
+        "/Users/praise/.claude/**",
+        "fixtures/dispatch/_workdir/t2"
+      ],
+      "required_context": [
+        "docs/gd-v7-multi-agent-dispatch.md"
+      ],
+      "deliverables": [
+        {
+          "path": "fixtures/dispatch/_workdir/t1/result.json",
+          "kind": "file",
+          "must_exist": true
+        }
+      ],
+      "blocked_by": [],
+      "can_parallel_with": [
+        "t2"
+      ],
+      "sc_refs": [
+        "SC-1"
+      ],
+      "verify": [
+        {
+          "sc_ref": "SC-1",
+          "method": "command",
+          "cmd": "test -f fixtures/dispatch/_workdir/t1/result.json",
+          "expect": "exit 0"
+        }
+      ]
+    },
+    {
+      "track_id": "t2",
+      "mode": "execute",
+      "agent_role": "child_executor",
+      "owned_paths": [
+        "fixtures/dispatch/_workdir/t2"
+      ],
+      "forbidden_paths": [
+        "/Users/praise/.claude/**",
+        "fixtures/dispatch/_workdir/t1"
+      ],
+      "required_context": [
+        "docs/gd-v7-multi-agent-dispatch.md"
+      ],
+      "deliverables": [
+        {
+          "path": "fixtures/dispatch/_workdir/t2/result.json",
+          "kind": "file",
+          "must_exist": true
+        }
+      ],
+      "blocked_by": [],
+      "can_parallel_with": [
+        "t1"
+      ],
+      "sc_refs": [
+        "SC-2"
+      ],
+      "verify": [
+        {
+          "sc_ref": "SC-2",
+          "method": "command",
+          "cmd": "test -f fixtures/dispatch/_workdir/t2/result.json",
+          "expect": "exit 0"
+        }
+      ]
+    },
+    {
+      "track_id": "t3",
+      "mode": "review",
+      "agent_role": "child_reviewer",
+      "owned_paths": [
+        "fixtures/dispatch/_workdir/t3"
+      ],
+      "forbidden_paths": [
+        "/Users/praise/.claude/**",
+        "fixtures/dispatch/_workdir/t1",
+        "fixtures/dispatch/_workdir/t2"
+      ],
+      "required_context": [
+        "docs/gd-v7-multi-agent-dispatch.md",
+        "fixtures/dispatch/_workdir/t1/result.json",
+        "fixtures/dispatch/_workdir/t2/result.json"
+      ],
+      "deliverables": [
+        {
+          "path": "fixtures/dispatch/_workdir/t3/merge.json",
+          "kind": "file",
+          "must_exist": true
+        }
+      ],
+      "blocked_by": [
+        "t1",
+        "t2"
+      ],
+      "can_parallel_with": [],
+      "sc_refs": [
+        "SC-3"
+      ],
+      "verify": [
+        {
+          "sc_ref": "SC-3",
+          "method": "command",
+          "cmd": "test -f fixtures/dispatch/_workdir/t3/merge.json",
+          "expect": "exit 0"
+        }
+      ]
+    }
+  ],
+  "waves": [
+    {
+      "wave_id": "w1",
+      "track_ids": [
+        "t1",
+        "t2"
+      ],
+      "description": "parallel exec"
+    },
+    {
+      "wave_id": "w2",
+      "track_ids": [
+        "t3"
+      ],
+      "description": "merge"
+    }
+  ],
+  "merge_gates": [
+    {
+      "gate_id": "G1",
+      "description": "child output format compliant"
+    },
+    {
+      "gate_id": "G2",
+      "description": "files_added/modified within owned_paths"
+    }
+  ]
+}

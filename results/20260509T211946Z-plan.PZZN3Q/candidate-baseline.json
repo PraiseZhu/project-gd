@@ -1,0 +1,32 @@
+{
+  "goal_chain": {
+    "project": "在不破坏现有 /review 链路的前提下，用 Project GD/ 建设 lab-only /rev 同步 review runner，验证 Goal-Driven + Anti-Fill 长模板机制是否能减少\"格式完整但计划不具体\"的 AI 填表问题。",
+    "chain": "如果模板全英文，Agent 每次 Execution Complete 输出英文，违反用户中文输出要求。",
+    "phase": "将 execution-result-template.md 全中文化，并新增全局语言规则文件。",
+    "task": "修改模板字段名和说明为中文，新增 output-language.md 规则，验证不与 memory 层冲突。"
+  },
+  "success_criteria": [
+    {
+      "id": "SC-1",
+      "text": "`execution-result-template.md` 所有字段名和说明改为中文",
+      "verify": "目视确认模板文件无遗漏英文说明文字"
+    },
+    {
+      "id": "SC-2",
+      "text": "新增全局规则 `~/.claude/rules/output-language.md`，明确\"面向用户输出一律中文\"",
+      "verify": "目视确认文件存在且内容正确"
+    },
+    {
+      "id": "SC-3",
+      "text": "memory 中已有的 `feedback_language_chinese.md` 与新规则不冲突、不重复",
+      "verify": "目视对比两个文件，确认无重复"
+    }
+  ],
+  "plan_hash": "a38cc1d5093893754835a820ad75206c5233448afc339e389602755758738e42",
+  "non_goals": [
+    "不改 plan 模板（已是中文）",
+    "不改代码中的英文变量名/注释/命令",
+    "不翻译规则文件本身（规则是给 Agent 读的内部文档，不是面向用户的输出）"
+  ],
+  "accepted_decisions": []
+}

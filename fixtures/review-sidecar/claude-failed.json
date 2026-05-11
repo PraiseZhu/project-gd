@@ -1,0 +1,18 @@
+{
+  "template_kind": "gd-plan-review",
+  "reviewer": "claude_main",
+  "review_target": "fixtures/plans/sample-plan.md",
+  "review_kind": "plan",
+  "review_run_status": "failed_to_run",
+  "gd_review_decision": "FAILED",
+  "scope_checked": [
+    {"facet": "Claude review runtime", "result": "fail", "evidence": "Claude review prompt 超出 token 预算"}
+  ],
+  "findings": [],
+  "merge_notes": {
+    "conflict_with_other_reviewer": false,
+    "degraded_reason": "Claude review 在 token budget 内未完成"
+  },
+  "residual_risk": [],
+  "timestamp": "2026-05-11T08:04:00Z"
+}

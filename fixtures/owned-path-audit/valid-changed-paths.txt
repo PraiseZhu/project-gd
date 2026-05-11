@@ -1,0 +1,4 @@
+# Plan 6.5-C audit fixture
+# 全部 changed paths 都在 valid-dispatch.json track t1 owned_paths (fixtures/dispatch/_workdir/t1) 内
+fixtures/dispatch/_workdir/t1/result.json
+fixtures/dispatch/_workdir/t1/extra-output.txt

@@ -1,0 +1,136 @@
+{
+  "schema_version": "gd-boundary-baseline.v2",
+  "captured_at": "2026-05-10T14:36:37Z",
+  "default_execution_host": "Claude Code",
+  "codex_execution_required": false,
+  "stage": "A",
+  "plan_ref": "Plan 1 边界与基线 v2 (Plan 1 v2)",
+
+  "v7_authority": {
+    "master_plan_source": "memory/priority/project_gd_upgrade_plan.md",
+    "master_plan_abs_path": "/Users/praise/.claude/projects/-Users-praise-Library-Mobile-Documents-com-apple-CloudDocs-Claude-Code/memory/priority/project_gd_upgrade_plan.md",
+    "master_plan_hash": "081f62b3a89d56550f893376f9934d4dc11f16a0f35a0a99562462a77c8a12bd",
+    "locked_version": "v7",
+    "supersedes": ["v3", "v5", "v6"]
+  },
+
+  "legacy_goal_sources": {
+    "PROJECT_GOAL_MD": {
+      "path": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/PROJECT_GOAL.md",
+      "hash": "9c956d4439005b5bb720a68d706075456c5fa6b32215a235ffe908b689426edd",
+      "status": "legacy_rev_goal_not_v7_authority",
+      "note": "旧 /rev artifact，v7 权威目标见 v7_authority.master_plan_source"
+    },
+    "REV_REVIEW_STANDARD_MD": {
+      "path": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/prompts/rev-review-standard.md",
+      "hash": "6ace39fdff28b067e5a045dc468be318ceb5e8184751a50f8e97b3853fd66a48",
+      "status": "legacy_rev_standard",
+      "note": "v7 Shared Core 若建立新 review standard 将替换它，对照用"
+    }
+  },
+
+  "allowed_immediate_writes": [
+    "Project GD/baselines/**",
+    "Project GD/reports/**"
+  ],
+
+  "protected_runtime_roots": [
+    "/Users/praise/.claude/commands/",
+    "/Users/praise/.claude/settings.json",
+    "/Users/praise/.claude/handoff/bin/",
+    "/Users/praise/.claude/scripts/",
+    "/Users/praise/.claude/scripts/hooks/"
+  ],
+
+  "protected_hashes": {
+    "review_runtime_core": {
+      "/Users/praise/.claude/commands/review.md": "d2f45761505a108412da6cd38e1dac8f90cc469694b43c0b725fd65b7fe8c4cf",
+      "/Users/praise/.claude/settings.json": "fea21daafdd3d85defe4555f11003dc1c6ea91f07e1549f52b3210124d55d0c9",
+      "/Users/praise/.claude/handoff/bin/codex-watch": "d3fd4e3fa9a8f3e56dfe82d9d58b7fff057fd0ea002929a7cd78889d6bdacd99",
+      "/Users/praise/.claude/handoff/bin/codex-send": "fcc03322c73f6e9b173841764e22c9292af91ebfe7d94d8796b76d34c50b1fb3",
+      "/Users/praise/.claude/handoff/bin/codex-send-wait": "56f4801a0bb7b05f6898a70c5cdbc6113f11fdeb891c030a9897a406683f01aa",
+      "/Users/praise/.claude/scripts/review-result-writer.sh": "03dc1d6a7b54780e0fe297b14b6d46f8882d022c6ae21695c56be4436b8214d3",
+      "/Users/praise/.claude/scripts/review-chain-verify.js": "f7308e5e21bee7e87d58e03eb6afe4e43d33fa1d2f20430e9064207e470ed8a6"
+    },
+    "review_hooks_enumerated": {
+      "/Users/praise/.claude/scripts/hooks/review-chain-session-init.js": "bc42f95ce2582861fa9fa017651d91424c8c6bca09938fcbf3240004232f76a9",
+      "/Users/praise/.claude/scripts/hooks/review-chain-touch-marker.js": "635c895ff1f1d15dd71ae447ac39c6dc1589e93374a84a866a70882f8dee63cc",
+      "/Users/praise/.claude/scripts/hooks/review-chain-verify-gate.js": "c00cdb610f35ed475f9b182c4e429b7808d36c63f8b009b3d9ebcdbc5be1a93c",
+      "/Users/praise/.claude/scripts/hooks/review-intent-marker.js": "10430eea5934a83e90b80e78b8ba64da10ccdb21dc86662eef859170fdd3e866",
+      "/Users/praise/.claude/scripts/hooks/review-stop-clear.js": "467e887934a7f4f1c92ddc8996659ebd1e0109f05687ad14255be1e7b269687a",
+      "/Users/praise/.claude/scripts/hooks/review-stop-guard.js": "43daf14ff126d44ffc66c9479b792417986e06b70c853d2e3db2105f4cdb40fd",
+      "/Users/praise/.claude/scripts/hooks/review-stop-marker.js": "f418b68ed951a7df4967393d69ba069878a817d14352cb4da10d65920de5afd5",
+      "/Users/praise/.claude/scripts/hooks/review-writer-required-gate.js": "714b873577ce92120de97a1500cbdae76a89cac61ac025dd5c21d17d8ca351c8"
+    },
+    "missing_at_baseline": []
+  },
+
+  "wildcard_storage_forbidden": true,
+  "wildcard_storage_note": "protected_hashes 只允许枚举的具体文件名；review-*.js 等通配符表达必须在采集时展开",
+
+  "project_hashes": {
+    "Project GD/manifest.json": "3cb7573ba08d23360ff61392472ff518ac521733484b0c661ae198ad6c9241f3",
+    "Project GD/bin/rev": "825b7f781b30736d6d30c4d1205d7008342bba01c17d4f75b80926fd9c4b2316",
+    "Project GD/PROJECT_GOAL.md": "9c956d4439005b5bb720a68d706075456c5fa6b32215a235ffe908b689426edd",
+    "Project GD/prompts/rev-review-standard.md": "6ace39fdff28b067e5a045dc468be318ceb5e8184751a50f8e97b3853fd66a48"
+  },
+
+  "project_git_status_short": {
+    "branch": "main",
+    "head": "85563c7",
+    "modified": [
+      "CLAUDE.md",
+      "README.md"
+    ],
+    "untracked": [
+      "PROJECT_GOAL.md",
+      "baselines/",
+      "bin/",
+      "docs/",
+      "fixtures/",
+      "manifest.json",
+      "prompts/",
+      "reports/",
+      "results/",
+      "schema/",
+      "scripts/",
+      "templates/"
+    ],
+    "note": "既有 Phase 1-4 实验产物，记录但不阻塞 Stage A"
+  },
+
+  "runtime_write_authorization": {
+    "status": "none",
+    "ledger_path": "Project GD/baselines/gd-v7-runtime-write-authorizations.jsonl",
+    "ledger_format": {
+      "schema": "append-only JSONL",
+      "fields": ["ts", "target_path", "granted_by", "scope", "plan_ref", "rationale"],
+      "example": {
+        "ts": "2026-05-99T00:00:00Z",
+        "target_path": "/Users/praise/.claude/commands/gd.md",
+        "granted_by": "user",
+        "scope": "install /gd slash command",
+        "plan_ref": "Plan N step plan",
+        "rationale": "用户在对话中明确授权"
+      }
+    },
+    "stage_b_rule": "Stage B 仅认 ledger 内的授权记录；自由文本对话授权无效",
+    "current_authorizations": []
+  },
+
+  "stage_b_fallback": {
+    "trigger": "若 Step 8 在项目中止 ≥ 30 天后仍未执行 Stage B",
+    "action": "baseline 标记 expired_unverified；后续重启项目必须由用户显式喊『提前 isolation 收口』触发 Stage B 才能继续 v7 工作",
+    "expiry_check_anchor": "2026-06-09T14:36:37Z",
+    "expiry_check_formula": "captured_at + 30 days"
+  },
+
+  "scope": {
+    "this_plan": "Plan 1 v2 — 边界与基线",
+    "implements_gd_features": false,
+    "modifies_runtime": false,
+    "modifies_review_chain": false,
+    "modifies_manifest_json": false,
+    "writes_outside_baselines_and_reports": false
+  }
+}

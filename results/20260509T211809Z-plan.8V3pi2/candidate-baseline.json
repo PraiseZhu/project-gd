@@ -1,0 +1,33 @@
+{
+  "goal_chain": {
+    "project": "在不破坏现有 /review 链路的前提下，用 Project GD/ 建设 lab-only /rev 同步 review runner，验证 Goal-Driven + Anti-Fill 长模板机制是否能减少\"格式完整但计划不具体\"的 AI 填表问题。",
+    "chain": "如果没有外部框架评估，团队可能错过有价值的工具或重复建设已有能力。",
+    "phase": "完成 cognee 深度评估并入库 AKB，为 Agent 长期记忆选型提供依据。",
+    "task": "执行 cognee 评估流程：研究 → 报告生成 → Obsidian 归档 → AKB 入库。"
+  },
+  "success_criteria": [
+    {
+      "id": "SC-1",
+      "text": "NotebookLM 报告生成成功",
+      "verify": "确认通过"
+    },
+    {
+      "id": "SC-2",
+      "text": "Obsidian 归档且排版美化通过",
+      "verify": "目视确认文件存在"
+    },
+    {
+      "id": "SC-3",
+      "text": "AKB DB 索引验证通过",
+      "verify": "运行验证脚本，确认成功"
+    },
+    {
+      "id": "SC-4",
+      "text": "_index.md 更新完成",
+      "verify": "确认更新"
+    }
+  ],
+  "plan_hash": "4f57d1a106a4c7e9637d657b25c03a9c4b38364a1924e96ad00b43aa0216f38f",
+  "non_goals": [],
+  "accepted_decisions": []
+}

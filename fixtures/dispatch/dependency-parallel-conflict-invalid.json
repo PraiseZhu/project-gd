@@ -1,0 +1,111 @@
+{
+  "dispatch_id": "dependency-parallel-conflict-invalid",
+  "source_master_plan": "fixtures/dispatch/dependency-parallel-conflict-invalid.json",
+  "goal_chain": {
+    "PROJECT_GOAL": "validator fixture goal placeholder",
+    "CHAIN_GOAL": "trigger dependency-vs-parallel conflict",
+    "PHASE_GOAL": "track t2 declares t1 in both blocked_by and can_parallel_with"
+  },
+  "max_parallel_planning": 2,
+  "max_parallel_execution": 2,
+  "max_parallel_review": 2,
+  "max_parallel_validation": 2,
+  "tracks": [
+    {
+      "track_id": "t1",
+      "mode": "execute",
+      "agent_role": "child_executor",
+      "owned_paths": [
+        "fixtures/dispatch/_workdir/dep-conflict/t1"
+      ],
+      "forbidden_paths": [
+        "/Users/praise/.claude/**",
+        "fixtures/dispatch/_workdir/dep-conflict/t2"
+      ],
+      "required_context": [
+        "docs/gd-v7-multi-agent-dispatch.md"
+      ],
+      "deliverables": [
+        {
+          "path": "fixtures/dispatch/_workdir/dep-conflict/t1/out.json",
+          "kind": "file",
+          "must_exist": true
+        }
+      ],
+      "blocked_by": [],
+      "can_parallel_with": [
+        "t2"
+      ],
+      "sc_refs": [
+        "SC-1"
+      ],
+      "verify": [
+        {
+          "sc_ref": "SC-1",
+          "method": "command",
+          "cmd": "test -f fixtures/dispatch/_workdir/dep-conflict/t1/out.json"
+        }
+      ]
+    },
+    {
+      "track_id": "t2",
+      "mode": "execute",
+      "agent_role": "child_executor",
+      "owned_paths": [
+        "fixtures/dispatch/_workdir/dep-conflict/t2"
+      ],
+      "forbidden_paths": [
+        "/Users/praise/.claude/**",
+        "fixtures/dispatch/_workdir/dep-conflict/t1"
+      ],
+      "required_context": [
+        "docs/gd-v7-multi-agent-dispatch.md"
+      ],
+      "deliverables": [
+        {
+          "path": "fixtures/dispatch/_workdir/dep-conflict/t2/out.json",
+          "kind": "file",
+          "must_exist": true
+        }
+      ],
+      "blocked_by": [
+        "t1"
+      ],
+      "can_parallel_with": [
+        "t1"
+      ],
+      "sc_refs": [
+        "SC-2"
+      ],
+      "verify": [
+        {
+          "sc_ref": "SC-2",
+          "method": "command",
+          "cmd": "test -f fixtures/dispatch/_workdir/dep-conflict/t2/out.json"
+        }
+      ]
+    }
+  ],
+  "waves": [
+    {
+      "wave_id": "w1",
+      "track_ids": [
+        "t1"
+      ],
+      "description": "first"
+    },
+    {
+      "wave_id": "w2",
+      "track_ids": [
+        "t2"
+      ],
+      "description": "second"
+    }
+  ],
+  "merge_gates": [
+    {
+      "gate_id": "G1",
+      "description": "child output format compliant"
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RevExecutionStatus",
+  "description": "Machine-readable execution result block embedded in execution-result markdown.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["baseline_key", "plan_hash", "execution_status", "sc_results"],
+  "properties": {
+    "baseline_key": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Must match the --baseline-key argument used for this review run."
+    },
+    "plan_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "SHA-256 hex of the plan file, copied from the baseline."
+    },
+    "execution_status": {
+      "type": "string",
+      "enum": ["completed", "partial", "blocked"],
+      "description": "Overall execution status."
+    },
+    "sc_results": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "status", "evidence", "not_run_reason"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^SC-\\d+$",
+            "description": "Success criterion ID, e.g. SC-1."
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pass", "fail", "not_run", "n_a"],
+            "description": "Status of this SC."
+          },
+          "evidence": {
+            "type": "string",
+            "description": "For pass/fail: non-empty string with backtick anchor. For not_run/n_a: empty string."
+          },
+          "not_run_reason": {
+            "type": "string",
+            "description": "For not_run/n_a: non-empty reason string. For pass/fail: empty string."
+          }
+        }
+      }
+    }
+  }
+}

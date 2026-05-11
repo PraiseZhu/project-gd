@@ -1,0 +1,99 @@
+{
+  "dispatch_id": "wave-nonparallel-invalid",
+  "source_master_plan": "fixtures/dispatch/wave-nonparallel-invalid.json",
+  "goal_chain": {
+    "PROJECT_GOAL": "validator fixture goal placeholder",
+    "CHAIN_GOAL": "trigger same-wave tracks not declared can_parallel_with",
+    "PHASE_GOAL": "t1 and t2 are scheduled in same wave w1 but neither claims can_parallel_with the other"
+  },
+  "max_parallel_planning": 2,
+  "max_parallel_execution": 2,
+  "max_parallel_review": 2,
+  "max_parallel_validation": 2,
+  "tracks": [
+    {
+      "track_id": "t1",
+      "mode": "execute",
+      "agent_role": "child_executor",
+      "owned_paths": [
+        "fixtures/dispatch/_workdir/wave-nonparallel/t1"
+      ],
+      "forbidden_paths": [
+        "/Users/praise/.claude/**",
+        "fixtures/dispatch/_workdir/wave-nonparallel/t2"
+      ],
+      "required_context": [
+        "docs/gd-v7-multi-agent-dispatch.md"
+      ],
+      "deliverables": [
+        {
+          "path": "fixtures/dispatch/_workdir/wave-nonparallel/t1/out.json",
+          "kind": "file",
+          "must_exist": true
+        }
+      ],
+      "blocked_by": [],
+      "can_parallel_with": [],
+      "sc_refs": [
+        "SC-1"
+      ],
+      "verify": [
+        {
+          "sc_ref": "SC-1",
+          "method": "command",
+          "cmd": "test -f fixtures/dispatch/_workdir/wave-nonparallel/t1/out.json"
+        }
+      ]
+    },
+    {
+      "track_id": "t2",
+      "mode": "execute",
+      "agent_role": "child_executor",
+      "owned_paths": [
+        "fixtures/dispatch/_workdir/wave-nonparallel/t2"
+      ],
+      "forbidden_paths": [
+        "/Users/praise/.claude/**",
+        "fixtures/dispatch/_workdir/wave-nonparallel/t1"
+      ],
+      "required_context": [
+        "docs/gd-v7-multi-agent-dispatch.md"
+      ],
+      "deliverables": [
+        {
+          "path": "fixtures/dispatch/_workdir/wave-nonparallel/t2/out.json",
+          "kind": "file",
+          "must_exist": true
+        }
+      ],
+      "blocked_by": [],
+      "can_parallel_with": [],
+      "sc_refs": [
+        "SC-2"
+      ],
+      "verify": [
+        {
+          "sc_ref": "SC-2",
+          "method": "command",
+          "cmd": "test -f fixtures/dispatch/_workdir/wave-nonparallel/t2/out.json"
+        }
+      ]
+    }
+  ],
+  "waves": [
+    {
+      "wave_id": "w1",
+      "track_ids": [
+        "t1",
+        "t2"
+      ],
+      "description": "same wave but tracks not declared parallel"
+    }
+  ],
+  "merge_gates": [
+    {
+      "gate_id": "G1",
+      "description": "child output format compliant"
+    }
+  ]
+}
