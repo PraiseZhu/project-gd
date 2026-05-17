@@ -59,8 +59,6 @@ BLOCKING_BUCKETS = [
 ]
 
 # Required fields in each job entry of controller-report.json (A6)
-# rev21: + bridge_exit / bridge_stderr_path / bridge_stderr_summary so bridge
-# argparse failures cannot be masked as transport_failed.
 REQUIRED_JOB_REPORT_FIELDS = [
     "raw_verdict",
     "mapped_status",
@@ -68,38 +66,7 @@ REQUIRED_JOB_REPORT_FIELDS = [
     "target_hash",
     "raw_path",
     "git_gate_status",
-    "bridge_exit",
-    "bridge_stderr_path",
-    "bridge_stderr_summary",
 ]
-
-# Bridge run-bridge --target-role accepts ONLY this enum
-# (sourced from gd-codex-bridge-review.py:VALID_TARGET_ROLES).
-# Controller maps caller-supplied roles (master_plan / step_N / etc.) to this set.
-_BRIDGE_VALID_TARGET_ROLES = {"master_plan", "subplan", "parent_close", "release_evidence"}
-
-
-def _map_target_role_for_bridge(role: str) -> str:
-    """Map suite-controller input role -> bridge VALID_TARGET_ROLES.
-
-    Heuristic:
-      - 'master_plan' / 'parent_close' / 'release_evidence' pass through
-      - anything else (step_1, step_2, ...) collapses to 'subplan'
-    """
-    if role in _BRIDGE_VALID_TARGET_ROLES:
-        return role
-    return "subplan"
-
-
-def _stderr_summary(stderr: str, max_chars: int = 240) -> str:
-    """One-line summary of bridge stderr (last non-empty line, truncated)."""
-    if not stderr or not stderr.strip():
-        return ""
-    lines = [ln for ln in stderr.strip().splitlines() if ln.strip()]
-    last = lines[-1] if lines else ""
-    if len(last) > max_chars:
-        return last[:max_chars] + "…"
-    return last
 
 
 def _now_iso() -> str:
@@ -228,10 +195,8 @@ def _run_live_targets(args: argparse.Namespace, out_dir: Path) -> tuple[int, dic
     """
     mapped_dir = out_dir / "mapped"
     log_dir = out_dir / "bridge-stdout"
-    stderr_dir = out_dir / "bridge-stderr"
     mapped_dir.mkdir(parents=True, exist_ok=True)
     log_dir.mkdir(parents=True, exist_ok=True)
-    stderr_dir.mkdir(parents=True, exist_ok=True)
 
     jobs: list[dict] = []
     dirty_detected = False
@@ -251,8 +216,6 @@ def _run_live_targets(args: argparse.Namespace, out_dir: Path) -> tuple[int, dic
                 "codex_raw_result_path": None,
                 "raw_contract": "v1" if args.compat_v1 else "auto",
                 "bridge_exit": -1,
-                "bridge_stderr_path": None,
-                "bridge_stderr_summary": "primary target missing — bridge not invoked",
                 "raw_verdict": "FAILED",
                 "mapped_status": "missing_primary_target",
                 "aggregate_bucket": "missing_primary_target",
@@ -273,9 +236,7 @@ def _run_live_targets(args: argparse.Namespace, out_dir: Path) -> tuple[int, dic
 
         mapped_out = mapped_dir / f"{queue_job_id}.json"
         log_out = log_dir / f"{queue_job_id}.log"
-        err_out = stderr_dir / f"{queue_job_id}.err"
 
-        bridge_target_role = _map_target_role_for_bridge(role)
         bridge_cmd = [
             sys.executable, str(BRIDGE_SCRIPT),
             "run-bridge",
@@ -284,17 +245,16 @@ def _run_live_targets(args: argparse.Namespace, out_dir: Path) -> tuple[int, dic
             "--cwd", args.cwd,
             "--out", str(mapped_out),
             "--queue-job-id", queue_job_id,
-            "--target-role", bridge_target_role,
+            "--target-role", "plan_artifact",
         ]
         if args.live_transport:
             bridge_cmd.append("--live-transport")
         if args.compat_v1:
             bridge_cmd.append("--compat-v1")
 
-        print(f"BRIDGE_DISPATCH: {role} (mapped→{bridge_target_role}, {queue_job_id})")
+        print(f"BRIDGE_DISPATCH: {role} ({queue_job_id})")
         rc_bridge, stdout_bridge, stderr_bridge = _run_subprocess(bridge_cmd, f"bridge-{role}")
         log_out.write_text(stdout_bridge, encoding="utf-8")
-        err_out.write_text(stderr_bridge, encoding="utf-8")
 
         transport_result = _parse_stdout_field(stdout_bridge, "TRANSPORT_RESULT")
         raw_path = None if (transport_result is None or transport_result == "N/A") else transport_result
@@ -317,8 +277,6 @@ def _run_live_targets(args: argparse.Namespace, out_dir: Path) -> tuple[int, dic
             "codex_raw_result_path": raw_path,
             "raw_contract": "v1" if args.compat_v1 else "auto",
             "bridge_exit": rc_bridge,
-            "bridge_stderr_path": str(err_out),
-            "bridge_stderr_summary": _stderr_summary(stderr_bridge),
             "raw_verdict": raw_verdict,
             "mapped_status": mapped_status,
             "aggregate_bucket": _infer_aggregate_bucket(raw_verdict, mapped_status, raw_path),
@@ -396,8 +354,6 @@ def _run_fixture(fixture_path: Path, out_dir: Path) -> tuple[int, dict]:
             "codex_raw_result_path": raw_path,
             "raw_contract": "v1" if compat_v1 else "auto",
             "bridge_exit": 0,
-            "bridge_stderr_path": None,
-            "bridge_stderr_summary": "fixture_mode_no_real_bridge",
             "raw_verdict": decision,
             "mapped_status": run_status,
             "aggregate_bucket": _infer_aggregate_bucket(decision, run_status, raw_path),
@@ -494,78 +450,6 @@ def _write_controller_report(
     return p
 
 
-def _selftest_bridge_argv() -> int:
-    """Regression: controller→bridge mapping must yield argv accepted by bridge argparse.
-
-    For each representative input role, build the same bridge cmd the controller
-    would dispatch in live mode, spawn bridge as subprocess, and assert stderr
-    does NOT contain argparse 'invalid choice' for --target-role.
-
-    Business-layer rejections (e.g. 'live-transport flag required for actual
-    delivery') are EXPECTED and prove argparse PASS. We do not pass
-    --live-transport so no Codex daemon traffic is generated.
-    """
-    import tempfile
-
-    test_cases = [
-        ("master_plan", "master_plan"),
-        ("step_1", "subplan"),
-        ("step_42", "subplan"),
-        ("parent_close", "parent_close"),
-        ("release_evidence", "release_evidence"),
-        ("arbitrary_role", "subplan"),
-    ]
-
-    print("SELFTEST_BRIDGE_ARGV: starting")
-    with tempfile.TemporaryDirectory(prefix="gd-ctrl-selftest-") as tmpdir_str:
-        tmpdir = Path(tmpdir_str)
-        target = tmpdir / "target.md"
-        target.write_text("# selftest target\n", encoding="utf-8")
-
-        failures: list[str] = []
-        for input_role, expected_mapped in test_cases:
-            mapped = _map_target_role_for_bridge(input_role)
-            if mapped != expected_mapped:
-                failures.append(
-                    f"MAPPING_BUG: input_role={input_role!r} → mapped={mapped!r}, "
-                    f"expected={expected_mapped!r}"
-                )
-                continue
-
-            cmd = [
-                sys.executable, str(BRIDGE_SCRIPT),
-                "run-bridge",
-                "--kind", "plan",
-                "--target", str(target),
-                "--cwd", str(tmpdir),
-                "--out", str(tmpdir / f"mapped-{input_role}.json"),
-                "--queue-job-id", f"selftest-{input_role}",
-                "--target-role", mapped,
-                "--compat-v1",
-            ]
-            _rc, _out, err = _run_subprocess(cmd, f"selftest-{input_role}")
-
-            if "invalid choice" in err and "--target-role" in err:
-                last = err.strip().splitlines()[-1] if err.strip() else "(empty)"
-                failures.append(
-                    f"ARGPARSE_REJECTED: input_role={input_role!r} → "
-                    f"mapped={mapped!r}: {last}"
-                )
-            else:
-                print(f"  input={input_role!r:<22} → bridge --target-role {mapped!r:<20} "
-                      f"argparse PASS")
-
-        if failures:
-            print(f"\nSELFTEST_BRIDGE_ARGV: FAIL ({len(failures)} issue(s))",
-                  file=sys.stderr)
-            for f in failures:
-                print(f"  {f}", file=sys.stderr)
-            return 1
-
-        print(f"SELFTEST_BRIDGE_ARGV: PASS ({len(test_cases)} cases)")
-        return 0
-
-
 def main(argv: list[str]) -> int:
     started_at = _now_iso()
 
@@ -577,9 +461,6 @@ def main(argv: list[str]) -> int:
                      help="Fixture JSON for selftest; bypasses live bridge (--target/--cwd not used)")
     grp.add_argument("--target-set-id", metavar="ID",
                      help="Stable identifier for this review suite run (live mode)")
-    grp.add_argument("--selftest-bridge-argv", action="store_true",
-                     help="Regression: verify controller→bridge mapping produces argv "
-                          "accepted by bridge argparse (does not call live Codex)")
 
     parser.add_argument("--kind", default="plan",
                         choices=["plan", "code_diff", "execution_outcome", "combined"],
@@ -588,9 +469,8 @@ def main(argv: list[str]) -> int:
                         help="Target project worktree root (required for live mode)")
     parser.add_argument("--target", action="append", metavar="role=path",
                         help="role=abs_path pair; specify once per plan file (live mode only)")
-    parser.add_argument("--out-dir", type=Path, metavar="DIR",
-                        help="Output directory for manifests, logs, reports "
-                             "(required for --fixture / --target-set-id modes)")
+    parser.add_argument("--out-dir", required=True, type=Path, metavar="DIR",
+                        help="Output directory for manifests, logs, reports")
     parser.add_argument("--live-transport", action="store_true",
                         help="Pass --live-transport to bridge (required for actual Codex delivery)")
     parser.add_argument("--compat-v1", action="store_true",
@@ -600,13 +480,6 @@ def main(argv: list[str]) -> int:
 
     args = parser.parse_args(argv[1:])
 
-    if getattr(args, "selftest_bridge_argv", False):
-        return _selftest_bridge_argv()
-
-    if args.out_dir is None:
-        print("ERROR: --out-dir is required for --fixture / --target-set-id modes",
-              file=sys.stderr)
-        return 2
     out_dir = args.out_dir
     out_dir.mkdir(parents=True, exist_ok=True)
 

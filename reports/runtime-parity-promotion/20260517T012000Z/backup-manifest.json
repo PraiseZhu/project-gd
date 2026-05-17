@@ -1,0 +1,25 @@
+{
+  "timestamp_utc": "20260517T012000Z",
+  "round": 3,
+  "predecessor": "20260517T010000Z",
+  "generated_at": "2026-05-17T01:54:29.090989+00:00",
+  "summary": {
+    "tracked_modified_or_untracked_drift": 1,
+    "missing": 0,
+    "total": 1
+  },
+  "entries": [
+    {
+      "path": "scripts/gd-review-suite-controller.py",
+      "old_status": "tracked_drift",
+      "source_path": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/.claude/worktrees/peppy-roaming-dijkstra/scripts/gd-review-suite-controller.py",
+      "source_hash": "95aa4b81839f48aceb69ae77236b20f7d8efa9a33668c244186d8e0210fbe5c2",
+      "old_hash": "7574aa8af54c57e17cc44e66473df03b07f4e6539af8baf4be4d2d01844c233a",
+      "backup_path": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/reports/runtime-parity-promotion/20260517T012000Z/backup/scripts/gd-review-suite-controller.py",
+      "backup_hash": "7574aa8af54c57e17cc44e66473df03b07f4e6539af8baf4be4d2d01844c233a",
+      "new_hash": "95aa4b81839f48aceb69ae77236b20f7d8efa9a33668c244186d8e0210fbe5c2"
+    }
+  ],
+  "stage": "promoted",
+  "reason": "Round-3: controller target_role mapping fix + stderr capture + --selftest-bridge-argv"
+}
