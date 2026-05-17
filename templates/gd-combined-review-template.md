@@ -16,7 +16,7 @@ GD_REVIEW_DECISION: <APPROVED | REQUIRES_CHANGES | FAILED>
 REVIEWER: <claude | codex>
 REVIEW_TARGET: <combined target reference>
 REVIEW_TARGET_KIND: execution_plus_code
-TARGET_ROLE: combined_artifact
+TARGET_ROLE: combined_bundle
 REVIEW_RUN_STATUS: <completed | failed_to_run | transport_failed>
 ```
 

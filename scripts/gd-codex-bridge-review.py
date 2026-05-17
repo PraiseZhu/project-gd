@@ -1029,7 +1029,7 @@ def _load_related_context(path: str | None) -> list[dict] | None:
 
 def cmd_build_capsule(args: argparse.Namespace) -> int:
     related = _load_related_context(getattr(args, "related_context", None))
-    compat_v1 = bool(getattr(args, "compat_v1", False))
+    compat_v1 = _resolve_compat_v1(args.kind, getattr(args, "compat_v1", None))
     try:
         capsule, target_hash, capsule_hash, gd_baseline_key, run_id = build_capsule_text(
             args.kind, Path(args.target), Path(args.cwd),
@@ -1066,10 +1066,41 @@ def cmd_build_capsule(args: argparse.Namespace) -> int:
     return 0
 
 
+# G1 sentinel: execution_outcome and combined must be dispatched via router.
+_EXECUTION_KINDS_REQUIRING_ROUTER: frozenset[str] = frozenset({"execution_outcome", "combined"})
+_GD_ROUTER_INVOCATION_ENV = "GD_REVIEW_ROUTER_INVOCATION_ID"
+
+
+def _resolve_compat_v1(kind: str, explicit: "bool | None") -> bool:
+    """G2: infer compat_v1 from --kind when the flag is omitted (None).
+
+    execution_outcome / combined → True  (Codex still writes v1 header).
+    plan / code_diff → False             (v2 default, writers emit v2 header).
+    Explicit --compat-v1 / --no-compat-v1 always overrides inference.
+    """
+    if explicit is not None:
+        return explicit
+    return kind in _EXECUTION_KINDS_REQUIRING_ROUTER
+
+
 def cmd_run_bridge(args: argparse.Namespace) -> int:
     if not args.live_transport:
         print("live-transport flag required for actual delivery", file=sys.stderr)
         return 2
+
+    # G1 sentinel: execution_outcome/combined --live-transport must arrive via
+    # gd-review-router.py, which sets GD_REVIEW_ROUTER_INVOCATION_ID. Direct
+    # invocation is forbidden to prevent models from hand-composing bridge args.
+    if args.kind in _EXECUTION_KINDS_REQUIRING_ROUTER:
+        if not os.environ.get(_GD_ROUTER_INVOCATION_ENV):
+            print(
+                f"DIRECT_BRIDGE_FORBIDDEN_FOR_EXECUTION_KIND: --kind={args.kind!r} "
+                f"--live-transport must be invoked via gd-review-router.py "
+                f"(which sets {_GD_ROUTER_INVOCATION_ENV}). "
+                "Direct bridge invocation for execution review is forbidden.",
+                file=sys.stderr,
+            )
+            return 1
 
     # Bounded-parallel controller (revision=19+) manages concurrency at the
     # suite level via ThreadPoolExecutor. The per-bridge global lock file is
@@ -1228,7 +1259,7 @@ def cmd_parse_transport(args: argparse.Namespace) -> int:
         print(f"ERROR: raw 文件不存在 {raw_path}", file=sys.stderr)
         return 2
 
-    compat_v1 = bool(getattr(args, "compat_v1", False))
+    compat_v1 = _resolve_compat_v1(args.kind, getattr(args, "compat_v1", None))
     active_enum = _get_active_kind_enum(compat_v1)
     if args.kind not in active_enum:
         mode_label = "v1 compat" if compat_v1 else "v2 default"
@@ -1754,8 +1785,8 @@ def main(argv: list[str]) -> int:
     p_r.add_argument("--target", required=True)
     p_r.add_argument("--cwd", required=True)
     p_r.add_argument("--out", required=True)
-    p_r.add_argument("--compat-v1", action="store_true",
-                     help="Plan 8 v4.1 Step 7: opt-in to legacy v1 enum.")
+    p_r.add_argument("--compat-v1", action=argparse.BooleanOptionalAction, default=None,
+                     help="execution_outcome/combined: default True (Codex still outputs v1 header); plan/code_diff: default False (v2). Explicit --compat-v1/--no-compat-v1 overrides.")
     p_r.add_argument("--queue-job-id", default=None)
     p_r.add_argument("--target-role", default=None,
                      choices=sorted(VALID_TARGET_ROLES))
@@ -1768,8 +1799,8 @@ def main(argv: list[str]) -> int:
     p_p.add_argument("--target", required=True)
     p_p.add_argument("--raw-result", required=True)
     p_p.add_argument("--out", required=True)
-    p_p.add_argument("--compat-v1", action="store_true",
-                     help="Plan 8 v4.1 Step 7: opt-in to legacy v1 enum.")
+    p_p.add_argument("--compat-v1", action=argparse.BooleanOptionalAction, default=None,
+                     help="execution_outcome/combined: default True; plan/code_diff: default False. Explicit flag overrides kind-based inference.")
 
     p_m = sub.add_parser("merge")
     p_m.add_argument("--claude", required=True)

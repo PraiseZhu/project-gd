@@ -66,6 +66,20 @@ for s in \
   check "script executable: $s" test -x "$s"
 done
 
+# 8. G1 sentinel: direct run-bridge execution_outcome --live-transport (no env) must be forbidden
+check "G1 sentinel: direct run-bridge execution_outcome forbidden without router env" \
+  bash -c '! python3 scripts/gd-codex-bridge-review.py run-bridge \
+    --kind execution_outcome --target /tmp/fake --cwd . --out /tmp/x \
+    --live-transport 2>/dev/null'
+
+# 9. G4 file-exists: final gate rejects path-not-found and invalid-json controller reports
+check "G4 gate rejects controller-report path-not-found" \
+  bash -c '! python3 scripts/gd-validate-parent-close-gate.py \
+    fixtures/negative/final-controller-report-path-not-found.json 2>/dev/null'
+check "G4 gate rejects controller-report invalid-json" \
+  bash -c '! python3 scripts/gd-validate-parent-close-gate.py \
+    fixtures/negative/final-controller-report-invalid-json.json 2>/dev/null'
+
 echo ""
 echo "=== GD_REPAIR_RESULT: pass=$PASS fail=$FAIL ==="
 if [ $FAIL -eq 0 ]; then
