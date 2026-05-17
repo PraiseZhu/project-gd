@@ -53,14 +53,26 @@ for kind in execution_outcome combined; do
   fi
 done
 
-# Test 3: default v2 mode MUST reject v1 raw
+# Test 3: G2 — execution_outcome WITHOUT any flag auto-infers --compat-v1 (must PASS)
 if python3 "$BRIDGE" parse-transport \
     --kind "execution_outcome" --target "smoke-target" \
     --raw-result "$RAW_FILE" --out "$OUT_FILE" 2>/dev/null; then
-  echo "  FAIL: execution_outcome without --compat-v1 should reject v1 raw but passed"
+  echo "  PASS: execution_outcome without explicit flag auto-infers compat-v1 (G2)"
+  PASS=$((PASS+1))
+else
+  echo "  FAIL: execution_outcome should auto-infer compat-v1 and pass v1 raw"
+  FAIL=$((FAIL+1))
+fi
+
+# Test 4: explicit --no-compat-v1 MUST reject v1 raw for execution_outcome
+if python3 "$BRIDGE" parse-transport \
+    --kind "execution_outcome" --target "smoke-target" \
+    --raw-result "$RAW_FILE" --out "$OUT_FILE" \
+    --no-compat-v1 2>/dev/null; then
+  echo "  FAIL: execution_outcome --no-compat-v1 should reject v1 raw but passed"
   FAIL=$((FAIL+1))
 else
-  echo "  PASS: execution_outcome without --compat-v1 correctly rejects v1 raw"
+  echo "  PASS: execution_outcome --no-compat-v1 correctly rejects v1 raw"
   PASS=$((PASS+1))
 fi
 
