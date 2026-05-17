@@ -36,7 +36,7 @@
     "execution_mode": {
       "type": "string",
       "enum": ["dry_run", "human_exec", "agent_exec"],
-      "description": "Plan 5 仅支持 human_exec；agent_exec 为 pending_future_plan"
+      "description": "agent_exec required for current full closure; human_exec and dry_run are closure_ineligible (explicit emergency override only). Note: validator enforces that human_exec/dry_run cannot produce APPROVED closure."
     },
     "task_results": {
       "type": "array",

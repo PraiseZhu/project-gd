@@ -1,0 +1,27 @@
+{
+  "_fixture_meta": {
+    "description": "Negative fixture: execution_only_no_code, live, APPROVED, but missing child_review_ledger_path. Must fail: CLOSURE_INELIGIBLE: missing_child_review_ledger.",
+    "expected_verdict": "FAIL",
+    "expected_exit_code_nonzero": true,
+    "step": "Step 5"
+  },
+  "schema_version": "2.0",
+  "router_invocation_id": "router-20260101T000000Z-deadbeef",
+  "mode": "live",
+  "review_target_kind": "execution_only_no_code",
+  "decision": "APPROVED",
+  "validator_signature": {
+    "validator": "gd-validate-route-report.py",
+    "schema_version": "2.0"
+  },
+  "recorded_at": "2026-01-01T00:00:00Z",
+  "findings": [],
+  "execution_artifact_ref": "reports/test/execution-result.json",
+  "outcome_validator_status": "passed",
+  "codex_review_status": "completed",
+  "codex_raw_result_path": "reports/test/raw.md",
+  "codex_raw_result_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "codex_mapped_result_path": "reports/test/mapped.json",
+  "codex_mapped_result_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "codex_review_kind": "execution_outcome"
+}

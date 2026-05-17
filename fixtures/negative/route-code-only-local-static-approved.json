@@ -1,0 +1,26 @@
+{
+  "_fixture_meta": {
+    "description": "Negative fixture: code_only, live, APPROVED, but failure_code=LOCAL_STATIC_ONLY and missing child_review_ledger_path. Must fail: LOCAL_STATIC_ONLY is incompatible with APPROVED.",
+    "expected_verdict": "FAIL",
+    "expected_exit_code_nonzero": true,
+    "step": "Step 5"
+  },
+  "schema_version": "2.0",
+  "router_invocation_id": "router-20260101T000001Z-deadbeef",
+  "mode": "live",
+  "review_target_kind": "code_only",
+  "decision": "APPROVED",
+  "validator_signature": {
+    "validator": "gd-validate-route-report.py",
+    "schema_version": "2.0"
+  },
+  "recorded_at": "2026-01-01T00:00:00Z",
+  "findings": [],
+  "diff_source": "git diff HEAD~1",
+  "diff_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+  "patch_generation_method": "git_diff",
+  "raw_result_path": "reports/test/code-diff.patch",
+  "raw_result_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+  "failure_code": "LOCAL_STATIC_ONLY",
+  "claude_review_origin": "skill_orchestrated"
+}

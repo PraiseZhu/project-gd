@@ -1,0 +1,25 @@
+{
+  "_fixture_meta": {
+    "description": "Negative fixture: plan_only, live, APPROVED but review_run_status=failed_to_run. Must fail: failed_to_run incompatible with APPROVED.",
+    "expected_verdict": "FAIL",
+    "expected_exit_code_nonzero": true,
+    "step": "Step 5"
+  },
+  "schema_version": "2.0",
+  "router_invocation_id": "router-20260101T000004Z-deadbeef",
+  "mode": "live",
+  "review_target_kind": "plan_only",
+  "decision": "APPROVED",
+  "validator_signature": {
+    "validator": "gd-validate-route-report.py",
+    "schema_version": "2.0"
+  },
+  "recorded_at": "2026-01-01T00:00:00Z",
+  "findings": [],
+  "plan_ref": "fixtures/plans/sample-plan.md",
+  "plan_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+  "raw_result_path": "reports/test/raw-plan.md",
+  "raw_result_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+  "review_run_status": "failed_to_run",
+  "failure_code": "REVIEW_RUN_FAILED"
+}

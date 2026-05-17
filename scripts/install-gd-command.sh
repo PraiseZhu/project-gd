@@ -13,7 +13,10 @@
 
 set -euo pipefail
 
-GD_PROJECT_ROOT="/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD"
+# Resolve source root from the script's own location so that worktree invocations
+# use the worktree's own commands/gd.md, not the main-repo copy.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+GD_PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 SOURCE="${GD_PROJECT_ROOT}/commands/gd.md"
 TARGET="/Users/praise/.claude/commands/gd.md"
 LEDGER="${GD_PROJECT_ROOT}/baselines/gd-v7-runtime-write-authorizations.jsonl"
@@ -32,17 +35,19 @@ fi
 
 SOURCE_HASH=$(shasum -a 256 "$SOURCE" | awk '{print $1}')
 
-# Check ledger for install_claude_command authorization (whitespace-flex JSONL parser)
-# Canonical fields per Plan 1 baseline runtime_write_authorization.ledger_format:
-#   ts / target_path / granted_by / scope / plan_ref / rationale
-# We match by parsing each JSONL line and inspecting the `scope` field exactly.
-# This is robust to minified vs spaced JSONL and to optional trailing whitespace.
+# Check ledger for install_claude_command authorization bound to CURRENT source hash.
+# Canonical fields: ts / target_path / granted_by / scope / plan_ref / new_source_hash
+#
+# REVISION BINDING (Plan A P1): Authorization must carry new_source_hash == SOURCE_HASH.
+# Entries without new_source_hash (pre-Plan-A legacy) or with a different hash do NOT match.
+# This prevents old authorizations from rev<19 from authorizing a rev=19 install.
 LEDGER_OK="no"
 if [[ -f "$LEDGER" ]]; then
-  if python3 - "$LEDGER" <<'PYEOF' 2>/dev/null; then
+  if python3 - "$LEDGER" "$SOURCE_HASH" <<'PYEOF' 2>/dev/null; then
 import json, sys
 ledger_path = sys.argv[1]
-expected_scope = "install_claude_command"
+source_hash  = sys.argv[2]          # current worktree source hash — must match
+expected_scope  = "install_claude_command"
 expected_target = "/Users/praise/.claude/commands/gd.md"
 try:
     with open(ledger_path) as f:
@@ -54,7 +59,9 @@ try:
                 obj = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if obj.get("scope") == expected_scope and obj.get("target_path") == expected_target:
+            if (obj.get("scope") == expected_scope
+                    and obj.get("target_path") == expected_target
+                    and obj.get("new_source_hash") == source_hash):
                 sys.exit(0)
     sys.exit(1)
 except FileNotFoundError:
@@ -82,41 +89,41 @@ if [[ "$MODE" == "check" ]]; then
     absent)
       if [[ "$LEDGER_OK" == "yes" ]]; then
         echo "INSTALL_STATUS: ready_to_install"
+        echo "  Rev19-bound authorization found in ledger."
       else
         echo "INSTALL_STATUS: install_pending_authorization"
-        echo "  Reason: $LEDGER 缺 scope=install_claude_command 记录"
+        echo "  Reason: ledger 无 scope=install_claude_command + new_source_hash=$SOURCE_HASH 条目"
+        echo "  Required: 用户在对话中显式授权并追加 ledger 记录，new_source_hash 必须为当前 source hash"
       fi
       ;;
     present_parity_pass)
       echo "INSTALL_STATUS: installed_parity_pass"
       ;;
     present_parity_fail)
-      echo "INSTALL_STATUS: install_blocked_hash_mismatch"
-      echo "  Source hash: $SOURCE_HASH"
-      echo "  Target hash: $TARGET_HASH"
-      echo "  Reason: 目标已存在但 hash 不一致；不会自动覆盖。手动卸载或备份后重试。"
+      if [[ "$LEDGER_OK" == "yes" ]]; then
+        echo "INSTALL_STATUS: INSTALL_BLOCKED_HASH_MISMATCH / BACKUP_AUTHORIZED"
+        echo "  Rev19-bound auth found; --install will backup existing target then overwrite."
+        echo "  Source hash: $SOURCE_HASH"
+        echo "  Target hash: $TARGET_HASH"
+      else
+        echo "INSTALL_STATUS: INSTALL_BLOCKED_HASH_MISMATCH / NEEDS_EXPLICIT_BACKUP_OVERWRITE_AUTH"
+        echo "  Installed gd.md (rev<19) differs from source (rev=19)."
+        echo "  Source hash: $SOURCE_HASH"
+        echo "  Target hash: $TARGET_HASH"
+        echo "  Required: 1) add ledger entry with new_source_hash=$SOURCE_HASH; 2) run --install to backup+overwrite"
+      fi
       ;;
   esac
   exit 0
 fi
 
 # ---------- Install mode ----------
-# Lock 1: ledger
+# Lock 1: rev19-bound ledger authorization (new_source_hash must match current source)
 if [[ "$LEDGER_OK" != "yes" ]]; then
   echo "INSTALL_STATUS: install_pending_authorization"
-  echo "ERROR: --install 但 ledger 无 scope=install_claude_command 授权记录" >&2
+  echo "ERROR: --install 但 ledger 无 rev19-bound 授权记录" >&2
+  echo "  Required: scope=install_claude_command + new_source_hash=$SOURCE_HASH" >&2
   echo "  Ledger: $LEDGER" >&2
-  echo "  请用户先在对话中显式授权后追加 ledger 记录。" >&2
-  exit 1
-fi
-
-# Lock 2: hash collision
-if [[ "$TARGET_STATE" == "present_parity_fail" ]]; then
-  echo "INSTALL_STATUS: install_blocked_hash_mismatch"
-  echo "ERROR: $TARGET 已存在且 hash 与 source 不一致" >&2
-  echo "  Source hash: $SOURCE_HASH" >&2
-  echo "  Target hash: $TARGET_HASH" >&2
-  echo "  请先 uninstall 或确认是否是用户手写文件。" >&2
   exit 1
 fi
 
@@ -125,6 +132,18 @@ if [[ "$TARGET_STATE" == "present_parity_pass" ]]; then
   echo "INSTALL_STATUS: installed_parity_pass"
   echo "  No-op: source 与 target hash 已一致"
   exit 0
+fi
+
+# Hash mismatch: backup existing installed file before overwrite (Plan A A3/B5)
+# No longer a hard block — backup ensures the old file is preserved.
+if [[ "$TARGET_STATE" == "present_parity_fail" ]]; then
+  BACKUP_DIR="${GD_PROJECT_ROOT}/reports/_selftest_runtime_evidence/installed-backup"
+  mkdir -p "$BACKUP_DIR"
+  BACKUP_TS=$(date +%Y%m%dT%H%M%S)
+  BACKUP_FILE="${BACKUP_DIR}/gd.md.installed-pre-rev19-${BACKUP_TS}"
+  cp "$TARGET" "$BACKUP_FILE"
+  echo "BACKUP_CREATED: $BACKUP_FILE"
+  echo "  Backed up hash: $TARGET_HASH"
 fi
 
 # Atomic write: cp to tempfile in same dir, then mv

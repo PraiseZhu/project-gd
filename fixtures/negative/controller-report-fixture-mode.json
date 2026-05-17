@@ -1,0 +1,32 @@
+{
+  "schema_version": "1.0",
+  "run_mode": "fixture",
+  "_comment": "NEGATIVE FIXTURE — rejected because run_mode=fixture (closure-ineligible).",
+  "started_at": "2026-05-17T09:00:00Z",
+  "finished_at": "2026-05-17T09:00:05Z",
+  "aggregate_path": "baselines/fixture-aggregate.json",
+  "manifest_path": "manifest.json",
+  "primary_gate": {
+    "verdict": "APPROVED",
+    "blocking": []
+  },
+  "secondary_gate": {
+    "verdict": "APPROVED",
+    "blocking": []
+  },
+  "gate_consistent": true,
+  "dirty_detected": false,
+  "jobs": [
+    {
+      "queue_job_id": "fixture-job-001",
+      "target_role": "plan",
+      "primary_target": "fixtures/plans/sample-plan.md",
+      "bridge_exit": 0,
+      "bridge_stderr_path": null,
+      "bridge_stderr_summary": "fixture_mode_no_real_bridge",
+      "raw_verdict": "APPROVED",
+      "mapped_status": "approved",
+      "aggregate_bucket": "primary"
+    }
+  ]
+}

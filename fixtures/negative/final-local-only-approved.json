@@ -1,0 +1,44 @@
+{
+  "_fixture_meta": {
+    "description": "Negative fixture: local-only execution result claims APPROVED — must be rejected by parent-close-gate (closure_ineligible: local_only)",
+    "expected_verdict": "CLOSURE_INELIGIBLE",
+    "expected_exit_code_nonzero": true
+  },
+  "schema_version": "2.0",
+  "target_set_id": "negative-local-only-test",
+  "review_contract_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+  "jobs": [
+    {
+      "queue_job_id": "negative-local-only-test-master-plan",
+      "target_role": "master_plan",
+      "primary_target": "fixtures/negative/final-local-only-approved.json",
+      "raw_verdict": "APPROVED",
+      "mapped_status": "local_only",
+      "aggregate_bucket": "codex_approved",
+      "raw_path": null,
+      "git_gate_status": "not_checked"
+    }
+  ],
+  "coverage": {
+    "total": 1,
+    "approved": 1,
+    "requires_changes": 0,
+    "failed": 0,
+    "transport_failed": 0
+  },
+  "summary": {
+    "transport_failed": [],
+    "wrapper_schema_fail": [],
+    "codex_approved": ["negative-local-only-test-master-plan"],
+    "codex_requires_changes": [],
+    "codex_failed": [],
+    "missing_primary_target": [],
+    "stale_review_contract": [],
+    "ambiguous_raw_result": []
+  },
+  "closure_evidence": {
+    "controller_report_path": null,
+    "stage_dispatch_ledger_path": null,
+    "note": "closure_ineligible: local_only — no real dual-review child evidence"
+  }
+}

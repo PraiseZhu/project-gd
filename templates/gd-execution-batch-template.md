@@ -12,7 +12,8 @@
   "dispatch_id": "<对应 dispatch map 的 dispatch_id>",
   "wave_ref": "w<N>",
   "batch_created_at": "<ISO 8601 时间戳>",
-  "execution_mode": "human_exec",
+  "execution_mode": "agent_exec",
+  // human_exec: emergency override only, closure_ineligible
   "task_results": [
     {
       "task_id": "<track_id>",
@@ -57,7 +58,7 @@
 | `dispatch_id` | ✓ | 来源 dispatch map 的 `dispatch_id` |
 | `wave_ref` | ✓ | 对应 dispatch map 的 `wave_id` |
 | `batch_created_at` | ✓ | ISO 8601，UTC |
-| `execution_mode` | ✓ | `human_exec`（Plan 5）/ `agent_exec`（未来） |
+| `execution_mode` | ✓ | `agent_exec`（required for full closure）; `human_exec` / `dry_run` 为 closure_ineligible（仅限 emergency override） |
 | `task_results` | ✓ | 非空数组，每个元素对应 wave 内一个 track |
 
 ### task_result 字段

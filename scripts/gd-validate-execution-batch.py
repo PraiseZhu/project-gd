@@ -590,7 +590,36 @@ def main(argv: list[str]) -> int:
         check_closure_semantic(data, errs)
         return _report(errs, f"closure_id={data.get('closure_id', '?')}", "closure_status")
 
-    # batch 模式
+    # batch 模式（或单文件 closure_ineligible 快速拒绝）
+    if len(argv) < 2 or len(argv) > 3:
+        print(
+            "用法: python3 scripts/gd-validate-execution-batch.py <batch.json> <dispatch-map.json>",
+            file=sys.stderr,
+        )
+        return 2
+
+    batch_path = argv[1]
+    if not os.path.exists(batch_path):
+        print(f"错误: 文件不存在 {batch_path}", file=sys.stderr)
+        return 2
+
+    # ── closure_ineligible fast-reject（必须在 dispatch validator 之前运行）──
+    try:
+        with open(batch_path) as _f:
+            _quick = json.load(_f)
+    except json.JSONDecodeError as e:
+        print(f"JSON 语法错误 ({batch_path}): {e}", file=sys.stderr)
+        return 1
+
+    _mode = _quick.get("execution_mode")
+    _CLOSURE_INELIGIBLE_MODES = {"human_exec", "dry_run", "local_only"}
+    if _mode in _CLOSURE_INELIGIBLE_MODES:
+        print(
+            f"EXECUTION_BATCH_INVALID: closure_ineligible: "
+            f"{_mode} is not eligible for full closure"
+        )
+        return 1
+
     if len(argv) != 3:
         print(
             "用法: python3 scripts/gd-validate-execution-batch.py <batch.json> <dispatch-map.json>",
@@ -598,11 +627,10 @@ def main(argv: list[str]) -> int:
         )
         return 2
 
-    batch_path, dispatch_map_path = argv[1], argv[2]
-    for p in [batch_path, dispatch_map_path]:
-        if not os.path.exists(p):
-            print(f"错误: 文件不存在 {p}", file=sys.stderr)
-            return 2
+    dispatch_map_path = argv[2]
+    if not os.path.exists(dispatch_map_path):
+        print(f"错误: 文件不存在 {dispatch_map_path}", file=sys.stderr)
+        return 2
 
     # Patch #2：先运行 dispatch validator
     script_dir = Path(__file__).parent
@@ -613,13 +641,8 @@ def main(argv: list[str]) -> int:
         )
         return 1
 
-    # 加载 batch JSON
-    try:
-        with open(batch_path) as f:
-            batch_data = json.load(f)
-    except json.JSONDecodeError as e:
-        print(f"JSON 语法错误 ({batch_path}): {e}", file=sys.stderr)
-        return 1
+    # batch JSON 已由 closure_ineligible fast-reject 加载（_quick），直接复用
+    batch_data = _quick
 
     # 加载 dispatch map JSON（已由 dispatch validator 验证合法）
     with open(dispatch_map_path) as f:

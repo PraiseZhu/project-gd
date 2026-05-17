@@ -1,0 +1,21 @@
+{
+  "_test_meta": {
+    "_expect": "PASS",
+    "_reason": "v2 default mode + execution_outcome kind: REQUIRES_CHANGES with one P1 finding"
+  },
+  "subcommand": "parse-transport",
+  "args": [
+    "--kind", "execution_outcome",
+    "--target", "fixtures/review-bridge/v2/v2-execution-outcome-requires-changes.md",
+    "--raw-result", "fixtures/review-bridge/v2/v2-execution-outcome-requires-changes.md",
+    "--out", "/tmp/gd-bridge-v2-execution-outcome-mapped.json"
+  ],
+  "compat_v1": false,
+  "kind": "execution_outcome",
+  "raw_fixture": "fixtures/review-bridge/v2/v2-execution-outcome-requires-changes.md",
+  "expected_review_run_status": "completed",
+  "expected_gd_review_decision": "REQUIRES_CHANGES",
+  "expected_template_kind": "gd-execution-outcome-review",
+  "expected_target_role": "execution_artifact",
+  "expected_review_target_kind": "execution_only_no_code"
+}

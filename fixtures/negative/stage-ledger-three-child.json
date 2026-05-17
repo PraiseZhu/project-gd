@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "stage": "execute",
+  "parent_run_id": "run-three-child-test",
+  "recorded_at": "2026-05-17T10:01:00Z",
+  "child_agent_count": 3,
+  "max_parallel": 2,
+  "child_jobs": [
+    {
+      "job_id": "job-001",
+      "result_path": "results/child-001.json",
+      "result_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "status": "completed"
+    },
+    {
+      "job_id": "job-002",
+      "result_path": "results/child-002.json",
+      "result_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "status": "completed"
+    },
+    {
+      "job_id": "job-003",
+      "result_path": "results/child-003.json",
+      "result_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "status": "completed"
+    }
+  ],
+  "main_agent_merge": {
+    "merge_report_path": "reports/merge-three.md",
+    "merge_report_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "final_decision": "APPROVED",
+    "blocking_buckets": []
+  }
+}

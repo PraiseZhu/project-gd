@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "run_mode": "live",
+  "_comment": "NEGATIVE FIXTURE — rejected because required field 'jobs' is absent.",
+  "started_at": "2026-05-17T09:00:00Z",
+  "finished_at": "2026-05-17T09:00:10Z",
+  "aggregate_path": "baselines/aggregate.json",
+  "manifest_path": "manifest.json",
+  "primary_gate": {
+    "verdict": "APPROVED",
+    "blocking": []
+  },
+  "secondary_gate": {
+    "verdict": "APPROVED",
+    "blocking": []
+  },
+  "gate_consistent": true,
+  "dirty_detected": false
+}

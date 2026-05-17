@@ -1,0 +1,148 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "gd-controller-report.schema.json",
+  "title": "GD Controller Report",
+  "description": "Schema for the /gd controller run report produced after a full dispatch+review+gate cycle.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_mode",
+    "started_at",
+    "finished_at",
+    "aggregate_path",
+    "manifest_path",
+    "primary_gate",
+    "secondary_gate",
+    "gate_consistent",
+    "dirty_detected",
+    "jobs"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0",
+      "description": "Schema version — always '1.0'."
+    },
+    "run_mode": {
+      "type": "string",
+      "enum": ["live", "fixture"],
+      "description": "Execution mode. 'fixture' runs are closure-ineligible and will be rejected by the validator."
+    },
+    "started_at": {
+      "type": "string",
+      "description": "ISO 8601 timestamp when the controller run started."
+    },
+    "finished_at": {
+      "type": "string",
+      "description": "ISO 8601 timestamp when the controller run finished."
+    },
+    "aggregate_path": {
+      "type": "string",
+      "description": "Filesystem path to the cross-review aggregate JSON produced by this run."
+    },
+    "manifest_path": {
+      "type": "string",
+      "description": "Filesystem path to the dispatch manifest JSON used for this run."
+    },
+    "primary_gate": {
+      "type": "object",
+      "description": "Outcome of the primary (Claude self-review) gate.",
+      "additionalProperties": false,
+      "required": ["verdict", "blocking"],
+      "properties": {
+        "verdict": {
+          "type": "string",
+          "description": "Gate verdict string (e.g. APPROVED, REQUIRES_CHANGES, FAILED)."
+        },
+        "blocking": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of blocking finding IDs or descriptions from this gate."
+        }
+      }
+    },
+    "secondary_gate": {
+      "type": "object",
+      "description": "Outcome of the secondary (Codex cross-review) gate.",
+      "additionalProperties": false,
+      "required": ["verdict", "blocking"],
+      "properties": {
+        "verdict": {
+          "type": "string",
+          "description": "Gate verdict string (e.g. APPROVED, REQUIRES_CHANGES, FAILED)."
+        },
+        "blocking": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of blocking finding IDs or descriptions from this gate."
+        }
+      }
+    },
+    "gate_consistent": {
+      "type": "boolean",
+      "description": "True when primary and secondary gates agree on the final verdict."
+    },
+    "dirty_detected": {
+      "type": "boolean",
+      "description": "True when the controller detected uncommitted or unexpected filesystem changes during the run."
+    },
+    "jobs": {
+      "type": "array",
+      "description": "One entry per dispatched job in this controller run.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "queue_job_id",
+          "target_role",
+          "primary_target",
+          "bridge_exit",
+          "bridge_stderr_path",
+          "bridge_stderr_summary",
+          "raw_verdict",
+          "mapped_status",
+          "aggregate_bucket"
+        ],
+        "properties": {
+          "queue_job_id": {
+            "type": "string",
+            "description": "Unique identifier for this job within the dispatch queue."
+          },
+          "target_role": {
+            "type": "string",
+            "description": "Role label for the review target (e.g. 'plan', 'code', 'execution')."
+          },
+          "primary_target": {
+            "type": "string",
+            "description": "Filesystem path or identifier of the primary artifact being reviewed."
+          },
+          "bridge_exit": {
+            "type": "integer",
+            "description": "Exit code returned by the Codex bridge process for this job."
+          },
+          "bridge_stderr_path": {
+            "type": ["string", "null"],
+            "description": "Path to the file containing bridge stderr output, or null if none was captured."
+          },
+          "bridge_stderr_summary": {
+            "type": "string",
+            "description": "One-line summary of bridge stderr (or 'none' / 'fixture_mode_no_real_bridge')."
+          },
+          "raw_verdict": {
+            "type": "string",
+            "description": "Raw verdict string extracted from the bridge output."
+          },
+          "mapped_status": {
+            "type": "string",
+            "description": "Normalized status after verdict mapping (e.g. approved, requires_changes, failed, degraded)."
+          },
+          "aggregate_bucket": {
+            "type": "string",
+            "description": "Bucket name used when writing this job result into the cross-review aggregate."
+          }
+        }
+      }
+    }
+  }
+}

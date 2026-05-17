@@ -1,0 +1,13 @@
+{
+  "_test_meta": {
+    "_expect": "PASS",
+    "_reason": "v1 compat mode + code kind is supported (legacy)"
+  },
+  "subcommand": "build-capsule",
+  "args": ["--kind", "code", "--target", "plans/gd/2026-05-12-gd-runtime-activation/master-plan.md", "--cwd", ".", "--compat-v1"],
+  "compat_v1": true,
+  "kind": "code",
+  "target": "plans/gd/2026-05-12-gd-runtime-activation/master-plan.md",
+  "expected_template_kind": "gd-execution-review",
+  "expected_schema_path": "schema/gd-review-result.schema.json"
+}

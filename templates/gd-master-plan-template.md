@@ -54,6 +54,34 @@ PHASE_GOAL:   <本 master plan 的阶段目标，必须可被 SC 验证>
 
 ---
 
+## 5a. Dispatch Map / Wave Contract（MANDATORY）
+
+> **Anti-fill 硬约束**：主 agent 不得口头判断哪些步骤可并行。并行调度的唯一合法依据是通过 `scripts/gd-validate-dispatch.py` 验证的 dispatch map。
+
+### Dispatch Map 引用
+
+```
+DISPATCH_MAP_PATH: <相对路径，如 docs/dispatch-map.json>
+VALIDATE_CMD: python3 scripts/gd-validate-dispatch.py <DISPATCH_MAP_PATH>
+```
+
+> 若 plan 全部串行（无并行步骤），DISPATCH_MAP_PATH 可写 `n_a`，仍须声明。
+
+### Wave Matrix
+
+| Wave | Steps（同 wave 可并行） | 并行前提验证 |
+|------|------------------------|-------------|
+| 1 | step-1（串行，child_agent_count=1） | — |
+| 2 | step-2, step-3（并行，child_agent_count=2） | can_parallel_with 双向声明；owned_paths 不重叠；blocked_by 在 wave 1 |
+
+> 规则：
+> - 同 wave 内最多 2 个 step（`max_parallel=2` 硬上限）。
+> - 串行 step 单独成 wave，`child_agent_count=1`。
+> - 主 agent 必须先运行 `VALIDATE_CMD`（exit 0）再按 wave 顺序 dispatch child agent。
+> - `VALIDATE_CMD` 失败 → `proof_mode: fail_closed_no_dispatch`，禁止 dispatch。
+
+---
+
 ## 6. 边界（修改 / 不修改）
 
 修改：

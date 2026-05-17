@@ -1,0 +1,21 @@
+{
+  "_test_meta": {
+    "_expect": "PASS",
+    "_reason": "v2 default mode + code_diff kind"
+  },
+  "subcommand": "parse-transport",
+  "args": [
+    "--kind", "code_diff",
+    "--target", "fixtures/review-bridge/v2/v2-code-diff-approved.md",
+    "--raw-result", "fixtures/review-bridge/v2/v2-code-diff-approved.md",
+    "--out", "/tmp/gd-bridge-v2-code-diff-mapped.json"
+  ],
+  "compat_v1": false,
+  "kind": "code_diff",
+  "raw_fixture": "fixtures/review-bridge/v2/v2-code-diff-approved.md",
+  "expected_review_run_status": "completed",
+  "expected_gd_review_decision": "APPROVED",
+  "expected_template_kind": "gd-code-diff-review",
+  "expected_target_role": "code_diff",
+  "expected_review_target_kind": "code_only"
+}

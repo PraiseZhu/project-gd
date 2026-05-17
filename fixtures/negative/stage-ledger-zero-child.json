@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0",
+  "stage": "plan",
+  "parent_run_id": "run-zero-child-test",
+  "recorded_at": "2026-05-17T10:00:00Z",
+  "child_agent_count": 0,
+  "max_parallel": 1,
+  "child_jobs": [],
+  "main_agent_merge": {
+    "merge_report_path": "reports/merge-zero.md",
+    "merge_report_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "final_decision": "APPROVED",
+    "blocking_buckets": []
+  }
+}

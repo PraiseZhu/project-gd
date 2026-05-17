@@ -1,0 +1,21 @@
+{
+  "_test_meta": {
+    "_expect": "PASS",
+    "_reason": "v2 default mode + plan kind: parse-transport extracts JSON block and produces v2-shaped mapped JSON"
+  },
+  "subcommand": "parse-transport",
+  "args": [
+    "--kind", "plan",
+    "--target", "fixtures/review-bridge/v2/v2-plan-approved.md",
+    "--raw-result", "fixtures/review-bridge/v2/v2-plan-approved.md",
+    "--out", "/tmp/gd-bridge-v2-plan-mapped.json"
+  ],
+  "compat_v1": false,
+  "kind": "plan",
+  "raw_fixture": "fixtures/review-bridge/v2/v2-plan-approved.md",
+  "expected_review_run_status": "completed",
+  "expected_gd_review_decision": "APPROVED",
+  "expected_template_kind": "gd-plan-review",
+  "expected_target_role": "plan_artifact",
+  "expected_review_target_kind": "plan_only"
+}

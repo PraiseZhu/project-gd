@@ -490,6 +490,61 @@ def validate_route_report(data: dict) -> list[str]:
             "Codex must not be invoked when no reviewable artifact exists"
         )
 
+    # Step 5 — child review ledger mandatory for execution/code targets on APPROVED live.
+    # APPROVED on execution_only_no_code, execution_plus_code, code_only requires a
+    # child_review_ledger_path so the mandatory code review pass is auditable.
+    _child_review_required_kinds = {
+        "execution_only_no_code", "execution_plus_code", "code_only"
+    }
+    if (mode_str == "live" and decision_str == "APPROVED"
+            and rtk_str in _child_review_required_kinds):
+        if not data.get("child_review_ledger_path"):
+            violations.append(
+                f"{rtk_str}/live/APPROVED: 'child_review_ledger_path' required — "
+                "APPROVED closure requires a mandatory child code/execution review; "
+                "missing ledger means the child review was never recorded "
+                "(CLOSURE_INELIGIBLE: missing_child_review_ledger)"
+            )
+
+    # Step 5 — code_only LOCAL_STATIC_ONLY cannot claim APPROVED.
+    # LOCAL_STATIC_ONLY is a placeholder status meaning skill_orchestrated review has
+    # not completed; only a completed cross-review may produce APPROVED.
+    if (mode_str == "live" and decision_str == "APPROVED" and rtk_str == "code_only"):
+        if data.get("failure_code") == "LOCAL_STATIC_ONLY":
+            violations.append(
+                "code_only/live/APPROVED: failure_code='LOCAL_STATIC_ONLY' is incompatible "
+                "with decision=APPROVED — LOCAL_STATIC_ONLY is a placeholder status "
+                "indicating the skill_orchestrated review has not completed; "
+                "re-run with completed cross-review before claiming APPROVED"
+            )
+
+    # Step 5 — review_run_status failure statuses are incompatible with APPROVED.
+    # These statuses indicate Codex transport or wrapper did not produce a valid verdict;
+    # APPROVED is unsupported when any of these are set.
+    _run_failure_statuses = {
+        "failed_to_run", "timeout", "degraded", "transport_failed", "wrapper_schema_fail"
+    }
+    review_run_status = data.get("review_run_status")
+    if decision_str == "APPROVED" and review_run_status in _run_failure_statuses:
+        violations.append(
+            f"APPROVED with review_run_status={review_run_status!r} is not allowed — "
+            f"run status indicates review did not complete; decision must be REQUIRES_CHANGES "
+            f"or FAILED when review_run_status is in {sorted(_run_failure_statuses)}"
+        )
+    # Also check codex_review_status for transport_failed / wrapper_schema_fail
+    # (these are the primary status fields for Codex transport; reject APPROVED + failure status)
+    _codex_failure_statuses = {"transport_failed", "wrapper_schema_fail"}
+    cs_check = data.get("codex_review_status")
+    if decision_str == "APPROVED" and cs_check in _codex_failure_statuses:
+        # Note: execution_only_no_code already enforces cs=='completed' above;
+        # this catch-all covers other kinds that may carry codex_review_status.
+        if rtk_str not in ("execution_only_no_code",):
+            violations.append(
+                f"APPROVED with codex_review_status={cs_check!r} is not allowed — "
+                "Codex transport failure or schema fail means no valid verdict was produced; "
+                "decision must not be APPROVED"
+            )
+
     return violations
 
 

@@ -1,0 +1,114 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "gd-stage-dispatch-ledger",
+  "title": "GD Stage Dispatch Ledger",
+  "description": "Records one stage's dispatch result: which child agents ran, what they produced, and the main agent's merge decision.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "stage",
+    "parent_run_id",
+    "recorded_at",
+    "child_agent_count",
+    "max_parallel",
+    "child_jobs",
+    "main_agent_merge"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0",
+      "description": "Schema version — must be exactly '1.0'."
+    },
+    "stage": {
+      "type": "string",
+      "enum": ["plan", "review_plan", "execute", "review_execution_code"],
+      "description": "The GD pipeline stage this ledger records."
+    },
+    "parent_run_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Non-empty identifier for the parent orchestration run."
+    },
+    "recorded_at": {
+      "type": "string",
+      "description": "ISO 8601 timestamp when this ledger was written."
+    },
+    "child_agent_count": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2,
+      "description": "Number of child agents dispatched (1–2)."
+    },
+    "max_parallel": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2,
+      "description": "Maximum number of child agents allowed to run in parallel (1–2)."
+    },
+    "child_jobs": {
+      "type": "array",
+      "description": "One entry per dispatched child agent.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["job_id", "result_path", "result_hash", "status"],
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "description": "Unique identifier for this child job."
+          },
+          "result_path": {
+            "type": "string",
+            "description": "Path to the child agent's output artifact."
+          },
+          "result_hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "SHA-256 hex digest of the child output artifact (64 lowercase hex chars)."
+          },
+          "status": {
+            "type": "string",
+            "enum": ["completed", "failed", "transport_failed"],
+            "description": "Terminal status of this child job."
+          }
+        }
+      }
+    },
+    "main_agent_merge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "merge_report_path",
+        "merge_report_hash",
+        "final_decision",
+        "blocking_buckets"
+      ],
+      "description": "Main agent's synthesis of child outputs into a single decision.",
+      "properties": {
+        "merge_report_path": {
+          "type": "string",
+          "description": "Path to the merged review/execution report produced by the main agent."
+        },
+        "merge_report_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "SHA-256 hex digest of the merge report (64 lowercase hex chars)."
+        },
+        "final_decision": {
+          "type": "string",
+          "enum": ["APPROVED", "REQUIRES_CHANGES", "FAILED", "CLOSURE_INELIGIBLE"],
+          "description": "Merged verdict from the main agent."
+        },
+        "blocking_buckets": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of review bucket names that caused a non-APPROVED decision (empty when APPROVED)."
+        }
+      }
+    }
+  }
+}

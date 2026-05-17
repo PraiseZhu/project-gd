@@ -1,0 +1,25 @@
+{
+  "_fixture_meta": {
+    "description": "Negative fixture: no Claude review evidence (claude_review_missing=true) but claims APPROVED — must be rejected (claude_review_missing)",
+    "expected_verdict": "REJECTED",
+    "expected_exit_code_nonzero": true
+  },
+  "schema_version": "1.0",
+  "verdict": "APPROVED",
+  "claude_review_missing": true,
+  "claude_review_status": "skipped",
+  "jobs": [
+    {
+      "queue_job_id": "codex-only-test-master-plan",
+      "target_role": "master_plan",
+      "primary_target": "plans/gd/master-plan.md",
+      "mapped_status": "completed",
+      "git_gate_status": "not_checked"
+    }
+  ],
+  "closure_evidence": {
+    "controller_report_path": "reports/controller-report.json",
+    "stage_dispatch_ledger_path": "reports/stage-dispatch-ledger.json",
+    "note": "codex_only — claude_review_missing=true means no Claude-side dual-review performed"
+  }
+}

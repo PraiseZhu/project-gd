@@ -1,0 +1,19 @@
+{
+  "_test_meta": {
+    "_expect": "FAIL",
+    "_reason": "v2 plan fixture missing required target_role field: parse-transport must fail-closed via v2 minimal validator"
+  },
+  "subcommand": "parse-transport",
+  "args": [
+    "--kind", "plan",
+    "--target", "fixtures/review-bridge/v2/v2-plan-malformed.md",
+    "--raw-result", "fixtures/review-bridge/v2/v2-plan-malformed.md",
+    "--out", "/tmp/gd-bridge-v2-malformed-mapped.json"
+  ],
+  "compat_v1": false,
+  "kind": "plan",
+  "raw_fixture": "fixtures/review-bridge/v2/v2-plan-malformed.md",
+  "expected_review_run_status": "degraded",
+  "expected_gd_review_decision": "FAILED",
+  "expected_error_substring": "target_role"
+}

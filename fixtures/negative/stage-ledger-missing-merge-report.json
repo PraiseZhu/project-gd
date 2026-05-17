@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "stage": "review_plan",
+  "parent_run_id": "run-missing-merge-report-test",
+  "recorded_at": "2026-05-17T10:02:00Z",
+  "child_agent_count": 1,
+  "max_parallel": 1,
+  "child_jobs": [
+    {
+      "job_id": "job-001",
+      "result_path": "results/child-001.json",
+      "result_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "status": "completed"
+    }
+  ],
+  "main_agent_merge": {
+    "merge_report_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "final_decision": "REQUIRES_CHANGES",
+    "blocking_buckets": ["goal-alignment"]
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "_fixture_meta": {
+    "description": "Negative fixture: execution_only_no_code, live, APPROVED but codex_review_status=transport_failed. Must fail: transport failure incompatible with APPROVED.",
+    "expected_verdict": "FAIL",
+    "expected_exit_code_nonzero": true,
+    "step": "Step 5"
+  },
+  "schema_version": "2.0",
+  "router_invocation_id": "router-20260101T000003Z-deadbeef",
+  "mode": "live",
+  "review_target_kind": "execution_only_no_code",
+  "decision": "APPROVED",
+  "validator_signature": {
+    "validator": "gd-validate-route-report.py",
+    "schema_version": "2.0"
+  },
+  "recorded_at": "2026-01-01T00:00:00Z",
+  "findings": [],
+  "execution_artifact_ref": "reports/test/execution-result.json",
+  "outcome_validator_status": "passed",
+  "codex_review_status": "transport_failed",
+  "codex_review_kind": "execution_outcome",
+  "claude_review_origin": "not_applicable",
+  "failure_code": "CODEX_TRANSPORT_UNAVAILABLE"
+}

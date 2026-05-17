@@ -1,0 +1,47 @@
+{
+  "_fixture_meta": {
+    "description": "Negative fixture: controller run_mode=fixture result claims APPROVED — must be rejected by parent-close-gate (closure_ineligible: fixture_mode)",
+    "expected_verdict": "CLOSURE_INELIGIBLE",
+    "expected_exit_code_nonzero": true
+  },
+  "schema_version": "2.0",
+  "target_set_id": "negative-fixture-mode-test",
+  "review_contract_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+  "jobs": [
+    {
+      "queue_job_id": "negative-fixture-mode-test-master-plan",
+      "target_role": "master_plan",
+      "primary_target": "fixtures/review-chain/suite-controller/targets/master-plan.md",
+      "raw_verdict": "APPROVED",
+      "mapped_status": "completed",
+      "aggregate_bucket": "codex_approved",
+      "raw_path": "fixtures/review-chain/suite-controller/raw-results/master-plan-approved.result",
+      "bridge_exit": 0,
+      "bridge_stderr_summary": "fixture_mode_no_real_bridge",
+      "git_gate_status": "fixture_mode"
+    }
+  ],
+  "coverage": {
+    "total": 1,
+    "approved": 1,
+    "requires_changes": 0,
+    "failed": 0,
+    "transport_failed": 0
+  },
+  "summary": {
+    "transport_failed": [],
+    "wrapper_schema_fail": [],
+    "codex_approved": ["negative-fixture-mode-test-master-plan"],
+    "codex_requires_changes": [],
+    "codex_failed": [],
+    "missing_primary_target": [],
+    "stale_review_contract": [],
+    "ambiguous_raw_result": []
+  },
+  "closure_evidence": {
+    "controller_report_path": null,
+    "stage_dispatch_ledger_path": null,
+    "controller_run_mode": "fixture",
+    "note": "closure_ineligible: fixture_mode — git_gate_status=fixture_mode and bridge_stderr_summary=fixture_mode_no_real_bridge prove no real Codex transport occurred"
+  }
+}

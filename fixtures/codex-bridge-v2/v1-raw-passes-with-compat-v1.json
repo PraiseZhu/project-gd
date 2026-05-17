@@ -1,0 +1,12 @@
+{
+  "_test_meta": {
+    "_expect": "PASS",
+    "_reason": "Plan A regression: same v1 raw with --compat-v1 must parse successfully as APPROVED/completed — confirms explicit --compat-v1 is required for live plan review"
+  },
+  "subcommand": "parse-transport",
+  "compat_v1": true,
+  "kind": "plan",
+  "raw_fixture": "fixtures/review-chain/suite-controller/raw-results/master-plan-approved.result",
+  "expected_review_run_status": "completed",
+  "expected_gd_review_decision": "APPROVED"
+}

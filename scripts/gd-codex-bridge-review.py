@@ -1071,43 +1071,11 @@ def cmd_run_bridge(args: argparse.Namespace) -> int:
         print("live-transport flag required for actual delivery", file=sys.stderr)
         return 2
 
-    # Suite-mode serial enforcement (revision=18 lock).
-    # Detect concurrent bridge invocations: if another bridge is in flight
-    # within 600s, output SUITE_CONCURRENT_BRIDGE and exit non-zero.
-    # This prevents sub-agents from concurrently bypassing the serial contract.
-    _bridge_lock = Path(os.environ.get("TMPDIR", "/tmp")) / "gd-codex-bridge.lock"
-    _lock_timeout_s = 600
-    _now = time.time()
-    _lock_held_by_other = False
-    try:
-        if _bridge_lock.exists():
-            _age = _now - _bridge_lock.stat().st_mtime
-            if _age < _lock_timeout_s:
-                _lock_held_by_other = True
-    except OSError:
-        pass  # If we can't stat, proceed (don't block on lock file errors)
-
-    if _lock_held_by_other:
-        print("ERROR: SUITE_CONCURRENT_BRIDGE: another gd-codex-bridge-review run-bridge "
-              "is in flight (lock age < 600s). Only one bridge may run at a time. "
-              "See commands/gd.md revision=18 suite-mode serial contract.", file=sys.stderr)
-        print("GD_CODEX_BRIDGE_STATUS: failed_to_run")
-        print("GD_REVIEW_DECISION: FAILED")
-        return 3
-
-    # Acquire lock by touching file
-    try:
-        _bridge_lock.write_text(f"{os.getpid()}", encoding="utf-8")
-    except OSError:
-        pass  # Proceed even if we can't write lock
-
-    try:
-        return _cmd_run_bridge_inner(args)
-    finally:
-        try:
-            _bridge_lock.unlink(missing_ok=True)
-        except OSError:
-            pass
+    # Bounded-parallel controller (revision=19+) manages concurrency at the
+    # suite level via ThreadPoolExecutor. The per-bridge global lock file is
+    # no longer needed and has been removed. Each bridge invocation is
+    # independently dispatched by the controller with max_parallel=1 or 2.
+    return _cmd_run_bridge_inner(args)
 
 
 def _cmd_run_bridge_inner(args: argparse.Namespace) -> int:
@@ -1736,46 +1704,12 @@ def cmd_self_test(args: argparse.Namespace) -> int:
         print(f"  (skip v2-routing: {BRIDGE_V2_FIXTURES_DIR} not present)")
 
     # ---------- Lock sentinel regression (SC-1, GD-1 revision=18) ----------
-    # Verify that run-bridge exits 3 with SUITE_CONCURRENT_BRIDGE when a lock file
-    # is present within 600s. Uses a subprocess so the sentinel code path is real.
-    import tempfile
-    with tempfile.TemporaryDirectory() as td_lock:
-        lock_file = Path(td_lock) / "gd-codex-bridge.lock"
-        lock_file.write_text("12345", encoding="utf-8")  # pre-place lock
-
-        target_file = GD_PROJECT_ROOT / "commands" / "gd.md"
-        if not target_file.is_file():
-            # fallback: use script itself as a valid target-ish path
-            target_file = Path(__file__)
-
-        out_tmp = Path(td_lock) / "lock-test-out.json"
-        env_with_tmpdir = {**os.environ, "TMPDIR": td_lock}
-        r_lock = subprocess.run(
-            [
-                sys.executable, str(Path(__file__)),
-                "run-bridge",
-                "--kind", "plan",
-                "--target", str(target_file),
-                "--cwd", str(GD_PROJECT_ROOT),
-                "--out", str(out_tmp),
-                "--live-transport",
-            ],
-            capture_output=True, text=True, env=env_with_tmpdir,
-        )
-        if r_lock.returncode != 3:
-            failures.append(
-                f"lock-sentinel: expected exit 3, got {r_lock.returncode!r}; "
-                f"stdout={r_lock.stdout[:100]!r}; stderr={r_lock.stderr[:100]!r}"
-            )
-        elif "SUITE_CONCURRENT_BRIDGE" not in r_lock.stderr:
-            failures.append(
-                f"lock-sentinel: exit 3 OK but SUITE_CONCURRENT_BRIDGE not in stderr; "
-                f"stderr={r_lock.stderr[:200]!r}"
-            )
-        elif "Traceback" in r_lock.stderr or "Traceback" in r_lock.stdout:
-            failures.append("lock-sentinel: traceback detected despite exit 3 — check sentinel logic")
-        else:
-            print(f"  ✓ lock-sentinel: exit=3 SUITE_CONCURRENT_BRIDGE in stderr, no traceback")
+    # NOTE: revision=19+ removed the per-bridge global lock file. Concurrency
+    # is now managed by the suite controller's ThreadPoolExecutor (max_parallel).
+    # The per-bridge exit-3 concurrent-bridge path no longer exists in run-bridge.
+    # This regression block is intentionally skipped (lock sentinel deprecated).
+    print(f"  (lock-sentinel: SKIPPED — global lock removed in revision=19; "
+          f"concurrency managed by bounded-parallel controller)")
 
     if failures:
         print("\nself-test FAILED:")
