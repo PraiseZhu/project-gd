@@ -1029,7 +1029,9 @@ def _load_related_context(path: str | None) -> list[dict] | None:
 
 def cmd_build_capsule(args: argparse.Namespace) -> int:
     related = _load_related_context(getattr(args, "related_context", None))
-    compat_v1 = _resolve_compat_v1(args.kind, getattr(args, "compat_v1", None))
+    # run-bridge builds v2 capsule sent to Codex; default False (v2 schema).
+    # _resolve_compat_v1 kind-inference applies only to parse-transport.
+    compat_v1 = bool(getattr(args, "compat_v1", False))
     try:
         capsule, target_hash, capsule_hash, gd_baseline_key, run_id = build_capsule_text(
             args.kind, Path(args.target), Path(args.cwd),
@@ -1087,7 +1089,6 @@ def cmd_run_bridge(args: argparse.Namespace) -> int:
     if not args.live_transport:
         print("live-transport flag required for actual delivery", file=sys.stderr)
         return 2
-
     # G1 sentinel: execution_outcome/combined --live-transport must arrive via
     # gd-review-router.py, which sets GD_REVIEW_ROUTER_INVOCATION_ID. Direct
     # invocation is forbidden to prevent models from hand-composing bridge args.

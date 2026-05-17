@@ -68,17 +68,36 @@ done
 
 # 8. G1 sentinel: direct run-bridge execution_outcome --live-transport (no env) must be forbidden
 check "G1 sentinel: direct run-bridge execution_outcome forbidden without router env" \
-  bash -c '! python3 scripts/gd-codex-bridge-review.py run-bridge \
+  bash -c 'python3 scripts/gd-codex-bridge-review.py run-bridge \
     --kind execution_outcome --target /tmp/fake --cwd . --out /tmp/x \
-    --live-transport 2>/dev/null'
+    --live-transport 2>&1 | grep -q DIRECT_BRIDGE_FORBIDDEN_FOR_EXECUTION_KIND'
 
 # 9. G4 file-exists: final gate rejects path-not-found and invalid-json controller reports
 check "G4 gate rejects controller-report path-not-found" \
-  bash -c '! python3 scripts/gd-validate-parent-close-gate.py \
-    fixtures/negative/final-controller-report-path-not-found.json 2>/dev/null'
+  bash -c 'python3 scripts/gd-validate-parent-close-gate.py \
+    fixtures/negative/final-controller-report-path-not-found.json 2>&1 | grep -q controller_report_file_not_found'
 check "G4 gate rejects controller-report invalid-json" \
-  bash -c '! python3 scripts/gd-validate-parent-close-gate.py \
-    fixtures/negative/final-controller-report-invalid-json.json 2>/dev/null'
+  bash -c 'python3 scripts/gd-validate-parent-close-gate.py \
+    fixtures/negative/final-controller-report-invalid-json.json 2>&1 | grep -q controller_report_invalid_json'
+
+# 10 (F2). Router-env run-bridge execution_outcome must produce TRANSPORT_RESULT
+# (capsule build stage passes; verifies F1 regression is caught if re-introduced)
+F2_OUT="/tmp/gd-f2-check-$$.json"
+F2_STDOUT=$(GD_REVIEW_ROUTER_INVOCATION_ID=final-status-check \
+  python3 scripts/gd-codex-bridge-review.py run-bridge \
+  --kind execution_outcome \
+  --target fixtures/execution-outcome/valid-agent-exec-outcome.json \
+  --cwd . --out "$F2_OUT" --live-transport 2>/dev/null) || true
+rm -f "$F2_OUT"
+# QUEUE_JOB_ID is printed immediately after capsule build succeeds,
+# before the writer runs — catching F1 regression (capsule stage) is sufficient.
+if echo "$F2_STDOUT" | grep -q "^QUEUE_JOB_ID:"; then
+  echo "  PASS: F2 router-env run-bridge execution_outcome capsule build succeeds (QUEUE_JOB_ID present)"
+  PASS=$((PASS+1))
+else
+  echo "  FAIL: F2 router-env run-bridge execution_outcome capsule build failed (no QUEUE_JOB_ID — F1 regression?)"
+  FAIL=$((FAIL+1))
+fi
 
 echo ""
 echo "=== GD_REPAIR_RESULT: pass=$PASS fail=$FAIL ==="
