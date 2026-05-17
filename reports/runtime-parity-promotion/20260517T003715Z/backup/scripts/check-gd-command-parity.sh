@@ -10,10 +10,7 @@
 
 set -euo pipefail
 
-# Resolve source root from the script's own location so that worktree invocations
-# use the worktree's own commands/gd.md, not the main-repo copy.
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-GD_PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+GD_PROJECT_ROOT="/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD"
 SOURCE="${GD_PROJECT_ROOT}/commands/gd.md"
 TARGET="/Users/praise/.claude/commands/gd.md"
 

@@ -1,0 +1,32 @@
+{
+  "target_set_id": "akb2-execution-outcome-test",
+  "required_jobs": [
+    {
+      "queue_job_id": "akb2-execution-outcome-test-exec-result",
+      "target_role": "execution-outcome",
+      "primary_target": "fixtures/review-chain/suite-controller/targets/master-plan.md",
+      "review_kind": "execution_outcome",
+      "expected_target_hash": "e57ec192067c67a75eda4fb17779ac585e473a21675227aaf391877524b090cf",
+      "codex_raw_result_path": null,
+      "raw_contract": "auto"
+    },
+    {
+      "queue_job_id": "akb2-execution-outcome-test-code-diff",
+      "target_role": "code-diff",
+      "primary_target": "fixtures/review-chain/suite-controller/targets/step-1.md",
+      "review_kind": "code_diff",
+      "expected_target_hash": "40e5f05cad0f45371af2f8a01d0db5f2639d1ed1c01a87e6326444c5488f8779",
+      "codex_raw_result_path": null,
+      "raw_contract": "auto"
+    },
+    {
+      "queue_job_id": "akb2-execution-outcome-test-combined",
+      "target_role": "combined-bundle",
+      "primary_target": "fixtures/review-chain/suite-controller/targets/master-plan.md",
+      "review_kind": "combined",
+      "expected_target_hash": "e57ec192067c67a75eda4fb17779ac585e473a21675227aaf391877524b090cf",
+      "codex_raw_result_path": null,
+      "raw_contract": "auto"
+    }
+  ]
+}

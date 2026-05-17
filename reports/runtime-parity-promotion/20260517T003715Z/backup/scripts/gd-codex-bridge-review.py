@@ -122,10 +122,6 @@ VALID_KINDS = REVIEW_KIND_V1_ENUM  # legacy alias used by old build_capsule_text
 TEMPLATE_KIND_BY_REVIEW_KIND_V1 = {
     "plan": "gd-plan-review",
     "code": "gd-execution-review",
-    # revision=20: compat-v1 extended for execution kinds so parse-transport
-    # --compat-v1 can map real Codex execution raw into a valid v2 mapped JSON.
-    "execution_outcome": "gd-execution-outcome-review",
-    "combined": "gd-combined-review",
 }
 # Back-compat alias (older callers expect the v1-shaped dict).
 TEMPLATE_KIND_BY_REVIEW_KIND = TEMPLATE_KIND_BY_REVIEW_KIND_V1
@@ -133,12 +129,6 @@ TEMPLATE_KIND_BY_REVIEW_KIND = TEMPLATE_KIND_BY_REVIEW_KIND_V1
 TITLE_BY_KIND_V1 = {
     "plan": "Plan Review Result",
     "code": "Code Review Result",
-    # revision=20: execution_outcome and combined added so that --compat-v1
-    # parse-transport can handle real Codex raw that uses v1-style headers.
-    # Codex execution review raw uses "# Code Review Result" header at present;
-    # parse_v1 looks for the title in this dict and accepts the v1 body format.
-    "execution_outcome": "Code Review Result",
-    "combined": "Code Review Result",
 }
 # v2 review kind → human-readable title for capsule reviewer instructions.
 # v2 templates use "(v2)" suffix in the H1 title (per Agent E templates).
@@ -1500,10 +1490,8 @@ def cmd_self_test(args: argparse.Namespace) -> int:
         ("v2-plan-malformed.md", "plan", "degraded", "FAILED", False, "v2"),
         # mode-mismatch: v1 kind without --compat-v1 → fail-closed
         ("v2-plan-approved.md", "code", "failed_to_run", "FAILED", False, "v2"),
-        # mode-mismatch: v2 plan raw with --compat-v1 kind=execution_outcome → degraded/FAILED
-        # (v1 title "Code Review Result" not found in v2 plan body; result is degraded not failed_to_run
-        # because revision=20 added execution_outcome to V1_ENUM so the kind gate passes but body parsing degrades)
-        ("v2-plan-approved.md", "execution_outcome", "degraded", "FAILED", True, "v2"),
+        # mode-mismatch: v2 kind with --compat-v1 → fail-closed
+        ("v2-plan-approved.md", "execution_outcome", "failed_to_run", "FAILED", True, "v2"),
         # v1 kind under --compat-v1 still works on the legacy v1 fixtures
         ("raw-approved-plan.md", "plan", "completed", "APPROVED", True, "v1"),
         ("raw-approved-code.md", "code", "completed", "APPROVED", True, "v1"),

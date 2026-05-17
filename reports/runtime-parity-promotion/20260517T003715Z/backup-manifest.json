@@ -1,0 +1,126 @@
+{
+  "timestamp_utc": "20260517T003715Z",
+  "generated_at": "2026-05-17T00:38:09.488399Z",
+  "worktree": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/.claude/worktrees/peppy-roaming-dijkstra",
+  "main_root": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD",
+  "promotion_summary": {
+    "tracked_modified": 2,
+    "untracked_existing": 5,
+    "tracked_clean_drift": 1,
+    "missing": 3,
+    "total": 11
+  },
+  "entries": [
+    {
+      "path": "commands/gd.md",
+      "old_status": "tracked_modified",
+      "source_path": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/.claude/worktrees/peppy-roaming-dijkstra/commands/gd.md",
+      "source_hash": "e785e003bb716aa2cb1d71d1a9d0dfd6cbd8fb3197a3903882f25d4e429233a6",
+      "old_hash": "042e8a865f8ba55071b48066052d32653abce2df88d3e2a224b2bf0aeee57923",
+      "backup_path": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/reports/runtime-parity-promotion/20260517T003715Z/backup/commands/gd.md",
+      "backup_hash": "042e8a865f8ba55071b48066052d32653abce2df88d3e2a224b2bf0aeee57923",
+      "new_hash": "e785e003bb716aa2cb1d71d1a9d0dfd6cbd8fb3197a3903882f25d4e429233a6"
+    },
+    {
+      "path": "scripts/gd-codex-bridge-review.py",
+      "old_status": "tracked_modified",
+      "source_path": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/.claude/worktrees/peppy-roaming-dijkstra/scripts/gd-codex-bridge-review.py",
+      "source_hash": "6250dcb036f470212a4c919a02face1b4ce1f6e994ad70a4a6391b0b05f2460a",
+      "old_hash": "f92a9e1da8b6da207eaeafc8beb9de6e2d6d1799781437babe540450e6ae4790",
+      "backup_path": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/reports/runtime-parity-promotion/20260517T003715Z/backup/scripts/gd-codex-bridge-review.py",
+      "backup_hash": "f92a9e1da8b6da207eaeafc8beb9de6e2d6d1799781437babe540450e6ae4790",
+      "new_hash": "6250dcb036f470212a4c919a02face1b4ce1f6e994ad70a4a6391b0b05f2460a"
+    },
+    {
+      "path": "scripts/gd-review-router.py",
+      "old_status": "untracked_existing",
+      "source_path": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/.claude/worktrees/peppy-roaming-dijkstra/scripts/gd-review-router.py",
+      "source_hash": "d7218acd540dbf7cd0d143f174bbb8b36af1b6c4a9a3b728d351b3bc95944180",
+      "old_hash": "cef922ef9b160b9b9123b5cba2f72266bced2b97d506da21d4c0fbcbb509b401",
+      "backup_path": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/reports/runtime-parity-promotion/20260517T003715Z/backup/scripts/gd-review-router.py",
+      "backup_hash": "cef922ef9b160b9b9123b5cba2f72266bced2b97d506da21d4c0fbcbb509b401",
+      "new_hash": "d7218acd540dbf7cd0d143f174bbb8b36af1b6c4a9a3b728d351b3bc95944180"
+    },
+    {
+      "path": "scripts/gd-validate-route-report.py",
+      "old_status": "untracked_existing",
+      "source_path": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/.claude/worktrees/peppy-roaming-dijkstra/scripts/gd-validate-route-report.py",
+      "source_hash": "c893c2051f4c402ccbfa3c9c87579ecfaac0b1485ca93db69b7e8c3dc6269ccb",
+      "old_hash": "81691a501b2117a21e9799a6041bcf170420bd486a48c2028643d352718bb934",
+      "backup_path": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/reports/runtime-parity-promotion/20260517T003715Z/backup/scripts/gd-validate-route-report.py",
+      "backup_hash": "81691a501b2117a21e9799a6041bcf170420bd486a48c2028643d352718bb934",
+      "new_hash": "c893c2051f4c402ccbfa3c9c87579ecfaac0b1485ca93db69b7e8c3dc6269ccb"
+    },
+    {
+      "path": "scripts/gd_review_contract.py",
+      "old_status": "untracked_existing",
+      "source_path": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/.claude/worktrees/peppy-roaming-dijkstra/scripts/gd_review_contract.py",
+      "source_hash": "a9a5eea873f4fa698e971355264028cf7fedacf54bb9bf6619ed71356d32950b",
+      "old_hash": "f39517e0f9378482473f367e55b688b04b2179ba051ed132383be482e1bc2dba",
+      "backup_path": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/reports/runtime-parity-promotion/20260517T003715Z/backup/scripts/gd_review_contract.py",
+      "backup_hash": "f39517e0f9378482473f367e55b688b04b2179ba051ed132383be482e1bc2dba",
+      "new_hash": "a9a5eea873f4fa698e971355264028cf7fedacf54bb9bf6619ed71356d32950b"
+    },
+    {
+      "path": "templates/gd-execution-outcome-review-template.md",
+      "old_status": "untracked_existing",
+      "source_path": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/.claude/worktrees/peppy-roaming-dijkstra/templates/gd-execution-outcome-review-template.md",
+      "source_hash": "7dc959eb20998d9fff66ce359c5a79c53b938722b3993443bbab5592c88e1577",
+      "old_hash": "c19521b0c20022e41a2452380687f41cbd2b9bcb777f50da631c73136e735045",
+      "backup_path": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/reports/runtime-parity-promotion/20260517T003715Z/backup/templates/gd-execution-outcome-review-template.md",
+      "backup_hash": "c19521b0c20022e41a2452380687f41cbd2b9bcb777f50da631c73136e735045",
+      "new_hash": "7dc959eb20998d9fff66ce359c5a79c53b938722b3993443bbab5592c88e1577"
+    },
+    {
+      "path": "templates/gd-combined-review-template.md",
+      "old_status": "untracked_existing",
+      "source_path": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/.claude/worktrees/peppy-roaming-dijkstra/templates/gd-combined-review-template.md",
+      "source_hash": "762bae53d45fcfe9dd28055020a122cedc4c52c5fad0360ea1788ca459fd44e6",
+      "old_hash": "fad7be84841c298974990de1a1f6820889b59b7669850d71c19f073d33e0c801",
+      "backup_path": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/reports/runtime-parity-promotion/20260517T003715Z/backup/templates/gd-combined-review-template.md",
+      "backup_hash": "fad7be84841c298974990de1a1f6820889b59b7669850d71c19f073d33e0c801",
+      "new_hash": "762bae53d45fcfe9dd28055020a122cedc4c52c5fad0360ea1788ca459fd44e6"
+    },
+    {
+      "path": "schema/gd-route-report.schema.json",
+      "old_status": "missing",
+      "source_path": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/.claude/worktrees/peppy-roaming-dijkstra/schema/gd-route-report.schema.json",
+      "source_hash": "c02b11f39654c7f700165ded9b42f51ed852286b8362e566a2fb819ff51daa72",
+      "old_hash": null,
+      "backup_path": null,
+      "backup_hash": null,
+      "new_hash": "c02b11f39654c7f700165ded9b42f51ed852286b8362e566a2fb819ff51daa72"
+    },
+    {
+      "path": "fixtures/review-bridge/v2/v2-execution-outcome-approved.md",
+      "old_status": "missing",
+      "source_path": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/.claude/worktrees/peppy-roaming-dijkstra/fixtures/review-bridge/v2/v2-execution-outcome-approved.md",
+      "source_hash": "38596ceb3c21f88194a96b58f5bc5515a6dd770b896763985b48eb0b3c3a533f",
+      "old_hash": null,
+      "backup_path": null,
+      "backup_hash": null,
+      "new_hash": "38596ceb3c21f88194a96b58f5bc5515a6dd770b896763985b48eb0b3c3a533f"
+    },
+    {
+      "path": "fixtures/review-bridge/v2/v2-combined-requires-changes.md",
+      "old_status": "missing",
+      "source_path": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/.claude/worktrees/peppy-roaming-dijkstra/fixtures/review-bridge/v2/v2-combined-requires-changes.md",
+      "source_hash": "e0f8ebaedeb05d4d0cbc3d2f2994ccbcf31892a1893c18fd7bd9c62a166b98c0",
+      "old_hash": null,
+      "backup_path": null,
+      "backup_hash": null,
+      "new_hash": "e0f8ebaedeb05d4d0cbc3d2f2994ccbcf31892a1893c18fd7bd9c62a166b98c0"
+    },
+    {
+      "path": "scripts/check-gd-command-parity.sh",
+      "old_status": "tracked_clean_drift",
+      "source_path": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/.claude/worktrees/peppy-roaming-dijkstra/scripts/check-gd-command-parity.sh",
+      "source_hash": "30357df18e425209c5a7852c03606b0247bececbb030987803460e95b6a2ec97",
+      "old_hash": "9dddc0e45e7cc844c37a28c54fed69a3de92565a0702bb391535497e03bef30a",
+      "backup_path": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/reports/runtime-parity-promotion/20260517T003715Z/backup/scripts/check-gd-command-parity.sh",
+      "backup_hash": "9dddc0e45e7cc844c37a28c54fed69a3de92565a0702bb391535497e03bef30a",
+      "new_hash": "30357df18e425209c5a7852c03606b0247bececbb030987803460e95b6a2ec97"
+    }
+  ],
+  "stage": "promoted"
+}

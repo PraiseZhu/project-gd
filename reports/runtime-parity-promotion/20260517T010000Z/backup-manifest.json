@@ -1,0 +1,148 @@
+{
+  "timestamp_utc": "20260517T010000Z",
+  "round": 2,
+  "predecessor": "20260517T003715Z",
+  "generated_at": "2026-05-17T01:04:33.632301+00:00",
+  "worktree": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/.claude/worktrees/peppy-roaming-dijkstra",
+  "main_root": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD",
+  "summary": {
+    "tracked_modified": 1,
+    "untracked_existing": 2,
+    "missing": 10,
+    "total": 13
+  },
+  "entries": [
+    {
+      "path": "scripts/gd-review-suite-controller.py",
+      "old_status": "missing",
+      "source_path": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/.claude/worktrees/peppy-roaming-dijkstra/scripts/gd-review-suite-controller.py",
+      "source_hash": "7574aa8af54c57e17cc44e66473df03b07f4e6539af8baf4be4d2d01844c233a",
+      "old_hash": null,
+      "backup_path": null,
+      "backup_hash": null,
+      "new_hash": "7574aa8af54c57e17cc44e66473df03b07f4e6539af8baf4be4d2d01844c233a"
+    },
+    {
+      "path": "scripts/gd-validate-codex-cross-review-manifest.py",
+      "old_status": "untracked_existing",
+      "source_path": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/.claude/worktrees/peppy-roaming-dijkstra/scripts/gd-validate-codex-cross-review-manifest.py",
+      "source_hash": "37424ff7b8904feb993b4561dc2d273cc694fa3919cf74fe9cc56807e8061101",
+      "old_hash": "2d6091c721f8348c1f8f5a7d558da3f2d87174b837f983ed772ddbbb83a9c2b1",
+      "backup_path": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/reports/runtime-parity-promotion/20260517T010000Z/backup/scripts/gd-validate-codex-cross-review-manifest.py",
+      "backup_hash": "2d6091c721f8348c1f8f5a7d558da3f2d87174b837f983ed772ddbbb83a9c2b1",
+      "new_hash": "37424ff7b8904feb993b4561dc2d273cc694fa3919cf74fe9cc56807e8061101"
+    },
+    {
+      "path": "schema/gd-codex-cross-review-manifest.schema.json",
+      "old_status": "untracked_existing",
+      "source_path": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/.claude/worktrees/peppy-roaming-dijkstra/schema/gd-codex-cross-review-manifest.schema.json",
+      "source_hash": "5a654ef949419d4d08baa11376df1e7322805b1dc5b7441fef96d6f2803b0ca2",
+      "old_hash": "688d9c97756447280810b696f4051ecdf7dcd7c7a50d769276b5b07d1b6533f2",
+      "backup_path": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/reports/runtime-parity-promotion/20260517T010000Z/backup/schema/gd-codex-cross-review-manifest.schema.json",
+      "backup_hash": "688d9c97756447280810b696f4051ecdf7dcd7c7a50d769276b5b07d1b6533f2",
+      "new_hash": "5a654ef949419d4d08baa11376df1e7322805b1dc5b7441fef96d6f2803b0ca2"
+    },
+    {
+      "path": "schema/gd-plan-suite.schema.json",
+      "old_status": "tracked_modified",
+      "source_path": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/.claude/worktrees/peppy-roaming-dijkstra/schema/gd-plan-suite.schema.json",
+      "source_hash": "478c683031303ae5ffb0fa36367f2c076c61fca33afdd0ee4f353031cfd4bfbf",
+      "old_hash": "bc70af4be0edbea801f9f785b1bf44a645282dffb3d05bde7c93ccbd91f53b13",
+      "backup_path": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/reports/runtime-parity-promotion/20260517T010000Z/backup/schema/gd-plan-suite.schema.json",
+      "backup_hash": "bc70af4be0edbea801f9f785b1bf44a645282dffb3d05bde7c93ccbd91f53b13",
+      "new_hash": "478c683031303ae5ffb0fa36367f2c076c61fca33afdd0ee4f353031cfd4bfbf"
+    },
+    {
+      "path": "fixtures/review-chain/suite-controller/approved-v1-suite.json",
+      "old_status": "missing",
+      "source_path": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/.claude/worktrees/peppy-roaming-dijkstra/fixtures/review-chain/suite-controller/approved-v1-suite.json",
+      "source_hash": "c58b2f1d765c7c40fd80a38ef305cb80ab0e0220cc68b4b00c5f7665813ddc5a",
+      "old_hash": null,
+      "backup_path": null,
+      "backup_hash": null,
+      "new_hash": "c58b2f1d765c7c40fd80a38ef305cb80ab0e0220cc68b4b00c5f7665813ddc5a"
+    },
+    {
+      "path": "fixtures/review-chain/suite-controller/execution-outcome-manifest.json",
+      "old_status": "missing",
+      "source_path": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/.claude/worktrees/peppy-roaming-dijkstra/fixtures/review-chain/suite-controller/execution-outcome-manifest.json",
+      "source_hash": "fcc3b60a216fb23911a1fb62619be78b15cd4dee0cdefbe217d546fbf2e9602f",
+      "old_hash": null,
+      "backup_path": null,
+      "backup_hash": null,
+      "new_hash": "fcc3b60a216fb23911a1fb62619be78b15cd4dee0cdefbe217d546fbf2e9602f"
+    },
+    {
+      "path": "fixtures/review-chain/suite-controller/requires-changes-suite.json",
+      "old_status": "missing",
+      "source_path": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/.claude/worktrees/peppy-roaming-dijkstra/fixtures/review-chain/suite-controller/requires-changes-suite.json",
+      "source_hash": "ce44d5d7c7544c2554e80893b002f9a3495ce718735c0bc9ce4150c607270385",
+      "old_hash": null,
+      "backup_path": null,
+      "backup_hash": null,
+      "new_hash": "ce44d5d7c7544c2554e80893b002f9a3495ce718735c0bc9ce4150c607270385"
+    },
+    {
+      "path": "fixtures/review-chain/suite-controller/transport-failed-suite.json",
+      "old_status": "missing",
+      "source_path": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/.claude/worktrees/peppy-roaming-dijkstra/fixtures/review-chain/suite-controller/transport-failed-suite.json",
+      "source_hash": "03bc2b33f0e4d8f915e56760a35a8e6d1cfb86151493e7eb7791d0256ec553f8",
+      "old_hash": null,
+      "backup_path": null,
+      "backup_hash": null,
+      "new_hash": "03bc2b33f0e4d8f915e56760a35a8e6d1cfb86151493e7eb7791d0256ec553f8"
+    },
+    {
+      "path": "fixtures/review-chain/suite-controller/raw-results/master-plan-approved.result",
+      "old_status": "missing",
+      "source_path": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/.claude/worktrees/peppy-roaming-dijkstra/fixtures/review-chain/suite-controller/raw-results/master-plan-approved.result",
+      "source_hash": "c1bf09a0055ac232ca09e058ac35f94c10b2f9f1272ba31403a6314f3f7acb1d",
+      "old_hash": null,
+      "backup_path": null,
+      "backup_hash": null,
+      "new_hash": "c1bf09a0055ac232ca09e058ac35f94c10b2f9f1272ba31403a6314f3f7acb1d"
+    },
+    {
+      "path": "fixtures/review-chain/suite-controller/raw-results/step-1-approved.result",
+      "old_status": "missing",
+      "source_path": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/.claude/worktrees/peppy-roaming-dijkstra/fixtures/review-chain/suite-controller/raw-results/step-1-approved.result",
+      "source_hash": "28ca7391447abdcda4757c0133c7ec7156d550a62700330d19f37d3e61409d67",
+      "old_hash": null,
+      "backup_path": null,
+      "backup_hash": null,
+      "new_hash": "28ca7391447abdcda4757c0133c7ec7156d550a62700330d19f37d3e61409d67"
+    },
+    {
+      "path": "fixtures/review-chain/suite-controller/raw-results/step-1-requires-changes.result",
+      "old_status": "missing",
+      "source_path": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/.claude/worktrees/peppy-roaming-dijkstra/fixtures/review-chain/suite-controller/raw-results/step-1-requires-changes.result",
+      "source_hash": "bb4c38c2f070dcf1b2c1ae41ff5beda5fdbf712041c8faae96db3430a5c37c37",
+      "old_hash": null,
+      "backup_path": null,
+      "backup_hash": null,
+      "new_hash": "bb4c38c2f070dcf1b2c1ae41ff5beda5fdbf712041c8faae96db3430a5c37c37"
+    },
+    {
+      "path": "fixtures/review-chain/suite-controller/targets/master-plan.md",
+      "old_status": "missing",
+      "source_path": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/.claude/worktrees/peppy-roaming-dijkstra/fixtures/review-chain/suite-controller/targets/master-plan.md",
+      "source_hash": "e57ec192067c67a75eda4fb17779ac585e473a21675227aaf391877524b090cf",
+      "old_hash": null,
+      "backup_path": null,
+      "backup_hash": null,
+      "new_hash": "e57ec192067c67a75eda4fb17779ac585e473a21675227aaf391877524b090cf"
+    },
+    {
+      "path": "fixtures/review-chain/suite-controller/targets/step-1.md",
+      "old_status": "missing",
+      "source_path": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/.claude/worktrees/peppy-roaming-dijkstra/fixtures/review-chain/suite-controller/targets/step-1.md",
+      "source_hash": "40e5f05cad0f45371af2f8a01d0db5f2639d1ed1c01a87e6326444c5488f8779",
+      "old_hash": null,
+      "backup_path": null,
+      "backup_hash": null,
+      "new_hash": "40e5f05cad0f45371af2f8a01d0db5f2639d1ed1c01a87e6326444c5488f8779"
+    }
+  ],
+  "stage": "promoted",
+  "reason": "Round-2: suite-controller family promotion to resolve /gd review plan controller-missing failure"
+}

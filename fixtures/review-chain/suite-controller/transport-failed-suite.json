@@ -1,0 +1,20 @@
+{
+  "_fixture_meta": {
+    "description": "Negative: transport failed (no raw result file) — controller must block with FAILED",
+    "expected_controller_verdict": "FAILED",
+    "expected_exit_code": 1
+  },
+  "target_set_id": "akb2-transport-failed-test",
+  "kind": "plan",
+  "compat_v1": true,
+  "jobs": [
+    {
+      "queue_job_id": "akb2-transport-failed-test-master-plan",
+      "target_role": "master_plan",
+      "primary_target": "fixtures/review-chain/suite-controller/targets/master-plan.md",
+      "simulated_decision": "FAILED",
+      "simulated_run_status": "transport_failed",
+      "simulated_target_hash": "e57ec192067c67a75eda4fb17779ac585e473a21675227aaf391877524b090cf"
+    }
+  ]
+}

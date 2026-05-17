@@ -1,0 +1,30 @@
+{
+  "_fixture_meta": {
+    "description": "Negative: step_1 REQUIRES_CHANGES — controller must block with FAILED",
+    "expected_controller_verdict": "FAILED",
+    "expected_exit_code": 1
+  },
+  "target_set_id": "akb2-requires-changes-test",
+  "kind": "plan",
+  "compat_v1": true,
+  "jobs": [
+    {
+      "queue_job_id": "akb2-requires-changes-test-master-plan",
+      "target_role": "master_plan",
+      "primary_target": "fixtures/review-chain/suite-controller/targets/master-plan.md",
+      "simulated_decision": "APPROVED",
+      "simulated_run_status": "completed",
+      "simulated_target_hash": "e57ec192067c67a75eda4fb17779ac585e473a21675227aaf391877524b090cf",
+      "simulated_transport_result": "fixtures/review-chain/suite-controller/raw-results/master-plan-approved.result"
+    },
+    {
+      "queue_job_id": "akb2-requires-changes-test-step-1",
+      "target_role": "step_1",
+      "primary_target": "fixtures/review-chain/suite-controller/targets/step-1.md",
+      "simulated_decision": "REQUIRES_CHANGES",
+      "simulated_run_status": "completed",
+      "simulated_target_hash": "40e5f05cad0f45371af2f8a01d0db5f2639d1ed1c01a87e6326444c5488f8779",
+      "simulated_transport_result": "fixtures/review-chain/suite-controller/raw-results/step-1-requires-changes.result"
+    }
+  ]
+}
