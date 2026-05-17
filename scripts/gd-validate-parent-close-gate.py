@@ -806,6 +806,32 @@ def validate_closure_json(path: Path) -> int:
             "PARENT_CLOSE_GATE_INVALID: missing_stage_dispatch_ledger — stage dispatch ledger required for final closure"
         )
 
+    # Rule 2b/3b: Validate that referenced controller-report and ledger files
+    # physically exist and are valid JSON. A closure.json that merely lists a
+    # path (even a plausible-looking one) without the file on disk is fake evidence.
+    for _label, _key in [
+        ("controller_report", "controller_report_path"),
+        ("stage_dispatch_ledger", "stage_dispatch_ledger_path"),
+    ]:
+        _path_str = closure_ev.get(_key) or data.get(_key)
+        if not _path_str:
+            continue  # already handled: Rule 2/3 caught missing key
+        _ref = Path(_path_str)
+        if not _ref.is_absolute():
+            _ref = path.parent / _ref
+        if not _ref.is_file():
+            failures.append(
+                f"PARENT_CLOSE_GATE_INVALID: {_label}_file_not_found — "
+                f"{_key}={_path_str!r} does not exist on disk"
+            )
+            continue
+        try:
+            json.loads(_ref.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as _e:
+            failures.append(
+                f"PARENT_CLOSE_GATE_INVALID: {_label}_invalid_json — {_ref.name}: {_e}"
+            )
+
     # Rule 4: Reject non-approval mapped_status when verdict=APPROVED
     top_verdict = data.get("verdict") or data.get("decision") or ""
     is_top_approved = str(top_verdict).upper() == "APPROVED"

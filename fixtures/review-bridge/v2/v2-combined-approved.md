@@ -1,0 +1,74 @@
+# Combined Review Result (v2)
+
+GD_STANDARD: Project GD/prompts/gd-review-standard.md
+GOAL_SOURCE: Project GD/docs/gd-v7-project-goal.md
+TEMPLATE_KIND: gd-combined-review
+REVIEW_KIND: combined
+SCHEMA_VERSION: 2.0
+
+GD_REVIEW_DECISION: APPROVED
+
+---
+
+## 1. 标识与运行状态
+
+```text
+REVIEWER: codex
+REVIEW_TARGET: reports/example/combined-bundle.json
+REVIEW_TARGET_KIND: execution_plus_code
+TARGET_ROLE: combined_bundle
+REVIEW_RUN_STATUS: completed
+```
+
+## 2. Scope Checked
+
+| 检查面 | 结论 | 证据 |
+|--------|------|------|
+| execution_completeness | pass | all task_outcomes captured |
+
+## 3. Findings
+
+无。
+
+## 4. Merge Notes
+
+```yaml
+MERGE_NOTES:
+  conflict_with_other_reviewer: false
+```
+
+## 5. Residual Risk
+
+none
+
+## 6. Machine-readable Result (v2 schema, with cross_validation_findings)
+
+<!-- gd-review-result-json:start -->
+```json
+{
+  "schema_version": "2.0",
+  "template_kind": "gd-combined-review",
+  "review_kind": "combined",
+  "review_target_kind": "execution_plus_code",
+  "target_role": "combined_bundle",
+  "reviewer": "codex",
+  "review_target": "reports/example/combined-bundle.json",
+  "review_run_status": "completed",
+  "gd_review_decision": "APPROVED",
+  "source_of_truth_decision": {
+    "location": "top_level_machine_header",
+    "value": "APPROVED"
+  },
+  "scope_checked": [
+    {"area": "execution_completeness", "result": "pass", "evidence": "task_outcomes 全部完整"}
+  ],
+  "findings": [],
+  "merge_notes": {
+    "conflict_with_other_reviewer": false
+  },
+  "residual_risk": "",
+  "timestamp": "2026-05-14T00:00:00Z",
+  "cross_validation_findings": []
+}
+```
+<!-- gd-review-result-json:end -->

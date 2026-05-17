@@ -1,0 +1,1 @@
+{not valid json — this file is intentionally malformed for G4 gate testing
