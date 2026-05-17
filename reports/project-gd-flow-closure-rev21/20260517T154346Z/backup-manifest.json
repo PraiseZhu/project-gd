@@ -61,5 +61,5 @@
   {"path":"fixtures/codex-bridge-v2/v1-raw-passes-with-compat-v1.json","wt_hash":"aebe616417451fa805bb7040b0797527","before":"NONE","after":"aebe616417451fa805bb7040b0797527"},
   {"path":"baselines/gd-v7-lock-revisions.jsonl","wt_hash":"e8d9b61e9d68c6d945cf5a0c545a9871","before":"0f91ad19fcde947b598546dd09ee0756","after":"e8d9b61e9d68c6d945cf5a0c545a9871"},
   {"path":"baselines/gd-v7-runtime-write-authorizations.jsonl","wt_hash":"3a353786345cbe3fd343e40d8475c45a","before":"f32394c80b801fa2e297a7ad8ade89c8","after":"3a353786345cbe3fd343e40d8475c45a"},
-  {"path":"prompts/gd-review-standard.md","wt_hash":"ec9bb9b79e61c99f86b3e736277130ce","before":"06ec5ccad806878e0fc16649aa61b1db","after":"ec9bb9b79e61c99f86b3e736277130ce"},  ]
+  {"path":"prompts/gd-review-standard.md","wt_hash":"ec9bb9b79e61c99f86b3e736277130ce","before":"06ec5ccad806878e0fc16649aa61b1db","after":"ec9bb9b79e61c99f86b3e736277130ce"}  ]
 }

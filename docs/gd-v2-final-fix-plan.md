@@ -109,7 +109,7 @@ install 不是重复测试，是成品安装入口。
 - installed `/gd` 指向 Project GD 主根，所以最终必须满足：
 
 ```text
-main commands/gd.md hash == installed /Users/praise/.claire/commands/gd.md hash
+main commands/gd.md hash == installed /Users/praise/.claude/commands/gd.md hash
 ```
 
 ## Implementation Changes
