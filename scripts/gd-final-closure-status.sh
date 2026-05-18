@@ -121,6 +121,29 @@ check "D4 negative route-missing-child-review-ledger rejected by validator" \
   bash -c '! python3 scripts/gd-validate-route-report.py \
     fixtures/negative/route-missing-child-review-ledger.json 2>/dev/null'
 
+# V3-F: bridge preflight status check
+# Fails only if preflight was started (dir exists) but report/route_decision is missing.
+# If preflight has not been run yet: INFO-only, does not affect pass/fail count.
+PREFLIGHT_DIR="reports/bridge-preflight"
+if [ -d "$PREFLIGHT_DIR" ]; then
+  LATEST_REPORT=$(find "$PREFLIGHT_DIR" -name "preflight-report.json" | sort -r | head -1)
+  if [ -n "$LATEST_REPORT" ]; then
+    ROUTE=$(python3 -c "import json; d=json.load(open('$LATEST_REPORT')); print(d.get('route_decision') or '')" 2>/dev/null)
+    if [ -n "$ROUTE" ] && [ "$ROUTE" != "null" ]; then
+      echo "  PASS: preflight-report.json route_decision=$ROUTE"
+      PASS=$((PASS+1))
+    else
+      echo "  FAIL: preflight-report.json exists but route_decision is null/empty"
+      FAIL=$((FAIL+1))
+    fi
+  else
+    echo "  FAIL: preflight dir exists but no preflight-report.json found"
+    FAIL=$((FAIL+1))
+  fi
+else
+  echo "  INFO: bridge preflight not yet run (run scripts/gd-bridge-preflight.py first)"
+fi
+
 echo ""
 echo "=== GD_REPAIR_RESULT: pass=$PASS fail=$FAIL ==="
 if [ $FAIL -eq 0 ]; then
