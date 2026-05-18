@@ -224,7 +224,10 @@ def _get_title_by_kind(kind: str, compat_v1: bool) -> str:
         return TITLE_BY_KIND_V1[kind]
     return TITLE_BY_KIND_V2[kind]
 REQUIRED_FINDING_FIELDS_CN = ["问题", "证据", "影响", "最小修复", "验收"]
-SC_REF_RE = re.compile(r"\bSC-\d+\b")
+# SC ref pattern: optional prefix (e.g. H2B-), "SC-", suffix ending with digit.
+# Accepts SC-U1, SC-GS1, SC-S1, H2B-SC-14, SC-1, etc.
+# Rejects SC-N (placeholder), SC- alone, empty.
+SC_REF_RE = re.compile(r"\b(?:[A-Za-z][A-Za-z0-9]*-)?SC-[A-Za-z]*[0-9]+\b")
 VERDICT_LINE_RE = re.compile(r"^VERDICT:\s*(APPROVED|REQUIRES_CHANGES)\s*$", re.MULTILINE)
 BARE_VERDICT_ANY_RE = re.compile(r"^(VERDICT|REV_VERDICT)\s*:", re.MULTILINE)
 TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$")
@@ -407,7 +410,8 @@ def validate_mapped_schema_v1(d: dict) -> list[str]:
                     errs.append(f"findings[{i}].sc_refs 必须非空数组")
                 else:
                     for sc_ref in fd["sc_refs"]:
-                        if not isinstance(sc_ref, str) or not re.match(r"^SC-\d+$", sc_ref):
+                        if not isinstance(sc_ref, str) or not re.match(
+                        r"^(?:[A-Za-z][A-Za-z0-9]*-)?SC-[A-Za-z]*[0-9]+$", sc_ref):
                             errs.append(f"findings[{i}].sc_refs 含不合法 {sc_ref!r}")
 
     mn = d["merge_notes"]
