@@ -80,22 +80,35 @@ check "G4 gate rejects controller-report invalid-json" \
   bash -c 'python3 scripts/gd-validate-parent-close-gate.py \
     fixtures/negative/final-controller-report-invalid-json.json 2>&1 | grep -q controller_report_invalid_json'
 
-# 10 (F2). Router-env run-bridge execution_outcome must produce TRANSPORT_RESULT
-# (capsule build stage passes; verifies F1 regression is caught if re-introduced)
-F2_OUT="/tmp/gd-f2-check-$$.json"
-F2_STDOUT=$(GD_REVIEW_ROUTER_INVOCATION_ID=final-status-check \
-  python3 scripts/gd-codex-bridge-review.py run-bridge \
+# 10 (F2/C4). Deterministic capsule-build checks for execution_outcome and combined.
+# Replaces previous --live-transport check (which invoked Codex writer; unstable, slow).
+# build-capsule does NOT call writer; only validates the capsule construction stage
+# where F1 (INVALID_REVIEW_KIND_FOR_MODE) would surface as regression.
+F2_EO_OUT="/tmp/gd-f2-eo-$$.txt"
+F2_EO_STDOUT=$(python3 scripts/gd-codex-bridge-review.py build-capsule \
   --kind execution_outcome \
   --target fixtures/execution-outcome/valid-agent-exec-outcome.json \
-  --cwd . --out "$F2_OUT" --live-transport 2>/dev/null) || true
-rm -f "$F2_OUT"
-# QUEUE_JOB_ID is printed immediately after capsule build succeeds,
-# before the writer runs — catching F1 regression (capsule stage) is sufficient.
-if echo "$F2_STDOUT" | grep -q "^QUEUE_JOB_ID:"; then
-  echo "  PASS: F2 router-env run-bridge execution_outcome capsule build succeeds (QUEUE_JOB_ID present)"
+  --cwd . --out "$F2_EO_OUT" 2>/dev/null) || true
+rm -f "$F2_EO_OUT"
+if echo "$F2_EO_STDOUT" | grep -q "^QUEUE_JOB_ID:"; then
+  echo "  PASS: F2/C4 build-capsule execution_outcome produces QUEUE_JOB_ID (no writer call)"
   PASS=$((PASS+1))
 else
-  echo "  FAIL: F2 router-env run-bridge execution_outcome capsule build failed (no QUEUE_JOB_ID — F1 regression?)"
+  echo "  FAIL: F2/C4 build-capsule execution_outcome did not produce QUEUE_JOB_ID — F1 regression?"
+  FAIL=$((FAIL+1))
+fi
+
+F2_CB_OUT="/tmp/gd-f2-cb-$$.txt"
+F2_CB_STDOUT=$(python3 scripts/gd-codex-bridge-review.py build-capsule \
+  --kind combined \
+  --target fixtures/execution-outcome/valid-agent-exec-outcome.json \
+  --cwd . --out "$F2_CB_OUT" 2>/dev/null) || true
+rm -f "$F2_CB_OUT"
+if echo "$F2_CB_STDOUT" | grep -q "^QUEUE_JOB_ID:"; then
+  echo "  PASS: F2/C4 build-capsule combined produces QUEUE_JOB_ID (no writer call)"
+  PASS=$((PASS+1))
+else
+  echo "  FAIL: F2/C4 build-capsule combined did not produce QUEUE_JOB_ID — F1/C3 regression?"
   FAIL=$((FAIL+1))
 fi
 

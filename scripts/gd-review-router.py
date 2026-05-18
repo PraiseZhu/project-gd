@@ -389,6 +389,117 @@ def _run_live_plan_review(
     return 0 if downstream_decision == "APPROVED" else 1
 
 
+def _run_live_codex_bridge(
+    kind: str,
+    target: Path,
+    output_dir: Path,
+    invocation_id: str,
+    timeout_sec: int,
+) -> dict:
+    """C2 helper: invoke Codex live bridge for execution_outcome or combined kind.
+
+    Calls gd-codex-bridge-review.py run-bridge --live-transport with the given kind,
+    then parse-transport --compat-v1 to map raw to mapped JSON.
+
+    Returns:
+      {
+        "status": "completed" | "requires_changes" | "wrapper_schema_fail" | "transport_failed",
+        "decision": "APPROVED" | "REQUIRES_CHANGES" | None,
+        "raw_path": str | None,
+        "raw_hash": str | None,
+        "mapped_path": str | None,
+        "mapped_hash": str | None,
+        "findings": list,
+        "failure_description": str | None,
+      }
+
+    Always sets GD_REVIEW_ROUTER_INVOCATION_ID env so bridge G1 sentinel allows.
+    Honors --live-bridge-timeout-sec (default 360s); on timeout returns transport_failed.
+    """
+    import hashlib
+    bridge_script = SCRIPTS / "gd-codex-bridge-review.py"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    run_out = output_dir / f"bridge_run_{kind}_{invocation_id[-8:]}.log"
+
+    result: dict = {
+        "status": "transport_failed",
+        "decision": None,
+        "raw_path": None,
+        "raw_hash": None,
+        "mapped_path": None,
+        "mapped_hash": None,
+        "findings": [],
+        "failure_description": None,
+    }
+
+    run_args = [
+        sys.executable, str(bridge_script), "run-bridge",
+        "--kind", kind,
+        "--target", str(target),
+        "--cwd", str(GD_ROOT),
+        "--out", str(run_out),
+        "--live-transport",
+    ]
+    try:
+        r_run = subprocess.run(
+            run_args, capture_output=True, text=True, timeout=timeout_sec,
+            env={**os.environ, INVOCATION_ID_ENV: invocation_id},
+        )
+    except subprocess.TimeoutExpired:
+        msg = f"bridge run-bridge --live-transport timed out after {timeout_sec}s"
+        result["failure_description"] = msg
+        result["findings"].append({"reviewer": "router", "severity": "error", "description": msg})
+        return result
+
+    transport_raw = None
+    for line in (r_run.stdout or "").splitlines():
+        if line.startswith("TRANSPORT_RESULT: "):
+            transport_raw = Path(line[len("TRANSPORT_RESULT: "):].strip())
+    if transport_raw is None or not transport_raw.exists():
+        msg = f"bridge run-bridge did not produce TRANSPORT_RESULT: {(r_run.stdout or '')[-300:]}"
+        result["failure_description"] = msg
+        result["findings"].append({"reviewer": "router", "severity": "error", "description": msg})
+        return result
+
+    mapped_out = output_dir / f"codex_live_mapped_{kind}_{invocation_id[-8:]}.json"
+    parse_args = [
+        sys.executable, str(bridge_script), "parse-transport",
+        "--kind", kind,
+        "--target", str(target),
+        "--raw-result", str(transport_raw),
+        "--out", str(mapped_out),
+    ]
+    # G2 (bridge): parse-transport auto-infers --compat-v1 for execution_outcome/combined
+    # when flag is omitted. Explicit flag here would also work; omit to keep helper simple.
+    r_parse = subprocess.run(parse_args, capture_output=True, text=True)
+    if r_parse.returncode != 0 or not mapped_out.exists():
+        msg = f"parse-transport failed: {(r_parse.stderr or '')[:300]}"
+        result["status"] = "wrapper_schema_fail"
+        result["failure_description"] = msg
+        result["findings"].append({"reviewer": "codex_bridge", "severity": "error", "description": msg})
+        return result
+
+    try:
+        mapped = json.loads(mapped_out.read_text(encoding="utf-8"))
+    except Exception as e:
+        msg = f"mapped JSON unreadable: {e}"
+        result["status"] = "wrapper_schema_fail"
+        result["failure_description"] = msg
+        result["findings"].append({"reviewer": "codex_bridge", "severity": "error", "description": msg})
+        return result
+
+    decision = mapped.get("gd_review_decision") or mapped.get("decision")
+    result["status"] = "requires_changes" if decision == "REQUIRES_CHANGES" else "completed"
+    result["decision"] = decision
+    result["raw_path"] = str(transport_raw)
+    result["raw_hash"] = hashlib.sha256(transport_raw.read_bytes()).hexdigest()
+    result["mapped_path"] = str(mapped_out)
+    result["mapped_hash"] = hashlib.sha256(mapped_out.read_bytes()).hexdigest()
+    for f in mapped.get("findings", []) or []:
+        result["findings"].append({**f, "reviewer": "codex"})
+    return result
+
+
 def _run_live_execution_only(
     target: Path,
     output_dir: Path,
@@ -396,6 +507,7 @@ def _run_live_execution_only(
     codex_raw_result: Path | None = None,
     codex_mapped_result: Path | None = None,
     review_contract: str = "auto",
+    live_bridge_timeout_sec: int = 360,
 ) -> int:
     """execution_only_no_code (Execution-Review Cross-Review v2):
       Stage 1: invoke gd-validate-execution-outcome.py (validate facts/deliverables/verify-reruns)
@@ -509,67 +621,23 @@ def _run_live_execution_only(
             codex_status = "wrapper_schema_fail"
             findings.append({"reviewer": "codex_bridge", "severity": "error",
                              "description": f"mapped JSON unreadable: {e}"})
-    # Path C: no injection → invoke bridge run-bridge --live-transport (revision=20 wired).
-    # Codex writer still outputs v1 header; bridge then parse-transport --compat-v1 converts to mapped.
+    # Path C: no injection → invoke _run_live_codex_bridge helper (C2 refactor).
+    # Helper unifies run-bridge --live-transport + parse-transport for execution_outcome/combined.
     else:
-        run_out = output_dir / f"bridge_run_{invocation_id[-8:]}.log"
-        run_args = [
-            sys.executable, str(bridge_script), "run-bridge",
-            "--kind", "execution_outcome",
-            "--target", str(target),
-            "--cwd", str(GD_ROOT),
-            "--out", str(run_out),
-            "--live-transport",
-        ]
-        try:
-            r_run = subprocess.run(run_args, capture_output=True, text=True, timeout=120,
-                                   env={**os.environ, INVOCATION_ID_ENV: invocation_id})
-        except subprocess.TimeoutExpired:
-            codex_status = "transport_failed"
-            findings.append({"reviewer": "router", "severity": "error",
-                             "description": "bridge run-bridge --live-transport timed out after 120s"})
-            r_run = None
-        if r_run is not None:
-            # Extract TRANSPORT_RESULT from bridge stdout
-            transport_raw = None
-            for line in (r_run.stdout or "").splitlines():
-                if line.startswith("TRANSPORT_RESULT: "):
-                    transport_raw = Path(line[len("TRANSPORT_RESULT: "):].strip())
-            if transport_raw is None or not transport_raw.exists():
-                codex_status = "transport_failed"
-                findings.append({"reviewer": "router", "severity": "error",
-                                 "description": f"bridge run-bridge did not produce TRANSPORT_RESULT: {r_run.stdout[-300:]}"})
-            else:
-                # parse-transport --compat-v1 (Codex writer still uses v1 header for execution kinds)
-                mapped_out = output_dir / f"codex_live_mapped_{invocation_id[-8:]}.json"
-                parse_args = [
-                    sys.executable, str(bridge_script), "parse-transport",
-                    "--kind", "execution_outcome",
-                    "--target", str(target),
-                    "--raw-result", str(transport_raw),
-                    "--out", str(mapped_out),
-                    "--compat-v1",
-                ]
-                r_parse = subprocess.run(parse_args, capture_output=True, text=True)
-                if r_parse.returncode != 0 or not mapped_out.exists():
-                    codex_status = "wrapper_schema_fail"
-                    findings.append({"reviewer": "codex_bridge", "severity": "error",
-                                     "description": f"parse-transport failed: {r_parse.stderr[:300]}"})
-                else:
-                    try:
-                        mapped = json.loads(mapped_out.read_text(encoding="utf-8"))
-                        codex_decision = mapped.get("gd_review_decision") or mapped.get("decision")
-                        codex_status = "completed" if codex_decision != "REQUIRES_CHANGES" else "requires_changes"
-                        codex_raw_path = str(transport_raw)
-                        codex_raw_hash = hashlib.sha256(transport_raw.read_bytes()).hexdigest()
-                        codex_mapped_path = str(mapped_out)
-                        codex_mapped_hash = hashlib.sha256(mapped_out.read_bytes()).hexdigest()
-                        for f in mapped.get("findings", []) or []:
-                            findings.append({**f, "reviewer": "codex"})
-                    except Exception as e:
-                        codex_status = "wrapper_schema_fail"
-                        findings.append({"reviewer": "codex_bridge", "severity": "error",
-                                         "description": f"mapped JSON unreadable: {e}"})
+        bridge_result = _run_live_codex_bridge(
+            kind="execution_outcome",
+            target=target,
+            output_dir=output_dir,
+            invocation_id=invocation_id,
+            timeout_sec=live_bridge_timeout_sec,
+        )
+        codex_status = bridge_result["status"]
+        codex_decision = bridge_result["decision"]
+        codex_raw_path = bridge_result["raw_path"]
+        codex_raw_hash = bridge_result["raw_hash"]
+        codex_mapped_path = bridge_result["mapped_path"]
+        codex_mapped_hash = bridge_result["mapped_hash"]
+        findings.extend(bridge_result["findings"])
 
     # --- Decision merge: APPROVED requires outcome pass + Codex completed APPROVED ---
     if codex_status == "completed" and (codex_decision in (None, "APPROVED")):
@@ -669,6 +737,7 @@ def _run_live_execution_plus_code(
     codex_raw_result: Path | None = None,
     codex_mapped_result: Path | None = None,
     review_contract: str = "auto",
+    live_bridge_timeout_sec: int = 360,
 ) -> int:
     """execution_plus_code: outcome-first, then code if passes (3a-SC-5/SC-7).
     Stage 1: gd-validate-execution-outcome.py
@@ -771,14 +840,21 @@ def _run_live_execution_plus_code(
             findings.append({"reviewer": "codex_bridge", "severity": "error",
                              "description": f"mapped JSON unreadable: {e}"})
     else:
-        codex_status = "transport_failed"
-        findings.append({
-            "reviewer": "router", "severity": "error",
-            "description": (
-                "execution_plus_code: Codex combined cross-review required for APPROVED but no "
-                "--codex-raw-result / --codex-mapped-result supplied."
-            ),
-        })
+        # C3: no injection → call live bridge with kind=combined (was transport_failed).
+        bridge_result = _run_live_codex_bridge(
+            kind="combined",
+            target=target,
+            output_dir=output_dir,
+            invocation_id=invocation_id,
+            timeout_sec=live_bridge_timeout_sec,
+        )
+        codex_status = bridge_result["status"]
+        codex_decision = bridge_result["decision"]
+        codex_raw_path = bridge_result["raw_path"]
+        codex_raw_hash = bridge_result["raw_hash"]
+        codex_mapped_path = bridge_result["mapped_path"]
+        codex_mapped_hash = bridge_result["mapped_hash"]
+        findings.extend(bridge_result["findings"])
 
     final_decision = "APPROVED" if (codex_status == "completed" and codex_decision in (None, "APPROVED")) else "REQUIRES_CHANGES"
 
@@ -822,6 +898,7 @@ def run_live(
     codex_mapped_result: str | None = None,
     review_contract: str = 'auto',
     expected_target_hash: str | None = None,
+    live_bridge_timeout_sec: int = 360,
 ) -> int:
     print(f"=== gd-review-router: live mode ===")
     print(f"target    : {target or '(auto)'}")
@@ -870,6 +947,7 @@ def run_live(
             codex_raw_result=(Path(codex_raw_result) if codex_raw_result else None),
             codex_mapped_result=(Path(codex_mapped_result) if codex_mapped_result else None),
             review_contract=review_contract,
+            live_bridge_timeout_sec=live_bridge_timeout_sec,
         )
 
     if kind == "code_only" and target is not None:
@@ -881,6 +959,7 @@ def run_live(
             codex_raw_result=(Path(codex_raw_result) if codex_raw_result else None),
             codex_mapped_result=(Path(codex_mapped_result) if codex_mapped_result else None),
             review_contract=review_contract,
+            live_bridge_timeout_sec=live_bridge_timeout_sec,
         )
 
     # Fallback: target is None for a non-plan kind — fail-closed.
@@ -995,6 +1074,10 @@ def main() -> int:
                    help="Raw result parse contract for --codex-raw-result (default: auto).")
     p.add_argument("--expected-target-hash", default=None, metavar="HASH",
                    help="SHA-256 of plan at review submit time for binding check.")
+    p.add_argument("--live-bridge-timeout-sec", type=int, default=360, metavar="SEC",
+                   help="Timeout (seconds) for live Codex bridge run-bridge subprocess. "
+                        "Default 360 (codex-send-wait default is 300; must be longer). "
+                        "On timeout: codex_review_status=transport_failed fail-closed.")
     args = p.parse_args()
 
     if args.self_test:
@@ -1027,6 +1110,7 @@ def main() -> int:
             codex_mapped_result=getattr(args, "codex_mapped_result", None),
             review_contract=getattr(args, "review_contract", "auto"),
             expected_target_hash=getattr(args, "expected_target_hash", None),
+            live_bridge_timeout_sec=getattr(args, "live_bridge_timeout_sec", 360),
         )
 
     return err("UNKNOWN_MODE", args.mode, 2)
