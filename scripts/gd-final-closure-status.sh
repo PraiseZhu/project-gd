@@ -121,23 +121,37 @@ check "D4 negative route-missing-child-review-ledger rejected by validator" \
   bash -c '! python3 scripts/gd-validate-route-report.py \
     fixtures/negative/route-missing-child-review-ledger.json 2>/dev/null'
 
-# V3-F: bridge preflight status check
-# Fails only if preflight was started (dir exists) but report/route_decision is missing.
-# If preflight has not been run yet: INFO-only, does not affect pass/fail count.
+# P2 fix: preflight gate — distinguish "not run / inconclusive / escalated / ready"
+# Route decision determines whether bridge is ready for handtest:
+#   no_fix_needed_or_intermittent → PASS (bridge works, no code fix needed)
+#   config_isolation | bypass_daemon | shard → PASS-WITH-BLOCKER (fix route identified)
+#   inconclusive → FAIL (need more preflight data)
+#   escalate_outside_scope → FAIL (outside GD scope, user decision required)
+#   not run → INFO only (does not affect pass/fail)
 PREFLIGHT_DIR="reports/bridge-preflight"
+PREFLIGHT_PASS_ROUTES="no_fix_needed_or_intermittent config_isolation bypass_daemon shard"
 if [ -d "$PREFLIGHT_DIR" ]; then
   LATEST_REPORT=$(find "$PREFLIGHT_DIR" -name "preflight-report.json" | sort -r | head -1)
   if [ -n "$LATEST_REPORT" ]; then
     ROUTE=$(python3 -c "import json; d=json.load(open('$LATEST_REPORT')); print(d.get('route_decision') or '')" 2>/dev/null)
-    if [ -n "$ROUTE" ] && [ "$ROUTE" != "null" ]; then
-      echo "  PASS: preflight-report.json route_decision=$ROUTE"
-      PASS=$((PASS+1))
-    else
+    if [ -z "$ROUTE" ] || [ "$ROUTE" = "null" ]; then
       echo "  FAIL: preflight-report.json exists but route_decision is null/empty"
+      FAIL=$((FAIL+1))
+    elif echo "$PREFLIGHT_PASS_ROUTES" | grep -qw "$ROUTE"; then
+      echo "  PASS: preflight route=$ROUTE (bridge fix path identified or not needed)"
+      PASS=$((PASS+1))
+    elif [ "$ROUTE" = "escalate_outside_scope" ]; then
+      echo "  FAIL: preflight route=escalate_outside_scope — outside GD scope, user decision required"
+      FAIL=$((FAIL+1))
+    elif [ "$ROUTE" = "inconclusive" ]; then
+      echo "  FAIL: preflight route=inconclusive — re-run with more trials or different budget"
+      FAIL=$((FAIL+1))
+    else
+      echo "  FAIL: preflight route=$ROUTE (unknown/unhandled)"
       FAIL=$((FAIL+1))
     fi
   else
-    echo "  FAIL: preflight dir exists but no preflight-report.json found"
+    echo "  FAIL: preflight dir exists but no preflight-report.json found (run was interrupted?)"
     FAIL=$((FAIL+1))
   fi
 else

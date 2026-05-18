@@ -143,12 +143,16 @@ def run_codex(
     }
 
 
-def is_trial_success(trial: dict) -> bool:
-    return trial["exit_code"] == 0 and trial["verdict_present"]
+def is_trial_success(trial: dict, *, require_verdict: bool = True) -> bool:
+    """P1-a: xhigh_short uses require_verdict=False (connectivity only).
+    Capsule smokes use default require_verdict=True (review quality)."""
+    if trial["exit_code"] != 0:
+        return False
+    return trial["verdict_present"] if require_verdict else True
 
 
-def stability_verdict(trials: list[dict]) -> str:
-    successes = sum(1 for t in trials if is_trial_success(t))
+def stability_verdict(trials: list[dict], *, require_verdict: bool = True) -> str:
+    successes = sum(1 for t in trials if is_trial_success(t, require_verdict=require_verdict))
     total = len(trials)
     if successes == total and total > 0:
         return "stable"
@@ -175,10 +179,12 @@ def smoke_xhigh_short(n_trials: int, budget: dict, output_dir: Path) -> dict:
                           sandbox="read-only", timeout=120)
         budget["xhigh_calls_used"] += 1
         trials.append(trial)
-        status = "OK" if is_trial_success(trial) else f"FAIL({trial['stderr_class']})"
+        # P1-a: short smoke tests connectivity; require_verdict=False
+        status = "OK" if is_trial_success(trial, require_verdict=False) else f"FAIL({trial['stderr_class']})"
         print(f"{trial['duration_sec']}s {status}", flush=True)
+    # P1-a: connectivity only → require_verdict=False
     return {"id": "xhigh_short", "trials": trials,
-            "stability_verdict": stability_verdict(trials)}
+            "stability_verdict": stability_verdict(trials, require_verdict=False)}
 
 
 def smoke_xhigh_real_capsule(capsule_path: str, n_trials: int, budget: dict, output_dir: Path) -> dict:
@@ -237,9 +243,13 @@ def smoke_config_matrix(capsule_path: str, budget: dict, output_dir: Path) -> di
         },
         {
             "id": "clean_home",
-            "desc": "Fresh CODEX_HOME via env override (minimal config)",
-            "extra_flags": ["--ignore-user-config"],  # same as ignore_user_config for now
-            "env_extra": {"CODEX_HOME": str(output_dir / "clean_codex_home")},
+            # P1-b: do NOT set a fresh CODEX_HOME — auth.json lives in ~/.codex/.
+            # Fresh CODEX_HOME → auth failure, not MCP overhead → misleading route.
+            # --ignore-user-config excludes config.toml (plugins, xhigh default)
+            # while auth.json is still loaded from default CODEX_HOME.
+            "desc": "--ignore-user-config (no plugins/config, auth still valid via ~/.codex/)",
+            "extra_flags": ["--ignore-user-config"],
+            # no env_extra: auth from ~/.codex/ must remain accessible
         },
     ]
 
@@ -319,12 +329,13 @@ def decide_route(smokes: list[dict]) -> tuple[str, str]:
     if short_sv in ("unstable", "inconclusive"):
         if clean_home_stable:
             return "config_isolation", (
-                "xhigh_short unstable/inconclusive, but clean_home stable → "
-                "MCP/plugin overhead is culprit; config isolation should fix bridge"
+                "xhigh_short unstable/inconclusive, but --ignore-user-config stable → "
+                "plugins/config.toml overhead is culprit; "
+                "pass --ignore-user-config + explicit model/reasoning flags"
             )
         return "escalate_outside_scope", (
-            "xhigh_short unstable/inconclusive even with clean_home → "
-            "Codex CLI xhigh itself is broken in this environment; "
+            "xhigh_short unstable/inconclusive even without user config (clean_home) → "
+            "Codex CLI xhigh itself is broken; "
             "fix is outside GD scope (Codex upstream / account / model backend)"
         )
     if real_sv == "unstable":
