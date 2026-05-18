@@ -112,6 +112,15 @@ else
   FAIL=$((FAIL+1))
 fi
 
+# D4 positive: APPROVED route report with valid ledger must pass validator
+check "D4 positive route-with-ledger-approved passes validator" \
+  python3 scripts/gd-validate-route-report.py fixtures/positive/route-with-ledger-approved.json
+
+# D4 negative: APPROVED route report missing ledger must fail validator (regression guard)
+check "D4 negative route-missing-child-review-ledger rejected by validator" \
+  bash -c '! python3 scripts/gd-validate-route-report.py \
+    fixtures/negative/route-missing-child-review-ledger.json 2>/dev/null'
+
 echo ""
 echo "=== GD_REPAIR_RESULT: pass=$PASS fail=$FAIL ==="
 if [ $FAIL -eq 0 ]; then

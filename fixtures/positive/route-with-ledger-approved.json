@@ -1,0 +1,28 @@
+{
+  "_fixture_meta": {
+    "description": "Positive fixture: execution_only_no_code, live, APPROVED, with valid child_review_ledger_path. Must PASS validator (D4 check).",
+    "expected_verdict": "APPROVED",
+    "expected_exit_code_zero": true
+  },
+  "schema_version": "2.0",
+  "router_invocation_id": "router-20260101T000000Z-d4test001",
+  "mode": "live",
+  "review_target_kind": "execution_only_no_code",
+  "decision": "APPROVED",
+  "validator_signature": {
+    "validator": "gd-validate-route-report.py",
+    "schema_version": "2.0"
+  },
+  "recorded_at": "2026-01-01T00:00:00Z",
+  "findings": [],
+  "execution_artifact_ref": "fixtures/execution-outcome/valid-outcome-d1-test.json",
+  "execution_artifact_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "outcome_validator_status": "passed",
+  "codex_review_status": "completed",
+  "codex_review_kind": "execution_outcome",
+  "codex_raw_result_path": "fixtures/review-bridge/v2/v2-execution-outcome-approved.md",
+  "codex_raw_result_hash": "38596ceb3c21f88194a96b58f5bc5515a6dd770b896763985b48eb0b3c3a533f",
+  "codex_mapped_result_path": "fixtures/review-bridge/v2/v2-execution-outcome-approved.md",
+  "codex_mapped_result_hash": "38596ceb3c21f88194a96b58f5bc5515a6dd770b896763985b48eb0b3c3a533f",
+  "child_review_ledger_path": "fixtures/positive/_route-ledger-companion.json"
+}

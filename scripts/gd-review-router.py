@@ -500,6 +500,62 @@ def _run_live_codex_bridge(
     return result
 
 
+def _write_execution_review_ledger(
+    ledger_path: "Path",
+    invocation_id: str,
+    stage: str,
+    codex_review_kind: str,
+    outcome_validator_status: str,
+    exec_hash: str,
+    target: "Path",
+    codex_status: str,
+    codex_decision: "str | None",
+    codex_mapped_path: "str | None",
+    codex_mapped_hash: "str | None",
+    codex_raw_path: "str | None",
+    codex_raw_hash: "str | None",
+    route_report_path: "Path",
+    final_decision: str,
+) -> None:
+    """D1: Write child review ledger for execution review (outcome_validator + Codex bridge).
+
+    Ledger aligns with schema/gd-stage-dispatch-ledger.schema.json.
+    stage='review_execution_code' (enum value from stage-dispatch-ledger schema).
+    child_agent_count=2: outcome validator + Codex bridge cross-review.
+    """
+    import hashlib
+    merge_hash = hashlib.sha256(route_report_path.read_bytes()).hexdigest() if route_report_path.exists() else ("0" * 64)
+    ledger = {
+        "schema_version": "1.0",
+        "stage": stage,
+        "parent_run_id": invocation_id,
+        "recorded_at": now_iso(),
+        "child_agent_count": 2,
+        "max_parallel": 2,
+        "child_jobs": [
+            {
+                "job_id": f"{invocation_id[-8:]}-outcome",
+                "result_path": str(target),
+                "result_hash": exec_hash,
+                "status": "completed" if outcome_validator_status == "passed" else "failed",
+            },
+            {
+                "job_id": f"{invocation_id[-8:]}-codex-{codex_review_kind}",
+                "result_path": codex_mapped_path or "",
+                "result_hash": codex_mapped_hash or ("0" * 64),
+                "status": codex_status,
+            },
+        ],
+        "main_agent_merge": {
+            "merge_report_path": str(route_report_path),
+            "merge_report_hash": merge_hash,
+            "final_decision": final_decision,
+        },
+    }
+    ledger_path.parent.mkdir(parents=True, exist_ok=True)
+    ledger_path.write_text(json.dumps(ledger, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 def _run_live_execution_only(
     target: Path,
     output_dir: Path,
@@ -549,8 +605,8 @@ def _run_live_execution_only(
                 "description": (r_outcome.stderr[:500] if r_outcome.stderr else "outcome validator failed"),
             }],
         }
-        write_and_validate_route_report(report, output_dir)
-        return 1
+        rc, _ = write_and_validate_route_report(report, output_dir)  # D2
+        return 1  # outcome failed: no ledger needed (not APPROVED)
 
     # --- Stage 2: Codex bridge cross-review (validates review quality) ---
     bridge_script = SCRIPTS / "gd-codex-bridge-review.py"
@@ -672,7 +728,33 @@ def _run_live_execution_only(
     elif codex_status == "wrapper_schema_fail":
         report["failure_code"] = "CODEX_WRAPPER_SCHEMA_FAIL"
 
-    write_and_validate_route_report(report, output_dir)
+    # D1: generate child review ledger (outcome_validator + codex_bridge as 2 child jobs)
+    ledger_path = output_dir / f"child_review_ledger_execution_outcome_{invocation_id[-8:]}.json"
+    report["child_review_ledger_path"] = str(ledger_path)
+
+    rc, rp = write_and_validate_route_report(report, output_dir)  # D2
+
+    # D1: write ledger after we have route report path
+    _write_execution_review_ledger(
+        ledger_path=ledger_path,
+        invocation_id=invocation_id,
+        stage="review_execution_code",
+        codex_review_kind="execution_outcome",
+        outcome_validator_status="passed",
+        exec_hash=exec_hash,
+        target=target,
+        codex_status=codex_status,
+        codex_decision=codex_decision,
+        codex_mapped_path=codex_mapped_path,
+        codex_mapped_hash=codex_mapped_hash,
+        codex_raw_path=codex_raw_path,
+        codex_raw_hash=codex_raw_hash,
+        route_report_path=rp,
+        final_decision=final_decision,
+    )
+
+    if rc != 0:  # D2: propagate validator rc
+        return 1
     return 0 if final_decision == "APPROVED" else 1
 
 
@@ -775,8 +857,8 @@ def _run_live_execution_plus_code(
                 ),
             }],
         }
-        write_and_validate_route_report(report, output_dir)
-        return 1
+        rc, _ = write_and_validate_route_report(report, output_dir)  # D2
+        return 1  # outcome failed: no ledger needed (not APPROVED)
 
     # Outcome passed → Stage 2: combined Codex cross-review (Execution-Review Cross-Review v2)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -885,7 +967,34 @@ def _run_live_execution_plus_code(
         report["failure_code"] = "CODEX_TRANSPORT_UNAVAILABLE"
     elif codex_status == "wrapper_schema_fail":
         report["failure_code"] = "CODEX_WRAPPER_SCHEMA_FAIL"
-    write_and_validate_route_report(report, output_dir)
+
+    # D1: generate child review ledger (outcome_validator + codex_bridge as 2 child jobs)
+    ledger_path = output_dir / f"child_review_ledger_combined_{invocation_id[-8:]}.json"
+    report["child_review_ledger_path"] = str(ledger_path)
+
+    rc, rp = write_and_validate_route_report(report, output_dir)  # D2
+
+    # D1: write ledger after we have route report path
+    _write_execution_review_ledger(
+        ledger_path=ledger_path,
+        invocation_id=invocation_id,
+        stage="review_execution_code",
+        codex_review_kind="combined",
+        outcome_validator_status="passed",
+        exec_hash=exec_hash,
+        target=target,
+        codex_status=codex_status,
+        codex_decision=codex_decision,
+        codex_mapped_path=codex_mapped_path,
+        codex_mapped_hash=codex_mapped_hash,
+        codex_raw_path=codex_raw_path,
+        codex_raw_hash=codex_raw_hash,
+        route_report_path=rp,
+        final_decision=final_decision,
+    )
+
+    if rc != 0:  # D2: propagate validator rc
+        return 1
     return 0 if final_decision == "APPROVED" else 1
 
 

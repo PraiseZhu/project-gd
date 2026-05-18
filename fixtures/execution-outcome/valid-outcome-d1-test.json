@@ -1,0 +1,34 @@
+{
+  "_fixture_meta": {
+    "description": "Minimal valid execution outcome for D1 ledger test — all deliverables must_exist=false",
+    "purpose": "D1 test: verify router generates child_review_ledger_path on APPROVED path"
+  },
+  "outcome_version": "1.0",
+  "outcome_id": "d1-test-outcome-001",
+  "source_batch": "fixtures/execution-outcome/d1-test",
+  "task_outcomes": [
+    {
+      "task_id": "t1",
+      "exec_status": "completed",
+      "deliverables": [
+        {"path": "fixtures/execution-outcome/valid-outcome-d1-test.json", "must_exist": true, "verified": true}
+      ],
+      "verify_reruns": [
+        {
+          "sc_ref": "SC-1",
+          "cmd": "echo ok",
+          "expected_exit": 0,
+          "actual_exit": 0,
+          "actual_stdout": "ok"
+        }
+      ],
+      "sc_acceptance": [
+        {"sc_ref": "SC-1", "status": "pass", "evidence": "echo ok succeeded"}
+      ],
+      "owned_paths_post_audit": {
+        "owned_paths": ["fixtures/"],
+        "writes_outside_owned": []
+      }
+    }
+  ]
+}

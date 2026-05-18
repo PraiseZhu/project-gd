@@ -1,0 +1,27 @@
+{
+  "schema_version": "1.0",
+  "stage": "review_execution_code",
+  "parent_run_id": "router-20260101T000000Z-d4test001",
+  "recorded_at": "2026-01-01T00:00:00Z",
+  "child_agent_count": 2,
+  "max_parallel": 2,
+  "child_jobs": [
+    {
+      "job_id": "d4test001-outcome",
+      "result_path": "fixtures/execution-outcome/valid-outcome-d1-test.json",
+      "result_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "status": "completed"
+    },
+    {
+      "job_id": "d4test001-codex-execution_outcome",
+      "result_path": "fixtures/review-bridge/v2/v2-execution-outcome-approved.md",
+      "result_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "status": "completed"
+    }
+  ],
+  "main_agent_merge": {
+    "merge_report_path": "fixtures/positive/route-with-ledger-approved.json",
+    "merge_report_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "final_decision": "APPROVED"
+  }
+}

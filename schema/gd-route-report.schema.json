@@ -15,47 +15,166 @@
     "findings"
   ],
   "properties": {
-    "schema_version": { "const": "2.0" },
-    "router_invocation_id": { "type": "string", "pattern": "^router-[0-9TZ]+-[0-9a-f]+$" },
-    "mode": { "enum": ["fixture", "detect_only", "live_dry_run", "live"] },
-    "review_target_kind": { "enum": ["plan_only", "code_only", "execution_only_no_code", "execution_plus_code", "no_artifact", "ambiguous_mixed_artifacts"] },
-    "decision": { "enum": ["APPROVED", "REQUIRES_CHANGES", "FAILED", "REVIEW_TARGET_MISSING", "NOT_IMPLEMENTED"] },
+    "schema_version": {
+      "const": "2.0"
+    },
+    "router_invocation_id": {
+      "type": "string",
+      "pattern": "^router-[0-9TZ]+-[0-9a-f]+$"
+    },
+    "mode": {
+      "enum": [
+        "fixture",
+        "detect_only",
+        "live_dry_run",
+        "live"
+      ]
+    },
+    "review_target_kind": {
+      "enum": [
+        "plan_only",
+        "code_only",
+        "execution_only_no_code",
+        "execution_plus_code",
+        "no_artifact",
+        "ambiguous_mixed_artifacts"
+      ]
+    },
+    "decision": {
+      "enum": [
+        "APPROVED",
+        "REQUIRES_CHANGES",
+        "FAILED",
+        "REVIEW_TARGET_MISSING",
+        "NOT_IMPLEMENTED"
+      ]
+    },
     "validator_signature": {
       "type": "object",
-      "required": ["validator", "schema_version"],
+      "required": [
+        "validator",
+        "schema_version"
+      ],
       "properties": {
-        "validator": { "type": "string" },
-        "schema_version": { "type": "string" }
+        "validator": {
+          "type": "string"
+        },
+        "schema_version": {
+          "type": "string"
+        }
       }
     },
-    "recorded_at": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$" },
-    "findings": { "type": "array" },
-    "execution_artifact_ref": { "type": "string" },
-    "execution_artifact_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
-    "outcome_validator_status": { "enum": ["passed", "failed", "not_run_blocked"] },
-    "stage_order": { "type": "array", "items": { "type": "string" } },
-    "codex_raw_result_path": { "type": "string" },
-    "codex_raw_result_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
-    "codex_mapped_result_path": { "type": "string" },
-    "codex_mapped_result_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
-    "codex_review_status": { "enum": ["completed", "requires_changes", "transport_failed", "wrapper_schema_fail", "not_run_blocked"] },
-    "codex_review_kind": { "enum": ["plan", "execution_outcome", "code_diff", "combined"] },
-    "raw_result_path": { "type": "string" },
-    "raw_result_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
-    "diff_source": { "type": "string" },
-    "diff_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
-    "patch_generation_method": { "type": "string" },
-    "claude_review_origin": { "enum": ["skill_orchestrated", "not_applicable"] },
-    "failure_code": { "type": "string" },
-    "detected_artifact_set": { "type": "array" }
+    "recorded_at": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$"
+    },
+    "findings": {
+      "type": "array"
+    },
+    "execution_artifact_ref": {
+      "type": "string"
+    },
+    "execution_artifact_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "outcome_validator_status": {
+      "enum": [
+        "passed",
+        "failed",
+        "not_run_blocked"
+      ]
+    },
+    "stage_order": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "codex_raw_result_path": {
+      "type": "string"
+    },
+    "codex_raw_result_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "codex_mapped_result_path": {
+      "type": "string"
+    },
+    "codex_mapped_result_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "codex_review_status": {
+      "enum": [
+        "completed",
+        "requires_changes",
+        "transport_failed",
+        "wrapper_schema_fail",
+        "not_run_blocked"
+      ]
+    },
+    "codex_review_kind": {
+      "enum": [
+        "plan",
+        "execution_outcome",
+        "code_diff",
+        "combined"
+      ]
+    },
+    "raw_result_path": {
+      "type": "string"
+    },
+    "raw_result_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "diff_source": {
+      "type": "string"
+    },
+    "diff_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "patch_generation_method": {
+      "type": "string"
+    },
+    "claude_review_origin": {
+      "enum": [
+        "skill_orchestrated",
+        "not_applicable"
+      ]
+    },
+    "failure_code": {
+      "type": "string"
+    },
+    "detected_artifact_set": {
+      "type": "array"
+    },
+    "child_review_ledger_path": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Path to the child review ledger JSON (gd-stage-dispatch-ledger format). Required for execution review APPROVED routes."
+    },
+    "child_review_ledger_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "SHA-256 hex of child_review_ledger_path file (optional but recommended)."
+    }
   },
   "allOf": [
     {
       "if": {
         "properties": {
-          "review_target_kind": { "const": "execution_only_no_code" },
-          "mode": { "const": "live" },
-          "decision": { "const": "APPROVED" }
+          "review_target_kind": {
+            "const": "execution_only_no_code"
+          },
+          "mode": {
+            "const": "live"
+          },
+          "decision": {
+            "const": "APPROVED"
+          }
         }
       },
       "then": {
@@ -68,16 +187,23 @@
           "codex_mapped_result_path",
           "codex_mapped_result_hash",
           "codex_review_status",
-          "codex_review_kind"
+          "codex_review_kind",
+          "child_review_ledger_path"
         ]
       }
     },
     {
       "if": {
         "properties": {
-          "review_target_kind": { "const": "execution_plus_code" },
-          "mode": { "const": "live" },
-          "decision": { "const": "APPROVED" }
+          "review_target_kind": {
+            "const": "execution_plus_code"
+          },
+          "mode": {
+            "const": "live"
+          },
+          "decision": {
+            "const": "APPROVED"
+          }
         }
       },
       "then": {
@@ -91,7 +217,8 @@
           "codex_mapped_result_path",
           "codex_mapped_result_hash",
           "codex_review_status",
-          "codex_review_kind"
+          "codex_review_kind",
+          "child_review_ledger_path"
         ]
       }
     }

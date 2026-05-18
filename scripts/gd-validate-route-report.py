@@ -498,13 +498,33 @@ def validate_route_report(data: dict) -> list[str]:
     }
     if (mode_str == "live" and decision_str == "APPROVED"
             and rtk_str in _child_review_required_kinds):
-        if not data.get("child_review_ledger_path"):
+        ledger_path_str = data.get("child_review_ledger_path")
+        if not ledger_path_str:
             violations.append(
                 f"{rtk_str}/live/APPROVED: 'child_review_ledger_path' required — "
                 "APPROVED closure requires a mandatory child code/execution review; "
                 "missing ledger means the child review was never recorded "
                 "(CLOSURE_INELIGIBLE: missing_child_review_ledger)"
             )
+        else:
+            # D3 (G4 symmetry): validate ledger file physically exists and is valid JSON
+            import json as _json
+            _ledger_p = Path(ledger_path_str)
+            if not _ledger_p.is_file():
+                violations.append(
+                    f"{rtk_str}/live/APPROVED: child_review_ledger_path file not found — "
+                    f"{ledger_path_str!r} does not exist on disk "
+                    "(CLOSURE_INELIGIBLE: ledger_file_not_found)"
+                )
+            else:
+                try:
+                    _json.loads(_ledger_p.read_text(encoding="utf-8"))
+                except (OSError, _json.JSONDecodeError) as _e:
+                    violations.append(
+                        f"{rtk_str}/live/APPROVED: child_review_ledger_path invalid JSON — "
+                        f"{_ledger_p.name}: {_e} "
+                        "(CLOSURE_INELIGIBLE: ledger_invalid_json)"
+                    )
 
     # Step 5 — code_only LOCAL_STATIC_ONLY cannot claim APPROVED.
     # LOCAL_STATIC_ONLY is a placeholder status meaning skill_orchestrated review has
