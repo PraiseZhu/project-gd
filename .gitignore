@@ -31,3 +31,18 @@ logs/
 
 # === Tip: 大数据目录建议加 .nosync 后缀，iCloud 不同步 ===
 # 例：raw-data.nosync/  models.nosync/
+
+# === codex-chain 镜像兜底排除（belt-and-suspenders）===
+mirrors/codex-chain/**/auth.json
+mirrors/codex-chain/**/*.sqlite*
+mirrors/codex-chain/**/sessions/
+mirrors/codex-chain/**/cache/
+mirrors/codex-chain/**/.tmp/
+mirrors/codex-chain/**/tmp/
+mirrors/codex-chain/**/shell_snapshots/
+mirrors/codex-chain/**/archived_sessions/
+mirrors/codex-chain/**/log/
+mirrors/codex-chain/**/.run-jitter-salt
+mirrors/codex-chain/**/__pycache__/
+mirrors/codex-chain/**/computer-use/
+mirrors/codex-chain/**/ambient-suggestions/

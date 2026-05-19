@@ -53,6 +53,8 @@ Project GD/
 │   └── old-review-prompt-readonly.md  # 只读提取的旧 review prompt 对照
 ├── reports/                        # 阶段报告 / A/B / parity / final-validation
 ├── docs/                           # 设计文档（按需）
+├── mirrors/                        # 外部链路只读快照镜像（不动 live runtime）
+│   └── codex-chain/                # L1 codex 二进制 + L2 ~/.codex 策略文件快照
 └── history/                        # ECC 会话数据（不入 git）
     ├── checkpoints/
     └── daily/
@@ -124,3 +126,10 @@ REVIEW_STANDARD: Project GD/prompts/rev-review-standard.md
 - new-project skill 创建，generic 模板
 - v6 总计划归档为 `PROJECT_GOAL.md`
 - 目录结构按 v6 计划重组（删除空 src/config/data/tests，新增 bin/templates/prompts/schema/scripts/baselines/fixtures/reports）
+
+### 2026-05-19 codex-chain mirror 引入
+- 新增 `mirrors/codex-chain/` 存放 L1/L2 codex 链路的只读快照（74 个文件，~888KB）
+- 配 `bin/gd-sync-codex-chain.sh` 做白名单 rsync + secret 兜底扫描 + 内容哈希幂等检测
+- 目的：让 Sentinel v1.6 之后绕过 L3 的 review 也能被 GD git 审计到 L1/L2 层变更
+- 范围：不在 PROJECT_GOAL.md 的 4 个 Phase 内，仅作为 lab 辅助基础设施
+- 注意：`default.rules` 含真实 API key，sync 后自动 redact 为 `<REDACTED>`

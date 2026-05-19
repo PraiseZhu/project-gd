@@ -1,0 +1,80 @@
+personality = "pragmatic"
+model = "gpt-5.5"
+model_reasoning_effort = "xhigh"
+
+
+notify = ["/Users/praise/.codex/computer-use/Codex Computer Use.app/Contents/SharedSupport/SkyComputerUseClient.app/Contents/MacOS/SkyComputerUseClient", "turn-ended"]
+approval_policy = "never"
+approvals_reviewer = "user"
+sandbox_mode = "danger-full-access"
+
+[projects."/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Codex"]
+trust_level = "trusted"
+
+[projects."/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project Open Design"]
+trust_level = "trusted"
+
+[projects."/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD"]
+trust_level = "trusted"
+
+[projects."/Users/praise"]
+trust_level = "trusted"
+
+[projects."/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project AKB"]
+trust_level = "trusted"
+
+[projects."/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code"]
+trust_level = "trusted"
+
+[plugins."slack@openai-curated"]
+enabled = true
+
+[plugins."figma@openai-curated"]
+enabled = true
+
+[plugins."github@openai-curated"]
+enabled = true
+
+[plugins."cloudflare@openai-curated"]
+enabled = true
+
+[plugins."documents@openai-primary-runtime"]
+enabled = true
+
+[plugins."spreadsheets@openai-primary-runtime"]
+enabled = true
+
+[plugins."presentations@openai-primary-runtime"]
+enabled = true
+
+[plugins."computer-use@openai-bundled"]
+enabled = true
+
+[plugins."hyperframes@openai-curated"]
+enabled = true
+
+[plugins."browser@openai-bundled"]
+enabled = true
+
+[plugins."chrome@openai-bundled"]
+enabled = true
+
+[marketplaces.openai-bundled]
+last_updated = "2026-05-17T11:42:20Z"
+source_type = "local"
+source = "/Users/praise/.codex/.tmp/bundled-marketplaces/openai-bundled"
+
+[marketplaces.openai-primary-runtime]
+last_updated = "2026-05-17T12:25:57Z"
+source_type = "local"
+source = "/Users/praise/.cache/codex-runtimes/codex-primary-runtime/plugins/openai-primary-runtime"
+
+[features]
+memories = true
+
+[memories]
+generate_memories = true
+use_memories = true
+
+[tui.model_availability_nux]
+"gpt-5.5" = 1

@@ -1,0 +1,13 @@
+version = 1
+id = "weekly-codex-memory-refinement"
+kind = "cron"
+name = "Weekly Codex Memory Refinement"
+prompt = "Run `node ai-infra/sync/codex-session-memory.mjs weekly --line-budget 800 --stability-wait-ms 1500`. Then run `node ai-infra/sync/codex-session-memory.mjs status` and read `ai-infra/reports/codex-session-memory-report.md`. Report the coverage count, missing/duplicate/partial/corrupt counts, raw session directory count, profile fact count, stable profile fact count, and `user-profile.md` line count. Do not enable Codex hooks, plugins, or MCP servers. If the script fails, report the command error and the last successful step."
+status = "ACTIVE"
+rrule = "FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=0"
+model = "gpt-5.2"
+reasoning_effort = "low"
+execution_environment = "local"
+cwds = ["/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Codex"]
+created_at = 1777192046356
+updated_at = 1777192046356
