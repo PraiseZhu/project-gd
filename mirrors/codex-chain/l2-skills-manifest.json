@@ -1,0 +1,1730 @@
+[
+  {
+    "name": "cc-about-me",
+    "description": "加载个人健康档案全量数据。触发词：about me、关于我、我的健康、健康档案。",
+    "file_count": 4,
+    "total_bytes": 5447
+  },
+  {
+    "name": "cc-agent-design-patterns",
+    "description": ">-",
+    "file_count": 4,
+    "total_bytes": 10357
+  },
+  {
+    "name": "cc-agent-harness-construction",
+    "description": "Design and optimize AI agent action spaces, tool definitions, and observation formatting for higher completion rates.",
+    "file_count": 4,
+    "total_bytes": 5846
+  },
+  {
+    "name": "cc-agent-introspection-debugging",
+    "description": "Structured self-debugging workflow for AI agent failures using capture, diagnosis, contained recovery, and introspection reports.",
+    "file_count": 4,
+    "total_bytes": 9457
+  },
+  {
+    "name": "cc-agent-sort",
+    "description": "Build an evidence-backed ECC install plan for a specific repo by sorting skills, commands, rules, hooks, and extras into DAILY vs LIBRARY buckets using parallel repo-aware review passes. Use when ECC should be trimmed to what a project actually needs instea...",
+    "file_count": 4,
+    "total_bytes": 10099
+  },
+  {
+    "name": "cc-agentic-design",
+    "description": ">-",
+    "file_count": 4,
+    "total_bytes": 10205
+  },
+  {
+    "name": "cc-agentic-engineering",
+    "description": "Operate as an agentic engineer using eval-first execution, decomposition, and cost-aware model routing.",
+    "file_count": 4,
+    "total_bytes": 5269
+  },
+  {
+    "name": "cc-agentic-validate",
+    "description": "当用户提到\\\"agentic\\\"时自动触发，对当前方案执行技术可行性 + agentic 合规双重验证。不是 /workflow 的 P1 辩论。",
+    "file_count": 4,
+    "total_bytes": 7588
+  },
+  {
+    "name": "cc-ai-first-engineering",
+    "description": "Engineering operating model for teams where AI agents generate a large share of implementation output.",
+    "file_count": 4,
+    "total_bytes": 4951
+  },
+  {
+    "name": "cc-ai-regression-testing",
+    "description": "Regression testing strategies for AI-assisted development. Sandbox-mode API testing without database dependencies, automated bug-check workflows, and patterns to catch AI blind spots where the same model writes and reviews code.",
+    "file_count": 4,
+    "total_bytes": 15750
+  },
+  {
+    "name": "cc-ai-stupid",
+    "description": ">-",
+    "file_count": 4,
+    "total_bytes": 5388
+  },
+  {
+    "name": "cc-akb-collector",
+    "description": ">-",
+    "file_count": 4,
+    "total_bytes": 4759
+  },
+  {
+    "name": "cc-akb-curator",
+    "description": ">-",
+    "file_count": 4,
+    "total_bytes": 4840
+  },
+  {
+    "name": "cc-akb-monitor",
+    "description": ">-",
+    "file_count": 4,
+    "total_bytes": 4547
+  },
+  {
+    "name": "cc-akb-search",
+    "description": ">-",
+    "file_count": 6,
+    "total_bytes": 10034
+  },
+  {
+    "name": "cc-akb-status",
+    "description": ">-",
+    "file_count": 4,
+    "total_bytes": 3607
+  },
+  {
+    "name": "cc-akb-synthesizer",
+    "description": ">-",
+    "file_count": 4,
+    "total_bytes": 5574
+  },
+  {
+    "name": "cc-akb-translator",
+    "description": ">-",
+    "file_count": 4,
+    "total_bytes": 5450
+  },
+  {
+    "name": "cc-all-plan",
+    "description": "Collaborative planning using abstract roles (designer + inspiration + reviewer).",
+    "file_count": 5,
+    "total_bytes": 19851
+  },
+  {
+    "name": "cc-android-clean-architecture",
+    "description": "Clean Architecture patterns for Android and Kotlin Multiplatform projects — module structure, dependency rules, UseCases, Repositories, and data layer patterns.",
+    "file_count": 4,
+    "total_bytes": 12690
+  },
+  {
+    "name": "cc-api-connector-builder",
+    "description": "Build a new API connector or provider by matching the target repo's existing integration pattern exactly. Use when adding one more integration without inventing a second architecture.",
+    "file_count": 4,
+    "total_bytes": 6819
+  },
+  {
+    "name": "cc-api-design",
+    "description": "REST API design patterns including resource naming, status codes, pagination, filtering, error responses, versioning, and rate limiting for production APIs.",
+    "file_count": 4,
+    "total_bytes": 16810
+  },
+  {
+    "name": "cc-api-reverse-engineering",
+    "description": "Web 未公开 API 端点逆向发现与验证。包含浏览器 fetch 拦截、SSR 数据分析、JS bundle API 路径批量提取、端点参数试探、Node.js 快速验证模板。当用户需要发现网站的内部 API、爬取没有公开文档的接口、逆向工程 Web 应用数据源时使用。",
+    "file_count": 4,
+    "total_bytes": 8309
+  },
+  {
+    "name": "cc-apple-photos",
+    "description": "管理 macOS 照片应用中的照片和视频。通过 osxphotos 工具查询、导出、编辑照片元数据、管理相册等。当用户提到照片、相册、Photos、图片管理、照片导出、EXIF、照片搜索时使用。",
+    "file_count": 4,
+    "total_bytes": 9405
+  },
+  {
+    "name": "cc-architecture-diagram",
+    "description": ">-",
+    "file_count": 5,
+    "total_bytes": 14848
+  },
+  {
+    "name": "cc-article-writing",
+    "description": "Write articles, guides, blog posts, tutorials, newsletter issues, and other long-form content in a distinctive voice derived from supplied examples or brand guidance. Use when the user wants polished written content longer than a paragraph, especially when ...",
+    "file_count": 4,
+    "total_bytes": 6806
+  },
+  {
+    "name": "cc-ask",
+    "description": "Async via ask, end turn immediately; use when user explicitly delegates to any AI provider (gemini/codex/opencode/droid); NOT for questions about the providers themselves.",
+    "file_count": 4,
+    "total_bytes": 4338
+  },
+  {
+    "name": "cc-automation-audit-ops",
+    "description": "Evidence-first automation inventory and overlap audit workflow for ECC. Use when the user wants to know which jobs, hooks, connectors, MCP servers, or wrappers are live, broken, redundant, or missing before fixing anything.",
+    "file_count": 4,
+    "total_bytes": 8368
+  },
+  {
+    "name": "cc-autonew",
+    "description": "Send /new to a provider's pane to start a new session without context injection.",
+    "file_count": 4,
+    "total_bytes": 3724
+  },
+  {
+    "name": "cc-autonomous-loops",
+    "description": "Patterns and architectures for autonomous Claude Code loops — from simple sequential pipelines to RFC-driven multi-agent DAG systems.",
+    "file_count": 4,
+    "total_bytes": 28640
+  },
+  {
+    "name": "cc-backend-patterns",
+    "description": "Backend architecture patterns, API design, database optimization, and server-side best practices for Node.js, Express, and Next.js API routes.",
+    "file_count": 4,
+    "total_bytes": 17510
+  },
+  {
+    "name": "cc-batch-design-cn",
+    "description": "|",
+    "file_count": 4,
+    "total_bytes": 42456
+  },
+  {
+    "name": "cc-blueprint",
+    "description": ">-",
+    "file_count": 4,
+    "total_bytes": 8506
+  },
+  {
+    "name": "cc-brand-voice",
+    "description": "Build a source-derived writing style profile from real posts, essays, launch notes, docs, or site copy, then reuse that profile across content, outreach, and social workflows. Use when the user wants voice consistency without generic AI writing tropes.",
+    "file_count": 5,
+    "total_bytes": 8921
+  },
+  {
+    "name": "cc-browse",
+    "description": "|",
+    "file_count": 4,
+    "total_bytes": 31167
+  },
+  {
+    "name": "cc-browser-automation-cn",
+    "description": "浏览器自动化与网页抓取。通过 Playwright MCP 导航网站、提取内容、截图、模拟设备。当用户需要爬取网页、竞品分析、截图或浏览器自动化时使用。关键词：爬取、抓取、截图、网页、竞品分析、scrape、crawl、screenshot、browse。",
+    "file_count": 4,
+    "total_bytes": 11119
+  },
+  {
+    "name": "cc-carrier-relationship-management",
+    "description": ">",
+    "file_count": 4,
+    "total_bytes": 27326
+  },
+  {
+    "name": "cc-chaku-deploy",
+    "description": "Project Chaku 一键部署 — 标准化环境搭建、依赖安装、配置校验、LaunchAgent 安装。触发词：chaku 部署、deploy chaku、安装 chaku。",
+    "file_count": 4,
+    "total_bytes": 5991
+  },
+  {
+    "name": "cc-chaku-health-check",
+    "description": "Project Chaku 运行健康检查 — 快速诊断系统是否能正常运行。触发词：chaku 状态、chaku 健康、能跑吗、health check。",
+    "file_count": 4,
+    "total_bytes": 6089
+  },
+  {
+    "name": "cc-chinese-typesetting",
+    "description": "中文排版通用规范 — 所有涉及中文文本输出的场景（UI、文档、卡片）都必须遵守。触发词：排版、换行、文字断行、中文显示、中文排版。",
+    "file_count": 4,
+    "total_bytes": 5338
+  },
+  {
+    "name": "cc-ckm-banner-design",
+    "description": "Design banners for social media, ads, website heroes, creative assets, and print. Multiple art direction options with AI-generated visuals. Actions: design, create, generate banner. Platforms: Facebook, Twitter/X, LinkedIn, YouTube, Instagram, Google Displa...",
+    "file_count": 5,
+    "total_bytes": 17758
+  },
+  {
+    "name": "cc-ckm-brand",
+    "description": "Brand voice, visual identity, messaging frameworks, asset management, brand consistency. Activate for branded content, tone of voice, marketing assets, brand compliance, style guides.",
+    "file_count": 20,
+    "total_bytes": 94169
+  },
+  {
+    "name": "cc-ckm-design",
+    "description": "Comprehensive design skill: brand identity, design tokens, UI styling, logo generation (55 styles, Gemini AI), corporate identity program (50 deliverables, CIP mockups), HTML presentations (Chart.js), banner design (22 styles, social/ads/web/print), icon de...",
+    "file_count": 38,
+    "total_bytes": 252113
+  },
+  {
+    "name": "cc-ckm-design-system",
+    "description": "Token [REDACTED], component specifications, and slide generation. Three-layer tokens (primitive→semantic→component), CSS variables, spacing/typography scales, component specs, strategic slide creation. Use for design tokens, systematic design, brand-complia...",
+    "file_count": 29,
+    "total_bytes": 185455
+  },
+  {
+    "name": "cc-ckm-slides",
+    "description": "Create strategic HTML presentations with Chart.js, design tokens, responsive layouts, copywriting formulas, and contextual slide strategies.",
+    "file_count": 9,
+    "total_bytes": 23778
+  },
+  {
+    "name": "cc-ckm-ui-styling",
+    "description": "Create beautiful, accessible user interfaces with shadcn/ui components (built on Radix UI + Tailwind), Tailwind CSS utility-first styling, and canvas-based visual designs. Use when building user interfaces, implementing design systems, creating responsive l...",
+    "file_count": 46,
+    "total_bytes": 307236
+  },
+  {
+    "name": "cc-claude-api",
+    "description": "Anthropic Claude API patterns for Python and TypeScript. Covers Messages API, streaming, tool use, vision, extended thinking, batches, prompt caching, and Claude Agent SDK. Use when building applications with the Claude API or Anthropic SDKs.",
+    "file_count": 4,
+    "total_bytes": 12562
+  },
+  {
+    "name": "cc-claude-devfleet",
+    "description": "Orchestrate multi-agent coding tasks via Claude DevFleet — plan projects, dispatch parallel agents in isolated worktrees, monitor progress, and read structured reports.",
+    "file_count": 4,
+    "total_bytes": 9642
+  },
+  {
+    "name": "cc-clickhouse-io",
+    "description": "ClickHouse database patterns, query optimization, analytics, and data engineering best practices for high-performance analytical workloads.",
+    "file_count": 4,
+    "total_bytes": 14057
+  },
+  {
+    "name": "cc-code-tour",
+    "description": "Create CodeTour `.tour` files — persona-targeted, step-by-step walkthroughs with real file and line anchors. Use for onboarding tours, architecture walkthroughs, PR tours, RCA tours, and structured \\\"explain how this works\\\" requests.",
+    "file_count": 4,
+    "total_bytes": 10610
+  },
+  {
+    "name": "cc-codex-workflow",
+    "description": "Claude-Codex 协作流程的模板和检查清单 — PRD 模板、派发格式、验证清单、交付报告",
+    "file_count": 4,
+    "total_bytes": 32815
+  },
+  {
+    "name": "cc-coding-standards",
+    "description": "Baseline cross-project coding conventions for naming, readability, immutability, and code-quality review. Use detailed frontend or backend skills for framework-specific patterns.",
+    "file_count": 4,
+    "total_bytes": 16565
+  },
+  {
+    "name": "cc-collect",
+    "description": "收件箱处理 — 读取 pending.json 中的投递文件并逐个处理。触发词：收。注意：这不是收工/EOD 流程。",
+    "file_count": 4,
+    "total_bytes": 4745
+  },
+  {
+    "name": "cc-commit-projects",
+    "description": "批量提交所有 Project*/ 的改动（手动触发 + 三道闸 + 用户确认）。触发词：提交代码、提交项目、提交所有项目、commit、git commit。",
+    "file_count": 4,
+    "total_bytes": 6671
+  },
+  {
+    "name": "cc-compose-multiplatform-patterns",
+    "description": "Compose Multiplatform and Jetpack Compose patterns for KMP projects — state management, navigation, theming, performance, and platform-specific UI.",
+    "file_count": 4,
+    "total_bytes": 11870
+  },
+  {
+    "name": "cc-configure-ecc",
+    "description": "Interactive installer for Everything Claude Code — guides users through selecting and installing skills and rules to user-level or project-level directories, verifies paths, and optionally optimizes installed files.",
+    "file_count": 4,
+    "total_bytes": 19973
+  },
+  {
+    "name": "cc-connections-optimizer",
+    "description": "Reorganize the user's X and LinkedIn network with review-first pruning, add/follow recommendations, and channel-specific warm outreach drafted in the user's real voice. Use when the user wants to clean up following lists, grow toward current priorities, or ...",
+    "file_count": 4,
+    "total_bytes": 9607
+  },
+  {
+    "name": "cc-content-engine",
+    "description": "Create platform-native content systems for X, LinkedIn, TikTok, YouTube, newsletters, and repurposed multi-platform campaigns. Use when the user wants social posts, threads, scripts, content calendars, or one source asset adapted cleanly across platforms.",
+    "file_count": 4,
+    "total_bytes": 8334
+  },
+  {
+    "name": "cc-content-hash-cache-pattern",
+    "description": "Cache expensive file processing results using SHA-256 content hashes — path-independent, auto-invalidating, with service layer separation.",
+    "file_count": 4,
+    "total_bytes": 9449
+  },
+  {
+    "name": "cc-continue",
+    "description": "Attach the newest context-transfer Markdown from the current project's ./.ccb/history/ into Claude using @file. Use when the user types /continue or asks to resume with the latest transfer file in this project.",
+    "file_count": 5,
+    "total_bytes": 5095
+  },
+  {
+    "name": "cc-continuous-agent-loop",
+    "description": "Patterns for continuous autonomous agent loops with quality gates, evals, and recovery controls.",
+    "file_count": 4,
+    "total_bytes": 4655
+  },
+  {
+    "name": "cc-continuous-learning",
+    "description": "Automatically extract reusable patterns from Claude Code sessions and save them as learned skills for future use.",
+    "file_count": 5,
+    "total_bytes": 10407
+  },
+  {
+    "name": "cc-continuous-learning-v2",
+    "description": "Instinct-based learning system that observes sessions via hooks, creates atomic instincts with confidence scoring, and evolves them into skills/commands/agents. v2.1 adds project-scoped instincts to prevent cross-project contamination.",
+    "file_count": 12,
+    "total_bytes": 164412
+  },
+  {
+    "name": "cc-cost-aware-llm-pipeline",
+    "description": "Cost optimization patterns for LLM API usage — model routing by task complexity, budget tracking, retry logic, and prompt caching.",
+    "file_count": 4,
+    "total_bytes": 9534
+  },
+  {
+    "name": "cc-council",
+    "description": "Convene a four-voice council for ambiguous decisions, tradeoffs, and go/no-go calls. Use when multiple valid paths exist and you need structured disagreement before choosing.",
+    "file_count": 4,
+    "total_bytes": 9934
+  },
+  {
+    "name": "cc-course-transcription",
+    "description": ">-",
+    "file_count": 4,
+    "total_bytes": 5712
+  },
+  {
+    "name": "cc-cping",
+    "description": "Test connectivity with AI provider (gemini/codex/opencode/droid/claude).",
+    "file_count": 4,
+    "total_bytes": 3586
+  },
+  {
+    "name": "cc-cpp-coding-standards",
+    "description": "C++ coding standards based on the C++ Core Guidelines (isocpp.github.io). Use when writing, reviewing, or refactoring C++ code to enforce modern, safe, and idiomatic practices.",
+    "file_count": 4,
+    "total_bytes": 26260
+  },
+  {
+    "name": "cc-cpp-testing",
+    "description": "Use only when writing/updating/fixing C++ tests, configuring GoogleTest/CTest, diagnosing failing or flaky tests, or adding coverage/sanitizers.",
+    "file_count": 4,
+    "total_bytes": 12793
+  },
+  {
+    "name": "cc-crosspost",
+    "description": "Multi-platform content distribution across X, LinkedIn, Threads, and Bluesky. Adapts content per platform using content-engine patterns. Never posts identical content cross-platform. Use when the user wants to distribute content across social platforms.",
+    "file_count": 4,
+    "total_bytes": 7156
+  },
+  {
+    "name": "cc-csharp-testing",
+    "description": "C# and .NET testing patterns with xUnit, FluentAssertions, mocking, integration tests, and test organization best practices.",
+    "file_count": 4,
+    "total_bytes": 12178
+  },
+  {
+    "name": "cc-customer-billing-ops",
+    "description": "Operate customer billing workflows such as subscriptions, refunds, churn triage, billing-portal recovery, and plan analysis using connected billing tools like Stripe. Use when the user needs to help a customer, inspect subscription state, or manage revenue-...",
+    "file_count": 4,
+    "total_bytes": 8411
+  },
+  {
+    "name": "cc-customs-trade-compliance",
+    "description": ">",
+    "file_count": 4,
+    "total_bytes": 32520
+  },
+  {
+    "name": "cc-dart-flutter-patterns",
+    "description": "Production-ready Dart and Flutter patterns covering null safety, immutable state, async composition, widget architecture, popular state management frameworks (BLoC, Riverpod, Provider), GoRouter navigation, Dio networking, Freezed code generation, and clean...",
+    "file_count": 4,
+    "total_bytes": 20219
+  },
+  {
+    "name": "cc-dashboard-builder",
+    "description": "Build monitoring dashboards that answer real operator questions for Grafana, SigNoz, and similar platforms. Use when turning metrics into a working dashboard instead of a vanity board.",
+    "file_count": 4,
+    "total_bytes": 5915
+  },
+  {
+    "name": "cc-data-scraper-agent",
+    "description": "Build a fully automated AI-powered data collection agent for any public source — job boards, prices, news, GitHub, sports, anything. Scrapes on a schedule, enriches data with a free LLM (Gemini Flash), stores results in Notion/Sheets/Supabase, and learns fr...",
+    "file_count": 4,
+    "total_bytes": 28599
+  },
+  {
+    "name": "cc-database-migrations",
+    "description": "Database migration best practices for schema changes, data migrations, rollbacks, and zero-downtime deployments across PostgreSQL, MySQL, and common ORMs (Prisma, Drizzle, Kysely, Django, TypeORM, golang-migrate).",
+    "file_count": 4,
+    "total_bytes": 15710
+  },
+  {
+    "name": "cc-debug-verify",
+    "description": ">-",
+    "file_count": 4,
+    "total_bytes": 6382
+  },
+  {
+    "name": "cc-deep-research",
+    "description": ">-",
+    "file_count": 4,
+    "total_bytes": 22862
+  },
+  {
+    "name": "cc-deep-research-cn",
+    "description": ">-",
+    "file_count": 4,
+    "total_bytes": 9447
+  },
+  {
+    "name": "cc-deep-research-legacy",
+    "description": "Multi-source deep research using firecrawl and exa MCPs. Searches the web, synthesizes findings, and delivers cited reports with source attribution. Use when the user wants thorough research on any topic with evidence and citations.",
+    "file_count": 4,
+    "total_bytes": 8871
+  },
+  {
+    "name": "cc-deeplearning-transcript",
+    "description": ">-",
+    "file_count": 4,
+    "total_bytes": 5827
+  },
+  {
+    "name": "cc-defi-amm-security",
+    "description": "Security checklist for Solidity AMM contracts, liquidity pools, and swap flows. Covers reentrancy, CEI ordering, donation or inflation attacks, oracle manipulation, slippage, admin controls, and integer math.",
+    "file_count": 4,
+    "total_bytes": 8662
+  },
+  {
+    "name": "cc-defuddle",
+    "description": "Extract clean markdown content from web pages using Defuddle CLI, removing clutter and navigation to save tokens. Use instead of WebFetch when the user provides a URL to read or analyze, for online documentation, articles, blog posts, or any standard web pa...",
+    "file_count": 4,
+    "total_bytes": 4908
+  },
+  {
+    "name": "cc-deployment-patterns",
+    "description": "Deployment workflows, CI/CD pipeline patterns, Docker containerization, health checks, rollback strategies, and production readiness checklists for web applications.",
+    "file_count": 4,
+    "total_bytes": 14948
+  },
+  {
+    "name": "cc-design-consultation",
+    "description": "|",
+    "file_count": 4,
+    "total_bytes": 56144
+  },
+  {
+    "name": "cc-design-consultation-cn",
+    "description": "|",
+    "file_count": 4,
+    "total_bytes": 56006
+  },
+  {
+    "name": "cc-design-html",
+    "description": "|",
+    "file_count": 4,
+    "total_bytes": 45726
+  },
+  {
+    "name": "cc-design-plan-review-cn",
+    "description": "|",
+    "file_count": 4,
+    "total_bytes": 74442
+  },
+  {
+    "name": "cc-design-review",
+    "description": "|",
+    "file_count": 4,
+    "total_bytes": 67885
+  },
+  {
+    "name": "cc-design-review-cn",
+    "description": "|",
+    "file_count": 4,
+    "total_bytes": 67837
+  },
+  {
+    "name": "cc-design-shotgun",
+    "description": "|",
+    "file_count": 4,
+    "total_bytes": 42535
+  },
+  {
+    "name": "cc-design-to-html-cn",
+    "description": "|",
+    "file_count": 4,
+    "total_bytes": 45745
+  },
+  {
+    "name": "cc-django-patterns",
+    "description": "Django architecture patterns, REST API design with DRF, ORM best practices, caching, signals, middleware, and production-grade Django apps.",
+    "file_count": 4,
+    "total_bytes": 24878
+  },
+  {
+    "name": "cc-django-security",
+    "description": "Django security best practices, authentication, authorization, CSRF protection, SQL injection prevention, XSS prevention, and secure deployment configurations.",
+    "file_count": 4,
+    "total_bytes": 19636
+  },
+  {
+    "name": "cc-django-tdd",
+    "description": "Django testing strategies with pytest-django, TDD methodology, factory_boy, mocking, coverage, and testing Django REST Framework APIs.",
+    "file_count": 4,
+    "total_bytes": 24655
+  },
+  {
+    "name": "cc-django-verification",
+    "description": "Verification loop for Django projects: migrations, linting, tests with coverage, security scans, and deployment readiness checks before release or PR.",
+    "file_count": 4,
+    "total_bytes": 15434
+  },
+  {
+    "name": "cc-dmux-workflows",
+    "description": "Multi-agent orchestration using dmux (tmux pane manager for AI agents). Patterns for parallel agent workflows across Claude Code, Codex, OpenCode, and other harnesses. Use when running multiple agent sessions in parallel or coordinating multi-agent developm...",
+    "file_count": 4,
+    "total_bytes": 10479
+  },
+  {
+    "name": "cc-docker-patterns",
+    "description": "Docker and Docker Compose patterns for local development, container security, networking, volume strategies, and multi-service orchestration.",
+    "file_count": 4,
+    "total_bytes": 11935
+  },
+  {
+    "name": "cc-docs",
+    "description": "文档更新工作流 — 更新 README、CLAUDE.md、codemap、API 文档",
+    "file_count": 4,
+    "total_bytes": 3833
+  },
+  {
+    "name": "cc-doki-command-trigger",
+    "description": "PROJECT DOKI 飞书命令触发 — 在群里 @机器人 发命令自动执行。触发词：webhook、命令触发、@机器人、飞书命令。",
+    "file_count": 4,
+    "total_bytes": 5181
+  },
+  {
+    "name": "cc-doki-daily-brief",
+    "description": "PROJECT DOKI 每日项目快报 — 每天 18:30 私信推送设计相关动态 + 组员行为分析 + 管理者自省。触发词：每日快报、今日快报、daily、今天工作、组员分析。",
+    "file_count": 4,
+    "total_bytes": 5697
+  },
+  {
+    "name": "cc-doki-data-quality",
+    "description": "PROJECT DOKI 数据采集质量分析 — 分析消息采集的信噪比、穿透机制效果、过滤命中率。触发词：采集质量、信噪比、穿透效果、过滤分析、数据质量、采集分析。",
+    "file_count": 4,
+    "total_bytes": 7405
+  },
+  {
+    "name": "cc-doki-deploy",
+    "description": "PROJECT DOKI 一键部署/更新 — 标准化环境搭建、依赖安装、配置校验、LaunchAgent 安装。触发词：部署、deploy、安装 doki、搭建环境、初始化项目。",
+    "file_count": 4,
+    "total_bytes": 7284
+  },
+  {
+    "name": "cc-doki-dm-preview",
+    "description": "PROJECT DOKI 私信预览验证 — 推送到群之前先发私信确认内容和格式。触发词：预览周报、先看一下、验证一下、preview、发我私信看看。",
+    "file_count": 4,
+    "total_bytes": 5898
+  },
+  {
+    "name": "cc-doki-full-verification",
+    "description": "PROJECT DOKI 全功能验证 — 一键测试所有模块是否正常。触发词：验证、测试、检查、verify、跑一遍。",
+    "file_count": 4,
+    "total_bytes": 5162
+  },
+  {
+    "name": "cc-doki-group-management",
+    "description": "PROJECT DOKI 群管理 — 新增/移除监控群。触发词：加群、新增群、移除群、更新群列表、群配置。",
+    "file_count": 4,
+    "total_bytes": 5478
+  },
+  {
+    "name": "cc-doki-health-check",
+    "description": "PROJECT DOKI 运行健康检查 — 快速诊断系统是否能正常运行。触发词：健康检查、系统状态、能跑吗、health check、doki 状态。",
+    "file_count": 4,
+    "total_bytes": 7000
+  },
+  {
+    "name": "cc-doki-history-weekly-report",
+    "description": "PROJECT DOKI 历史周报查看与对比 — 查看过往周报、对比不同周的变化。触发词：历史周报、之前的周报、上周周报、周报对比、查看存档。",
+    "file_count": 4,
+    "total_bytes": 6305
+  },
+  {
+    "name": "cc-doki-keyword-management",
+    "description": "PROJECT DOKI 关键词管理 — 新增/更新消息过滤关键词。触发词：加关键词、修改关键词、新项目关键词、更新过滤词。",
+    "file_count": 4,
+    "total_bytes": 6655
+  },
+  {
+    "name": "cc-doki-people-management",
+    "description": "PROJECT DOKI 人员管理 — 新增/更新组员、对接人、需求方。触发词：加人、新增人员、更新人员、修改组员、修改对接人、修改需求方。",
+    "file_count": 4,
+    "total_bytes": 6659
+  },
+  {
+    "name": "cc-doki-permissions",
+    "description": "PROJECT DOKI 飞书应用权限管理 — 开通新权限、发版审核、外部群配置。触发词：飞书权限、开通权限、发版、审核、外部群、权限不足。",
+    "file_count": 4,
+    "total_bytes": 6880
+  },
+  {
+    "name": "cc-doki-priority",
+    "description": "PROJECT DOKI 项目优先级管理 — 基于三维综合评分（项目标签+阶段难度+deadline紧急度）调整任务排序和优先级标签。触发词：优先级、排序、调整优先级、项目权重、标签、加标签、改优先级。",
+    "file_count": 4,
+    "total_bytes": 6992
+  },
+  {
+    "name": "cc-doki-scheduler",
+    "description": "PROJECT DOKI 定时调度管理 — 安装/卸载/查看 macOS LaunchAgent、日志查看、执行状态诊断、手动触发、临时禁用。触发词：定时任务、自动运行、LaunchAgent、调度、每周自动、install scheduler、调度日志、手动跑一次。",
+    "file_count": 4,
+    "total_bytes": 9774
+  },
+  {
+    "name": "cc-doki-troubleshooting",
+    "description": "PROJECT DOKI 调试排错 — 常见问题和排查流程。触发词：doki报错、周报失败、机器人出错、消息拉取失败、LLM超时、卡片发送失败。",
+    "file_count": 4,
+    "total_bytes": 7883
+  },
+  {
+    "name": "cc-doki-weekly-report-run",
+    "description": "PROJECT DOKI 每周周报执行流程 — 一键跑完消息采集、LLM 汇总、卡片推送。触发词：跑周报、跑一次、执行周报、推送工作重点、run doki。",
+    "file_count": 4,
+    "total_bytes": 6459
+  },
+  {
+    "name": "cc-dotnet-patterns",
+    "description": "Idiomatic C# and .NET patterns, conventions, dependency injection, async/await, and best practices for building robust, maintainable .NET applications.",
+    "file_count": 4,
+    "total_bytes": 12750
+  },
+  {
+    "name": "cc-e2e-testing",
+    "description": "Playwright E2E testing patterns, Page Object Model, configuration, CI/CD integration, artifact management, and flaky test strategies.",
+    "file_count": 4,
+    "total_bytes": 11698
+  },
+  {
+    "name": "cc-eagle",
+    "description": "Eagle 素材管理应用操作能力。包括素材搜索/导入/管理、文件夹结构管理、资源库信息查询。当用户需要管理 Eagle 中的素材文件、搜索/导入/整理素材、管理文件夹结构时使用。",
+    "file_count": 4,
+    "total_bytes": 9045
+  },
+  {
+    "name": "cc-eagle-asset-management",
+    "description": "Eagle 素材管理应用操作能力。包括素材搜索/导入/管理、文件夹结构管理、资源库信息查询。当用户需要管理 Eagle 中的素材文件、搜索/导入/整理素材、管理文件夹结构时使用。",
+    "file_count": 4,
+    "total_bytes": 9421
+  },
+  {
+    "name": "cc-ecc-tools-cost-audit",
+    "description": "Evidence-first ECC Tools burn and billing audit workflow. Use when investigating runaway PR creation, quota bypass, premium-model leakage, duplicate jobs, or GitHub App cost spikes in the ECC Tools repo.",
+    "file_count": 4,
+    "total_bytes": 10516
+  },
+  {
+    "name": "cc-email-ops",
+    "description": "Evidence-first mailbox triage, drafting, send verification, and sent-mail-safe follow-up workflow for ECC. Use when the user wants to organize email, draft or send through the real mail surface, or prove what landed in Sent.",
+    "file_count": 4,
+    "total_bytes": 7342
+  },
+  {
+    "name": "cc-end-work-flow",
+    "description": "已废弃，重定向到 workday-eod。",
+    "file_count": 4,
+    "total_bytes": 3440
+  },
+  {
+    "name": "cc-energy-procurement",
+    "description": ">",
+    "file_count": 4,
+    "total_bytes": 33487
+  },
+  {
+    "name": "cc-enterprise-agent-ops",
+    "description": "Operate long-lived agent workloads with observability, security boundaries, and lifecycle management.",
+    "file_count": 4,
+    "total_bytes": 4877
+  },
+  {
+    "name": "cc-ether-interactive-spec",
+    "description": "伊瑟赛季前瞻页交互稿制作规范。基于已交付的 SS3/SS4 参考标准提炼，适用于 Pencil 设计工具。涵盖版块结构、卡片组件、角色展示、技能面板、体验优化模块、标注面板等完整规格。当需要制作伊瑟赛季前瞻交互稿时使用。",
+    "file_count": 4,
+    "total_bytes": 18761
+  },
+  {
+    "name": "cc-etheria-interaction-draft",
+    "description": "伊瑟赛季前瞻页交互稿制作规范。基于已交付的 SS3/SS4 参考标准提炼，适用于 Pencil 设计工具。涵盖版块结构、卡片组件、角色展示、技能面板、体验优化模块、标注面板等完整规格。当需要制作伊瑟赛季前瞻交互稿时使用。",
+    "file_count": 4,
+    "total_bytes": 18736
+  },
+  {
+    "name": "cc-eval-harness",
+    "description": "Formal evaluation framework for Claude Code sessions implementing eval-driven development (EDD) principles",
+    "file_count": 4,
+    "total_bytes": 10072
+  },
+  {
+    "name": "cc-evm-token-redacted",
+    "description": "Prevent silent decimal mismatch bugs across EVM chains. Covers runtime decimal lookup, chain-aware caching, bridged-token [REDACTED] drift, and safe normalization for bots, dashboards, and DeFi tools.",
+    "file_count": 4,
+    "total_bytes": 7754
+  },
+  {
+    "name": "cc-exa-search",
+    "description": "Neural search via Exa MCP for web, code, and company research. Use when the user needs web search, code examples, company intel, people lookup, or AI-powered deep research with Exa's neural search engine.",
+    "file_count": 4,
+    "total_bytes": 7291
+  },
+  {
+    "name": "cc-executable-plan",
+    "description": "Create decision-complete implementation plans using the Codex workspace plan template. Use whenever the user asks for a 方案, 计划, 执行计划, implementation plan, technical plan, roadmap, task plan, refactor plan, migration plan, rollout plan, or asks to plan before coding; especially use when the plan must be detailed enough to avoid review churn.",
+    "file_count": 2,
+    "total_bytes": 4708
+  },
+  {
+    "name": "cc-fal-ai-media",
+    "description": "Unified media generation via fal.ai MCP — image, video, and audio. Covers text-to-image (Nano Banana), text/image-to-video (Seedance, Kling, Veo 3), text-to-speech (CSM-1B), and video-to-audio (ThinkSound). Use when the user wants to generate images, videos...",
+    "file_count": 4,
+    "total_bytes": 11110
+  },
+  {
+    "name": "cc-feishu",
+    "description": "飞书（Lark）服务操作能力。包括文档管理、消息发送、多维表格操作和知识库管理。当用户需要与飞书服务交互、管理文档/表格/群聊、搜索知识库内容时使用。关键词：飞书、Lark、多维表格、文档、消息、群聊、Base、wiki。",
+    "file_count": 4,
+    "total_bytes": 8420
+  },
+  {
+    "name": "cc-feishu-personal-docs",
+    "description": "飞书文档存储规则。所有飞书文档、表格等内容必须存入用户个人云文档目录，禁止使用知识库。当使用飞书 MCP 工具创建文档、导入内容、操作云文档时触发。关键词：飞书、文档、云文档、docx、import、知识库、wiki。",
+    "file_count": 4,
+    "total_bytes": 5990
+  },
+  {
+    "name": "cc-figma-frame-spec",
+    "description": "Figma 交互稿 Frame 层级规范。用于通过 figma-write MCP 创建结构化的移动端/Web 交互原型图。当用户要求制作交互稿、Figma 原型、wireframe 或提到 Frame 规范时使用。",
+    "file_count": 4,
+    "total_bytes": 9635
+  },
+  {
+    "name": "cc-figma-frame-spec-cn",
+    "description": "Figma 交互稿 Frame 层级规范。用于通过 figma-write MCP 创建结构化的移动端/Web 交互原型图。当用户要求制作交互稿、Figma 原型、wireframe 或提到 Frame 规范时使用。",
+    "file_count": 4,
+    "total_bytes": 9714
+  },
+  {
+    "name": "cc-figma-web-hifi-spec",
+    "description": "Web 端高保真原型设计规范。定义字体体系、灰度层级、间距系统、组件尺寸和排版方式。通过 figma-write MCP 创建游戏前瞻页、活动页等 Web 端高保真原型时使用。当用户提到高保真原型、Web 设计稿、前瞻页、活动页、设计规范时使用。",
+    "file_count": 4,
+    "total_bytes": 15100
+  },
+  {
+    "name": "cc-file-ingest",
+    "description": "将任意格式文件（PDF/Word/PPT/Excel/HTML/图片/音频/ZIP 等）通过 markitdown 转换为 Markdown，LLM 合成为标准 AKB 笔记，自动归类入库",
+    "file_count": 4,
+    "total_bytes": 13429
+  },
+  {
+    "name": "cc-file-op",
+    "description": "Delegate file I/O to Codex via FileOpsREQ protocol. Use when Claude needs Codex to modify files.",
+    "file_count": 5,
+    "total_bytes": 6749
+  },
+  {
+    "name": "cc-finance-billing-ops",
+    "description": "Evidence-first revenue, pricing, refunds, team-billing, and billing-model truth workflow for ECC. Use when the user wants a sales snapshot, pricing comparison, duplicate-charge diagnosis, or code-backed billing reality instead of generic payments advice.",
+    "file_count": 4,
+    "total_bytes": 7871
+  },
+  {
+    "name": "cc-foundation-models-on-device",
+    "description": "Apple FoundationModels framework for on-device LLM — text generation, guided generation with @Generable, tool calling, and snapshot streaming in iOS 26+.",
+    "file_count": 4,
+    "total_bytes": 12035
+  },
+  {
+    "name": "cc-frontend-design",
+    "description": "Create distinctive, production-grade frontend interfaces with high design quality. Use when the user asks to build web components, pages, or applications and the visual direction matters as much as the code quality.",
+    "file_count": 4,
+    "total_bytes": 7739
+  },
+  {
+    "name": "cc-frontend-patterns",
+    "description": "Frontend development patterns for React, Next.js, state management, performance optimization, and UI best practices.",
+    "file_count": 4,
+    "total_bytes": 18343
+  },
+  {
+    "name": "cc-frontend-slides",
+    "description": "Create stunning, animation-rich HTML presentations from scratch or by converting PowerPoint files. Use when the user wants to build a presentation, convert a PPT/PPTX to web, or create slides for a talk/pitch. Helps non-designers discover their aesthetic th...",
+    "file_count": 5,
+    "total_bytes": 20056
+  },
+  {
+    "name": "cc-gan-design",
+    "description": "GAN 设计生成工作流 — Generator-Evaluator 对抗式迭代设计",
+    "file_count": 4,
+    "total_bytes": 3980
+  },
+  {
+    "name": "cc-github-ops",
+    "description": "GitHub repository operations, automation, and management. Issue triage, PR management, CI/CD operations, release management, and security monitoring using the gh CLI. Use when the user wants to manage GitHub issues, PRs, CI status, releases, contributors, s...",
+    "file_count": 4,
+    "total_bytes": 8723
+  },
+  {
+    "name": "cc-goal-execution",
+    "description": "Generate concise Claude Code /goal prompts from the latest approved Codex or Project GD plan. Use when the user types \"goal\" to produce a plan-execution /goal prompt, or \"goal review\" to produce a review-feedback auto-fix /goal prompt. Designed for workflows where Codex creates or reviews a detailed plan and the user wants paste-ready prompts for Claude to execute the plan or fix P1/P2 review findings.",
+    "file_count": 3,
+    "total_bytes": 23169
+  },
+  {
+    "name": "cc-golang-patterns",
+    "description": "Idiomatic Go patterns, best practices, and conventions for building robust, efficient, and maintainable Go applications.",
+    "file_count": 4,
+    "total_bytes": 17692
+  },
+  {
+    "name": "cc-golang-testing",
+    "description": "Go testing patterns including table-driven tests, subtests, benchmarks, fuzzing, and test coverage. Follows TDD methodology with idiomatic Go practices.",
+    "file_count": 4,
+    "total_bytes": 20434
+  },
+  {
+    "name": "cc-google-workspace-ops",
+    "description": "Operate across Google Drive, Docs, Sheets, and Slides as one workflow surface for plans, trackers, decks, and shared documents. Use when the user needs to find, summarize, edit, migrate, or clean up Google Workspace assets without dropping to raw tool calls.",
+    "file_count": 4,
+    "total_bytes": 6784
+  },
+  {
+    "name": "cc-headless-browser-cn",
+    "description": "|",
+    "file_count": 4,
+    "total_bytes": 31377
+  },
+  {
+    "name": "cc-healthcare-phi-compliance",
+    "description": "Protected Health Information (PHI) and Personally Identifiable Information (PII) compliance patterns for healthcare applications. Covers data classification, access control, audit trails, encryption, and common leak vectors.",
+    "file_count": 4,
+    "total_bytes": 9632
+  },
+  {
+    "name": "cc-hipaa-compliance",
+    "description": "HIPAA-specific entrypoint for healthcare privacy and security work. Use when a task is explicitly framed around HIPAA, PHI handling, covered entities, BAAs, breach posture, or US healthcare compliance requirements.",
+    "file_count": 4,
+    "total_bytes": 7448
+  },
+  {
+    "name": "cc-hookify-rules",
+    "description": "This skill should be used when the user asks to create a hookify rule, write a hook rule, configure hookify, add a hookify rule, or needs guidance on hookify rule syntax and patterns.",
+    "file_count": 4,
+    "total_bytes": 7345
+  },
+  {
+    "name": "cc-hunt-deploy",
+    "description": "Project HUNT 一键部署 — 标准化环境搭建、依赖安装、定时任务安装。触发词：hunt 部署、deploy hunt、安装 hunt。",
+    "file_count": 4,
+    "total_bytes": 6005
+  },
+  {
+    "name": "cc-hunt-health-check",
+    "description": "Project HUNT 运行健康检查 — 快速诊断系统是否能正常运行。触发词：hunt 状态、hunt 健康、能跑吗、health check。",
+    "file_count": 4,
+    "total_bytes": 6175
+  },
+  {
+    "name": "cc-inventory-demand-planning",
+    "description": ">",
+    "file_count": 4,
+    "total_bytes": 27952
+  },
+  {
+    "name": "cc-investor-materials",
+    "description": "Create and update pitch decks, one-pagers, investor memos, accelerator applications, financial models, and fundraising materials. Use when the user needs investor-facing documents, projections, use-of-funds tables, milestone plans, or materials that must st...",
+    "file_count": 4,
+    "total_bytes": 6597
+  },
+  {
+    "name": "cc-investor-outreach",
+    "description": "Draft cold emails, warm intro blurbs, follow-ups, update emails, and investor communications for fundraising. Use when the user wants outreach to angels, VCs, strategic investors, or accelerators and needs concise, personalized, investor-facing messaging.",
+    "file_count": 4,
+    "total_bytes": 6510
+  },
+  {
+    "name": "cc-iterative-retrieval",
+    "description": "Pattern for progressively refining context retrieval to solve the subagent context problem",
+    "file_count": 4,
+    "total_bytes": 10378
+  },
+  {
+    "name": "cc-java-coding-standards",
+    "description": "Java coding standards for Spring Boot services: naming, immutability, Optional usage, streams, exceptions, generics, and project layout.",
+    "file_count": 4,
+    "total_bytes": 7543
+  },
+  {
+    "name": "cc-jira-integration",
+    "description": "Use this skill when retrieving Jira tickets, analyzing requirements, updating ticket status, adding comments, or transitioning issues. Provides Jira API patterns via MCP or direct REST calls.",
+    "file_count": 4,
+    "total_bytes": 13128
+  },
+  {
+    "name": "cc-jpa-patterns",
+    "description": "JPA/Hibernate patterns for entity design, relationships, query optimization, transactions, auditing, indexing, pagination, and pooling in Spring Boot.",
+    "file_count": 4,
+    "total_bytes": 8123
+  },
+  {
+    "name": "cc-json-canvas",
+    "description": "Create and edit JSON Canvas files (.canvas) with nodes, edges, groups, and connections. Use when working with .canvas files, creating visual canvases, mind maps, flowcharts, or when the user mentions Canvas files in Obsidian.",
+    "file_count": 5,
+    "total_bytes": 18352
+  },
+  {
+    "name": "cc-knowledge-base-search",
+    "description": ">-",
+    "file_count": 4,
+    "total_bytes": 5712
+  },
+  {
+    "name": "cc-knowledge-ops",
+    "description": "Knowledge base management, ingestion, sync, and retrieval across multiple storage layers (local files, MCP memory, vector stores, Git repos). Use when the user wants to save, organize, sync, deduplicate, or search across their knowledge systems.",
+    "file_count": 4,
+    "total_bytes": 11143
+  },
+  {
+    "name": "cc-kotlin-coroutines-flows",
+    "description": "Kotlin Coroutines and Flow patterns for Android and KMP — structured concurrency, Flow operators, StateFlow, error handling, and testing.",
+    "file_count": 4,
+    "total_bytes": 11334
+  },
+  {
+    "name": "cc-kotlin-exposed-patterns",
+    "description": "JetBrains Exposed ORM patterns including DSL queries, DAO pattern, transactions, HikariCP connection pooling, Flyway migrations, and repository pattern.",
+    "file_count": 4,
+    "total_bytes": 25854
+  },
+  {
+    "name": "cc-kotlin-ktor-patterns",
+    "description": "Ktor server patterns including routing DSL, plugins, authentication, Koin DI, kotlinx.serialization, WebSockets, and testApplication testing.",
+    "file_count": 4,
+    "total_bytes": 23334
+  },
+  {
+    "name": "cc-kotlin-patterns",
+    "description": "Idiomatic Kotlin patterns, best practices, and conventions for building robust, efficient, and maintainable Kotlin applications with coroutines, null safety, and DSL builders.",
+    "file_count": 4,
+    "total_bytes": 22575
+  },
+  {
+    "name": "cc-kotlin-testing",
+    "description": "Kotlin testing patterns with Kotest, MockK, coroutine testing, property-based testing, and Kover coverage. Follows TDD methodology with idiomatic Kotlin practices.",
+    "file_count": 4,
+    "total_bytes": 24520
+  },
+  {
+    "name": "cc-laravel-patterns",
+    "description": "Laravel architecture patterns, routing/controllers, Eloquent ORM, service layers, queues, events, caching, and API resources for production apps.",
+    "file_count": 4,
+    "total_bytes": 14232
+  },
+  {
+    "name": "cc-laravel-plugin-discovery",
+    "description": "Discover and evaluate Laravel packages via LaraPlugins.io MCP. Use when the user wants to find plugins, check package health, or assess Laravel/PHP compatibility.",
+    "file_count": 4,
+    "total_bytes": 10340
+  },
+  {
+    "name": "cc-laravel-security",
+    "description": "Laravel security best practices for authn/authz, validation, CSRF, mass assignment, file uploads, secrets, rate limiting, and secure deployment.",
+    "file_count": 4,
+    "total_bytes": 11202
+  },
+  {
+    "name": "cc-laravel-tdd",
+    "description": "Test-driven development for Laravel with PHPUnit and Pest, factories, database testing, fakes, and coverage targets.",
+    "file_count": 4,
+    "total_bytes": 10985
+  },
+  {
+    "name": "cc-laravel-verification",
+    "description": "Verification loop for Laravel projects: env checks, linting, static analysis, tests with coverage, security scans, and deployment readiness.",
+    "file_count": 4,
+    "total_bytes": 8064
+  },
+  {
+    "name": "cc-lark-bot-development",
+    "description": "飞书机器人快速开发。包含 tenant_access_token [REDACTED] API/Webhook/UAT 消息推送、Markdown 转飞书 Post 格式、WebSocket 长连接事件监听、交互式指令路由架构、开发者后台权限与事件订阅配置。当用户要求创建飞书机器人、发送飞书消息、处理飞书事件回调、搭建交互式 bot 时使用。",
+    "file_count": 4,
+    "total_bytes": 9946
+  },
+  {
+    "name": "cc-lark-card-table",
+    "description": "飞书卡片表格排版规范 — 构建或修改飞书 interactive 卡片的 column_set 表格时，确保中文不断行、外包公司名不外泄、长文本自动折行。触发词：飞书卡片、卡片表格、column_set、排版、表格格式。",
+    "file_count": 4,
+    "total_bytes": 6625
+  },
+  {
+    "name": "cc-lark-doc-storage",
+    "description": "飞书文档存储规则。所有飞书文档、表格等内容必须存入用户个人云文档目录，禁止使用知识库。当使用飞书 MCP 工具创建文档、导入内容、操作云文档时触发。关键词：飞书、文档、云文档、docx、import、知识库、wiki。",
+    "file_count": 4,
+    "total_bytes": 5974
+  },
+  {
+    "name": "cc-lark-service-ops",
+    "description": "飞书（Lark）服务操作能力。包括文档管理、消息发送、多维表格操作和知识库管理。当用户需要与飞书服务交互、管理文档/表格/群聊、搜索知识库内容时使用。关键词：飞书、Lark、多维表格、文档、消息、群聊、Base、wiki。",
+    "file_count": 4,
+    "total_bytes": 8742
+  },
+  {
+    "name": "cc-lead-intelligence",
+    "description": "AI-native lead intelligence and outreach pipeline. Replaces Apollo, Clay, and ZoomInfo with agent-powered signal scoring, mutual ranking, warm path discovery, source-derived voice modeling, and channel-specific outreach across email, LinkedIn, and X. Use wh...",
+    "file_count": 8,
+    "total_bytes": 26852
+  },
+  {
+    "name": "cc-liquid-glass-design",
+    "description": "iOS 26 Liquid Glass design system — dynamic glass material with blur, reflection, and interactive morphing for SwiftUI, UIKit, and WidgetKit.",
+    "file_count": 4,
+    "total_bytes": 12557
+  },
+  {
+    "name": "cc-llm-trading-agent-security",
+    "description": "Security patterns for autonomous trading agents with wallet or transaction authority. Covers prompt injection, spend limits, pre-send simulation, circuit breakers, MEV protection, and key handling.",
+    "file_count": 4,
+    "total_bytes": 8521
+  },
+  {
+    "name": "cc-local-llm",
+    "description": "llama-swap 本地 LLM 集成。通过 127.0.0.1:8080 的 OpenAI-compatible /v1/* 端点进行只读本地推理,包含健康检查、chat 调用模板、参数经验值、长文本分批策略、结构化 JSON 抽取、system prompt 注入上下文。",
+    "file_count": 4,
+    "total_bytes": 10151
+  },
+  {
+    "name": "cc-logistics-exception-management",
+    "description": ">",
+    "file_count": 4,
+    "total_bytes": 20408
+  },
+  {
+    "name": "cc-macos-scheduled-tasks",
+    "description": "macOS launchd 定时任务创建与服务管理。包含 plist XML 模板（定时/间隔/常驻三种模式）、环境变量配置、日志设置、launchctl 操作流程和调试技巧。当用户要求创建定时任务、后台服务、开机启动、cron 替代方案、或提到 launchd/plist/launchctl 时使用。",
+    "file_count": 4,
+    "total_bytes": 8041
+  },
+  {
+    "name": "cc-manim-video",
+    "description": "Build reusable Manim explainers for technical concepts, graphs, system diagrams, and product walkthroughs, then hand off to the wider ECC video stack if needed. Use when the user wants a clean animated explainer rather than a generic talking-head script.",
+    "file_count": 5,
+    "total_bytes": 10002
+  },
+  {
+    "name": "cc-market-research",
+    "description": "Conduct market research, competitive analysis, investor due diligence, and industry intelligence with source attribution and decision-oriented summaries. Use when the user wants market sizing, competitor comparisons, fund research, technology scans, or rese...",
+    "file_count": 4,
+    "total_bytes": 6048
+  },
+  {
+    "name": "cc-mcp-server-patterns",
+    "description": "Build MCP servers with Node/TypeScript SDK — tools, resources, prompts, Zod validation, stdio vs Streamable HTTP. Use Context7 or official MCP docs for latest API.",
+    "file_count": 4,
+    "total_bytes": 8019
+  },
+  {
+    "name": "cc-messages-ops",
+    "description": "Evidence-first live messaging workflow for ECC. Use when the user wants to read texts or DMs, recover a recent one-time code, inspect a thread before replying, or prove which message source was actually checked.",
+    "file_count": 4,
+    "total_bytes": 6635
+  },
+  {
+    "name": "cc-mounted",
+    "description": "Report which CCB providers are mounted (session exists AND daemon is online). Outputs JSON.",
+    "file_count": 4,
+    "total_bytes": 3377
+  },
+  {
+    "name": "cc-nanoclaw-repl",
+    "description": "Operate and extend NanoClaw v2, ECC's zero-dependency session-aware REPL built on claude -p.",
+    "file_count": 4,
+    "total_bytes": 4287
+  },
+  {
+    "name": "cc-nestjs-patterns",
+    "description": "NestJS architecture patterns for modules, controllers, providers, DTO validation, guards, interceptors, config, and production-grade TypeScript backends.",
+    "file_count": 4,
+    "total_bytes": 10113
+  },
+  {
+    "name": "cc-new-project",
+    "description": "创建新项目（带 git/CLAUDE.md/.gitignore/VERSIONING.md 完整版本管理规范）。触发词：新建项目、开个新项目、建个项目、建个 Project、new project、create project、init project。",
+    "file_count": 11,
+    "total_bytes": 16316
+  },
+  {
+    "name": "cc-nodejs-keccak256",
+    "description": "Prevent Ethereum hashing bugs in JavaScript and TypeScript. Node's sha3-256 is NIST SHA3, not Ethereum Keccak-256, and silently breaks selectors, signatures, storage slots, and address derivation.",
+    "file_count": 4,
+    "total_bytes": 6429
+  },
+  {
+    "name": "cc-notebooklm-mcp",
+    "description": "使用 NotebookLM MCP 完成 Google 登录认证、notebook 注册、active notebook 选择、真实问答闭环。适用于用户提到 NotebookLM、notebooklm-mcp、基于私有文档问答、引用式答案、NotebookLM 认证或库管理时。",
+    "file_count": 4,
+    "total_bytes": 6500
+  },
+  {
+    "name": "cc-notebooklm-research-cn",
+    "description": "使用 NotebookLM MCP 完成 Google 登录认证、notebook 注册、active notebook 选择、真实问答闭环。适用于用户提到 NotebookLM、notebooklm-mcp、基于私有文档问答、引用式答案、NotebookLM 认证或库管理时。",
+    "file_count": 4,
+    "total_bytes": 6642
+  },
+  {
+    "name": "cc-notion",
+    "description": "Notion 服务操作能力。包括页面管理、数据库操作、内容块编辑、评论管理和用户查询。当用户需要与 Notion 交互、管理页面/数据库/内容时使用。关键词：Notion、页面、数据库、database、笔记、工作区、workspace。",
+    "file_count": 4,
+    "total_bytes": 10254
+  },
+  {
+    "name": "cc-notion-notes",
+    "description": "Notion 服务操作能力。包括页面管理、数据库操作、内容块编辑、评论管理和用户查询。当用户需要与 Notion 交互、管理页面/数据库/内容时使用。关键词：Notion、页面、数据库、database、笔记、工作区、workspace。",
+    "file_count": 4,
+    "total_bytes": 10466
+  },
+  {
+    "name": "cc-nutrient-document-processing",
+    "description": "Process, convert, OCR, extract, redact, sign, and fill documents using the Nutrient DWS API. Works with PDFs, DOCX, XLSX, PPTX, HTML, and images.",
+    "file_count": 4,
+    "total_bytes": 9874
+  },
+  {
+    "name": "cc-obsidian-bases",
+    "description": "Create and edit Obsidian Bases (.base files) with views, filters, formulas, and summaries. Use when working with .base files, creating database-like views of notes, or when the user mentions Bases, table views, card views, filters, or formulas in Obsidian.",
+    "file_count": 5,
+    "total_bytes": 24777
+  },
+  {
+    "name": "cc-obsidian-cli",
+    "description": "Interact with Obsidian vaults using the Obsidian CLI to read, create, search, and manage notes, tasks, properties, and more. Also supports plugin and theme development with commands to reload plugins, run JavaScript, capture errors, take screenshots, and in...",
+    "file_count": 4,
+    "total_bytes": 7300
+  },
+  {
+    "name": "cc-obsidian-markdown",
+    "description": "Create and edit Obsidian Flavored Markdown with wikilinks, embeds, callouts, properties, and other Obsidian-specific syntax. Use when working with .md files in Obsidian, or when the user mentions wikilinks, callouts, frontmatter, tags, embeds, or Obsidian n...",
+    "file_count": 7,
+    "total_bytes": 13234
+  },
+  {
+    "name": "cc-office-hours",
+    "description": "|",
+    "file_count": 4,
+    "total_bytes": 84477
+  },
+  {
+    "name": "cc-pen-to-figma",
+    "description": "将 Pencil (.pen) 设计文件导出为 Figma Plugin API 代码。当用户请求\\\"导出figma\\\"、\\\"pen转figma\\\"、\\\"导出到figma\\\"、\\\"生成figma代码\\\"时使用此技能。采用绝对定位模式，以 snapshot_layout 精确像素坐标为唯一真相源，彻底绕过 Auto Layout 映射差异。",
+    "file_count": 4,
+    "total_bytes": 12872
+  },
+  {
+    "name": "cc-pencil-to-figma-cn",
+    "description": "将 Pencil (.pen) 设计文件导出为 Figma Plugin API 代码。当用户请求\\\"导出figma\\\"、\\\"pen转figma\\\"、\\\"导出到figma\\\"、\\\"生成figma代码\\\"时使用此技能。采用绝对定位模式，以 snapshot_layout 精确像素坐标为唯一真相源，彻底绕过 Auto Layout 映射差异。",
+    "file_count": 4,
+    "total_bytes": 13025
+  },
+  {
+    "name": "cc-pend",
+    "description": "View latest reply from AI provider (gemini/codex/opencode/droid/claude).",
+    "file_count": 4,
+    "total_bytes": 3604
+  },
+  {
+    "name": "cc-perl-patterns",
+    "description": "Modern Perl 5.36+ idioms, best practices, and conventions for building robust, maintainable Perl applications.",
+    "file_count": 4,
+    "total_bytes": 15063
+  },
+  {
+    "name": "cc-perl-security",
+    "description": "Comprehensive Perl security covering taint mode, input validation, safe process execution, DBI parameterized queries, web security (XSS/SQLi/CSRF), and perlcritic security policies.",
+    "file_count": 4,
+    "total_bytes": 17551
+  },
+  {
+    "name": "cc-perl-testing",
+    "description": "Perl testing patterns using Test2::V0, Test::More, prove runner, mocking, coverage with Devel::Cover, and TDD methodology.",
+    "file_count": 4,
+    "total_bytes": 14693
+  },
+  {
+    "name": "cc-photo-management",
+    "description": "管理 macOS 照片应用中的照片和视频。通过 osxphotos 工具查询、导出、编辑照片元数据、管理相册等。当用户提到照片、相册、Photos、图片管理、照片导出、EXIF、照片搜索时使用。",
+    "file_count": 4,
+    "total_bytes": 9544
+  },
+  {
+    "name": "cc-plan-design-review",
+    "description": "|",
+    "file_count": 4,
+    "total_bytes": 74497
+  },
+  {
+    "name": "cc-plankton-code-quality",
+    "description": "Write-time code quality enforcement using Plankton — auto-formatting, linting, and Claude-powered fixes on every file edit via hooks.",
+    "file_count": 4,
+    "total_bytes": 11684
+  },
+  {
+    "name": "cc-postgres-patterns",
+    "description": "PostgreSQL database patterns for query optimization, schema design, indexing, and security. Based on Supabase best practices.",
+    "file_count": 4,
+    "total_bytes": 7397
+  },
+  {
+    "name": "cc-prd",
+    "description": "四视角共识 PRD 生成器 — CEO/PM/Designer/Developer 多视角评估 + Rubric C 评审 + CCB 多 AI 协作",
+    "file_count": 9,
+    "total_bytes": 45132
+  },
+  {
+    "name": "cc-prd-taskmaster-v2",
+    "description": ">-",
+    "file_count": 12,
+    "total_bytes": 169832
+  },
+  {
+    "name": "cc-product-capability",
+    "description": "Translate PRD intent, roadmap asks, or product discussions into an implementation-ready capability plan that exposes constraints, invariants, interfaces, and unresolved decisions before multi-service work starts. Use when the user needs an ECC-native PRD-to...",
+    "file_count": 4,
+    "total_bytes": 8763
+  },
+  {
+    "name": "cc-production-scheduling",
+    "description": ">",
+    "file_count": 4,
+    "total_bytes": 32009
+  },
+  {
+    "name": "cc-project-flow-ops",
+    "description": "Operate execution flow across GitHub and Linear by triaging issues and pull requests, linking active work, and keeping GitHub public-facing while Linear remains the internal execution layer. Use when the user wants backlog control, PR triage, or GitHub-to-L...",
+    "file_count": 4,
+    "total_bytes": 7279
+  },
+  {
+    "name": "cc-project-ingest",
+    "description": ">-",
+    "file_count": 4,
+    "total_bytes": 9586
+  },
+  {
+    "name": "cc-project-ingest-cn",
+    "description": ">-",
+    "file_count": 4,
+    "total_bytes": 9523
+  },
+  {
+    "name": "cc-prompt",
+    "description": "从 Claude Code 源码提炼的 8 个 Prompt 设计模式。WHAT: 编写高效 prompt 的结构化参考。WHEN: 编写或优化 .mdc rule、子代理 prompt（Task 工具 prompt 参数）、Skill description 时使用。",
+    "file_count": 4,
+    "total_bytes": 6952
+  },
+  {
+    "name": "cc-prompt-design-patterns",
+    "description": "从 Claude Code 源码提炼的 8 个 Prompt 设计模式。WHAT: 编写高效 prompt 的结构化参考。WHEN: 编写或优化 .mdc rule、子代理 prompt（Task 工具 prompt 参数）、Skill description 时使用。",
+    "file_count": 4,
+    "total_bytes": 7031
+  },
+  {
+    "name": "cc-prompt-optimizer",
+    "description": ">-",
+    "file_count": 4,
+    "total_bytes": 19647
+  },
+  {
+    "name": "cc-python-patterns",
+    "description": "Pythonic idioms, PEP 8 standards, type hints, and best practices for building robust, efficient, and maintainable Python applications.",
+    "file_count": 4,
+    "total_bytes": 20410
+  },
+  {
+    "name": "cc-python-testing",
+    "description": "Python testing strategies using pytest, TDD methodology, fixtures, mocking, parametrization, and coverage requirements.",
+    "file_count": 4,
+    "total_bytes": 22474
+  },
+  {
+    "name": "cc-qa",
+    "description": "|",
+    "file_count": 4,
+    "total_bytes": 58279
+  },
+  {
+    "name": "cc-quality-nonconformance",
+    "description": ">",
+    "file_count": 4,
+    "total_bytes": 33762
+  },
+  {
+    "name": "cc-ralphinho-rfc-pipeline",
+    "description": "RFC-driven multi-agent DAG execution pattern with quality gates, merge queues, and work unit orchestration.",
+    "file_count": 4,
+    "total_bytes": 5231
+  },
+  {
+    "name": "cc-refactor-clean",
+    "description": "重构和死代码清理工作流 — 安全删除未使用代码、合并重复、简化复杂度",
+    "file_count": 4,
+    "total_bytes": 4436
+  },
+  {
+    "name": "cc-regex-vs-llm-structured-text",
+    "description": "Decision framework for choosing between regex and LLM when parsing structured text — start with regex, add LLM only for low-confidence edge cases.",
+    "file_count": 4,
+    "total_bytes": 10498
+  },
+  {
+    "name": "cc-remotion-video-creation",
+    "description": "Best practices for Remotion - Video creation in React. 29 domain-specific rules covering 3D, animations, audio, captions, charts, transitions, and more.",
+    "file_count": 35,
+    "total_bytes": 86985
+  },
+  {
+    "name": "cc-research-ingest",
+    "description": ">-",
+    "file_count": 4,
+    "total_bytes": 9888
+  },
+  {
+    "name": "cc-research-ops",
+    "description": "Evidence-first current-state research workflow for ECC. Use when the user wants fresh facts, comparisons, enrichment, or a recommendation built from current public evidence and any supplied local context.",
+    "file_count": 4,
+    "total_bytes": 7345
+  },
+  {
+    "name": "cc-returns-reverse-logistics",
+    "description": ">",
+    "file_count": 4,
+    "total_bytes": 28132
+  },
+  {
+    "name": "cc-review",
+    "description": "全中文 Goal-Driven 结构化审查，用于计划或已完成工作的 review/final review/计划审查/代码验收。按计划或代码模板输出带 Anti-Fill Gate 的高信号审查结果。",
+    "file_count": 6,
+    "total_bytes": 17576
+  },
+  {
+    "name": "cc-rust-patterns",
+    "description": "Idiomatic Rust patterns, ownership, error handling, traits, concurrency, and best practices for building safe, performant applications.",
+    "file_count": 4,
+    "total_bytes": 16990
+  },
+  {
+    "name": "cc-rust-testing",
+    "description": "Rust testing patterns including unit tests, integration tests, async testing, property-based testing, mocking, and coverage. Follows TDD methodology.",
+    "file_count": 4,
+    "total_bytes": 15404
+  },
+  {
+    "name": "cc-search-first",
+    "description": "Research-before-coding workflow. Search for existing tools, libraries, and patterns before writing custom code. Invokes the researcher agent.",
+    "file_count": 4,
+    "total_bytes": 10525
+  },
+  {
+    "name": "cc-security-bounty-hunter",
+    "description": "Hunt for exploitable, bounty-worthy security issues in repositories. Focuses on remotely reachable vulnerabilities that qualify for real reports instead of noisy local-only findings.",
+    "file_count": 4,
+    "total_bytes": 7627
+  },
+  {
+    "name": "cc-security-review",
+    "description": "Use this skill when adding authentication, handling user input, working with secrets, creating API endpoints, or implementing payment/sensitive features. Provides comprehensive security checklist and patterns.",
+    "file_count": 5,
+    "total_bytes": 26651
+  },
+  {
+    "name": "cc-security-scan",
+    "description": "Scan your Claude Code configuration (.claude/ directory) for security vulnerabilities, misconfigurations, and injection risks using AgentShield. Checks CLAUDE.md, settings.json, MCP servers, hooks, and agent definitions.",
+    "file_count": 4,
+    "total_bytes": 8546
+  },
+  {
+    "name": "cc-seo",
+    "description": "Audit, plan, and implement SEO improvements across technical SEO, on-page optimization, structured data, Core Web Vitals, and content strategy. Use when the user wants better search visibility, SEO remediation, schema markup, sitemap/robots work, or keyword...",
+    "file_count": 4,
+    "total_bytes": 8073
+  },
+  {
+    "name": "cc-service-feature-verification",
+    "description": ">-",
+    "file_count": 4,
+    "total_bytes": 6640
+  },
+  {
+    "name": "cc-skill-index",
+    "description": "Find migrated Claude skills in Codex by Chinese or English name, alias, tag, dependency, risk level, or installation status.",
+    "file_count": 3,
+    "total_bytes": 2220
+  },
+  {
+    "name": "cc-skill-stocktake",
+    "description": "Use when auditing Claude skills and commands for quality. Supports Quick Scan (changed skills only) and Full Stocktake modes with sequential subagent batch evaluation.",
+    "file_count": 7,
+    "total_bytes": 23411
+  },
+  {
+    "name": "cc-slack-integration-cn",
+    "description": "Uses Slack MCP tools to list channels, post messages, reply in threads, add reactions, and fetch channel history or user profiles. Use when the user mentions Slack、发Slack消息、Slack频道、Slack历史、Slack用户、thread、reaction.",
+    "file_count": 4,
+    "total_bytes": 6399
+  },
+  {
+    "name": "cc-social-graph-ranker",
+    "description": "Weighted social-graph ranking for warm intro discovery, bridge scoring, and network gap analysis across X and LinkedIn. Use when the user wants the reusable graph-ranking engine itself, not the broader outreach or network-maintenance workflow layered on top...",
+    "file_count": 4,
+    "total_bytes": 8218
+  },
+  {
+    "name": "cc-spider",
+    "description": "浏览器自动化与网页抓取。通过 Playwright MCP 导航网站、提取内容、截图、模拟设备。当用户需要爬取网页、竞品分析、截图或浏览器自动化时使用。关键词：爬取、抓取、截图、网页、竞品分析、scrape、crawl、screenshot、browse。",
+    "file_count": 4,
+    "total_bytes": 10757
+  },
+  {
+    "name": "cc-springboot-patterns",
+    "description": "Spring Boot architecture patterns, REST API design, layered services, data access, caching, async processing, and logging. Use for Java Spring Boot backend work.",
+    "file_count": 4,
+    "total_bytes": 13653
+  },
+  {
+    "name": "cc-springboot-security",
+    "description": "Spring Security best practices for authn/authz, validation, CSRF, secrets, headers, rate limiting, and dependency security in Java Spring Boot services.",
+    "file_count": 4,
+    "total_bytes": 11673
+  },
+  {
+    "name": "cc-springboot-tdd",
+    "description": "Test-driven development for Spring Boot using JUnit 5, Mockito, MockMvc, Testcontainers, and JaCoCo. Use when adding features, fixing bugs, or refactoring.",
+    "file_count": 4,
+    "total_bytes": 7428
+  },
+  {
+    "name": "cc-springboot-verification",
+    "description": "Verification loop for Spring Boot projects: build, static analysis, tests with coverage, security scans, and diff review before release or PR.",
+    "file_count": 4,
+    "total_bytes": 9579
+  },
+  {
+    "name": "cc-start-work-flow",
+    "description": "已废弃，重定向到 workday-sod。",
+    "file_count": 4,
+    "total_bytes": 3497
+  },
+  {
+    "name": "cc-strategic-compact",
+    "description": "Suggests manual context compaction at logical intervals to preserve context through task phases rather than arbitrary auto-compaction.",
+    "file_count": 5,
+    "total_bytes": 11476
+  },
+  {
+    "name": "cc-swift-actor-persistence",
+    "description": "Thread-safe data persistence in Swift using actors — in-memory cache with file-backed storage, eliminating data races by design.",
+    "file_count": 4,
+    "total_bytes": 8420
+  },
+  {
+    "name": "cc-swift-concurrency-6-2",
+    "description": "Swift 6.2 Approachable Concurrency — single-threaded by default, @concurrent for explicit background offloading, isolated conformances for main actor types.",
+    "file_count": 4,
+    "total_bytes": 11766
+  },
+  {
+    "name": "cc-swift-protocol-di-testing",
+    "description": "Protocol-based dependency injection for testable Swift code — mock file system, network, and external APIs using focused protocols and Swift Testing.",
+    "file_count": 4,
+    "total_bytes": 9872
+  },
+  {
+    "name": "cc-swiftui-patterns",
+    "description": "SwiftUI architecture patterns, state management with @Observable, view composition, navigation, performance optimization, and modern iOS/macOS UI best practices.",
+    "file_count": 4,
+    "total_bytes": 10634
+  },
+  {
+    "name": "cc-systematic-qa",
+    "description": "|",
+    "file_count": 4,
+    "total_bytes": 58473
+  },
+  {
+    "name": "cc-taptap-api",
+    "description": "TapTap 论坛 API 端点与数据采集封装。包含已验证的帖子、评论、搜索、游戏信息等 API 端点、请求头和参数格式、分页策略和评论内容解析。当用户要求抓取 TapTap 论坛数据、监控游戏社区、分析 TapTap 帖子时使用。",
+    "file_count": 4,
+    "total_bytes": 8367
+  },
+  {
+    "name": "cc-taptap-creator",
+    "description": "Uses TapTap Maker MCP tools to search apps, get game info, ratings, reviews, stats, achievements, and leaderboards on TapTap. Use when the user mentions TapTap、TapTap制造、TapTap游戏、搜索游戏、游戏评分、游戏评论、游戏数据、成就、排行榜.",
+    "file_count": 4,
+    "total_bytes": 6186
+  },
+  {
+    "name": "cc-tdd-workflow",
+    "description": "Use this skill when writing new features, fixing bugs, or refactoring code. Enforces test-driven development with 80%+ coverage including unit, integration, and E2E tests.",
+    "file_count": 4,
+    "total_bytes": 16882
+  },
+  {
+    "name": "cc-team-builder",
+    "description": "Interactive agent picker for composing and dispatching parallel teams",
+    "file_count": 4,
+    "total_bytes": 10499
+  },
+  {
+    "name": "cc-terminal-ops",
+    "description": "Evidence-first repo execution workflow for ECC. Use when the user wants a command run, a repo checked, a CI failure debugged, or a narrow fix pushed with exact proof of what was executed and verified.",
+    "file_count": 4,
+    "total_bytes": 6871
+  },
+  {
+    "name": "cc-token-redacted",
+    "description": ">-",
+    "file_count": 4,
+    "total_bytes": 9512
+  },
+  {
+    "name": "cc-tp",
+    "description": "Create an executable task plan from a PRD or requirement. Elaborates steps, reviews quality, saves .ccb/ artifacts.",
+    "file_count": 5,
+    "total_bytes": 10216
+  },
+  {
+    "name": "cc-tr",
+    "description": "Execute current step in AutoFlow workflow. Use when running /tr or continuing task execution.",
+    "file_count": 13,
+    "total_bytes": 39002
+  },
+  {
+    "name": "cc-ui-demo",
+    "description": "Record polished UI demo videos using Playwright. Use when the user asks to create a demo, walkthrough, screen recording, or tutorial video of a web application. Produces WebM videos with visible cursor, natural pacing, and professional feel.",
+    "file_count": 4,
+    "total_bytes": 19088
+  },
+  {
+    "name": "cc-ui-ux-pro-max",
+    "description": "UI/UX design intelligence for web and mobile. Includes 50+ styles, 161 color palettes, 57 font pairings, 161 product types, 99 UX guidelines, and 25 chart types across 10 stacks (React, Next.js, Vue, Svelte, SwiftUI, React Native, Flutter, Tailwind, shadcn/...",
+    "file_count": 37,
+    "total_bytes": 1029386
+  },
+  {
+    "name": "cc-unified-notifications-ops",
+    "description": "Operate notifications as one ECC-native workflow across GitHub, Linear, desktop alerts, hooks, and connected communication surfaces. Use when the real problem is alert routing, deduplication, escalation, or inbox collapse.",
+    "file_count": 4,
+    "total_bytes": 9937
+  },
+  {
+    "name": "cc-vault-typesetting-polish",
+    "description": ">-",
+    "file_count": 4,
+    "total_bytes": 22626
+  },
+  {
+    "name": "cc-verification-loop",
+    "description": "A comprehensive verification system for Claude Code sessions.",
+    "file_count": 4,
+    "total_bytes": 5924
+  },
+  {
+    "name": "cc-video-editing",
+    "description": "AI-assisted video editing workflows for cutting, structuring, and augmenting real footage. Covers the full pipeline from raw capture through FFmpeg, Remotion, ElevenLabs, fal.ai, and final polish in Descript or CapCut. Use when the user wants to edit video,...",
+    "file_count": 4,
+    "total_bytes": 13816
+  },
+  {
+    "name": "cc-videodb",
+    "description": "See, Understand, Act on video and audio. See- ingest from local files, URLs, RTSP/live feeds, or live record desktop; return realtime context and playable stream links. Understand- extract frames, build visual/semantic/temporal indexes, and search moments w...",
+    "file_count": 15,
+    "total_bytes": 134488
+  },
+  {
+    "name": "cc-visa-doc-translate",
+    "description": "Translate visa application documents (images) to English and create a bilingual PDF with original and translation",
+    "file_count": 5,
+    "total_bytes": 9441
+  },
+  {
+    "name": "cc-web-hifi-spec-cn",
+    "description": "Web 端高保真原型设计规范。定义字体体系、灰度层级、间距系统、组件尺寸和排版方式。通过 figma-write MCP 创建游戏前瞻页、活动页等 Web 端高保真原型时使用。当用户提到高保真原型、Web 设计稿、前瞻页、活动页、设计规范时使用。",
+    "file_count": 4,
+    "total_bytes": 15086
+  },
+  {
+    "name": "cc-weekly-report-bot",
+    "description": "PROJECT DOKI — 飞书多群消息采集、智能筛选、LLM 汇总、卡片推送。触发词：周报、每周工作、工作重点、跑一次机器人、消息采集、群聊汇总。",
+    "file_count": 4,
+    "total_bytes": 11349
+  },
+  {
+    "name": "cc-window-handoff",
+    "description": "当用户说“交接窗口”、上下文满了、开新窗口继续、写交接、handoff、context handoff 时使用。把当前工作状态整理成可由新 Codex/Claude 窗口读取的 Markdown 交接文件，并给出可复制的新窗口启动提示词。",
+    "file_count": 2,
+    "total_bytes": 4340
+  },
+  {
+    "name": "cc-workday",
+    "description": "[已拆分] 开工→workday-sod, 收工→workday-eod。本文件仅作重定向。",
+    "file_count": 4,
+    "total_bytes": 3464
+  },
+  {
+    "name": "cc-workday-eod",
+    "description": "收工流程 — 清理、Git、Checkpoint、日报、审计、知识收割、Digest 生成。触发词：收工、下班、EOD、end of day、打烊。",
+    "file_count": 4,
+    "total_bytes": 29080
+  },
+  {
+    "name": "cc-workday-flow-cn",
+    "description": "[已拆分] 开工→开工流程, 收工→收工流程。本文件仅作重定向。",
+    "file_count": 4,
+    "total_bytes": 3771
+  },
+  {
+    "name": "cc-workday-sod",
+    "description": "开工流程 — digest-first 轻量上下文恢复 + 待办继承 + 健康检查。触发词：开工、上班、SOD、start of day、今天做什么、今天干了啥、继续昨天的、接着干、早上好。",
+    "file_count": 4,
+    "total_bytes": 10629
+  },
+  {
+    "name": "cc-workflow",
+    "description": "P1-P7 Claude-Codex 协作工作流入口 — 自动评估任务规模、检查 Codex 连通性、启动完整工作流",
+    "file_count": 4,
+    "total_bytes": 44062
+  },
+  {
+    "name": "cc-workspace-surface-audit",
+    "description": "Audit the active repo, MCP servers, plugins, connectors, env surfaces, and harness setup, then recommend the highest-value ECC-native skills, hooks, agents, and operator workflows. Use when the user wants help setting up Claude Code or understanding what ca...",
+    "file_count": 4,
+    "total_bytes": 9623
+  },
+  {
+    "name": "cc-x-api",
+    "description": "X/Twitter API integration for posting tweets, threads, reading timelines, search, and analytics. Covers OAuth [REDACTED] patterns, rate limits, and platform-native content posting. Use when the user wants to interact with X programmatically.",
+    "file_count": 4,
+    "total_bytes": 10202
+  },
+  {
+    "name": "cc-yc-office-hours-cn",
+    "description": "|",
+    "file_count": 4,
+    "total_bytes": 84494
+  },
+  {
+    "name": "hatch-pet",
+    "description": "Create, repair, validate, preview, and package Codex-compatible animated pets and pet spritesheets from character art, screenshots, generated images, or visual references. Use when a user wants to hatch a Codex pet, create a custom animated pet, or build a built-in pet asset with an 8x9 atlas, transparent unused cells, row-by-row animation prompts, QA contact sheets, preview videos, and pet.json packaging. This skill composes the installed $imagegen system skill for visual generation and uses bundled scripts for deterministic spritesheet assembly.",
+    "file_count": 21,
+    "total_bytes": 155904
+  }
+]
