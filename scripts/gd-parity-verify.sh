@@ -149,5 +149,32 @@ if [ "$BUNDLE" = "codex-chain" ]; then
   exit 0
 fi
 
+# ── Bundle: review2-command ─────────────────────────────────────────────────
+if [ "$BUNDLE" = "review2_command" ] || [ "$BUNDLE" = "review2-command" ]; then
+  SOURCE_REL=$(_json_field "$MANIFEST" "['bundles']['review2_command']['source_path']")
+  RUNTIME=$(_json_field "$MANIFEST" "['bundles']['review2_command']['runtime_path']")
+  SOURCE="$ROOT/$SOURCE_REL"
+
+  if [ ! -f "$SOURCE" ]; then
+    echo "{\"status\":\"source_missing\",\"bundle\":\"review2_command\",\"source_path\":\"$SOURCE\"}"
+    exit 3
+  fi
+  if [ ! -f "$RUNTIME" ]; then
+    echo "{\"status\":\"runtime_missing\",\"bundle\":\"review2_command\",\"runtime_path\":\"$RUNTIME\",\"note\":\"not_installed_yet\"}"
+    exit 3
+  fi
+
+  SRC_HASH=$(_sha256 "$SOURCE")
+  RT_HASH=$(_sha256 "$RUNTIME")
+
+  if [ "$SRC_HASH" = "$RT_HASH" ]; then
+    echo "{\"status\":\"installed_parity_pass\",\"bundle\":\"review2_command\",\"sha256\":\"$SRC_HASH\",\"source_path\":\"$SOURCE\",\"runtime_path\":\"$RUNTIME\"}"
+    exit 0
+  else
+    echo "{\"status\":\"installed_runtime_drift\",\"bundle\":\"review2_command\",\"source_sha256\":\"$SRC_HASH\",\"runtime_sha256\":\"$RT_HASH\",\"source_path\":\"$SOURCE\",\"runtime_path\":\"$RUNTIME\"}"
+    exit 2
+  fi
+fi
+
 echo "{\"status\":\"unknown_bundle\",\"bundle\":\"$BUNDLE\"}"
 exit 1

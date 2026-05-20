@@ -214,7 +214,9 @@ echo ""
 # ── Check for untracked release files ──────────────────────────────────────
 echo "--- Git untracked release files check ---"
 cd "$ROOT"
-UNTRACKED=$(git ls-files --others --exclude-standard mirrors/codex-chain config scripts fixtures plans 2>/dev/null \
+# Scope includes commands/ docs/ results/release-evidence/ in addition to core dirs
+UNTRACKED=$(git ls-files --others --exclude-standard \
+  mirrors/codex-chain config scripts fixtures plans commands docs results/release-evidence 2>/dev/null \
   | grep -v "__pycache__" | grep -v "\.pyc$" | grep -v "\.sqlite" | grep -v "\.wal$" | grep -v "\.shm$" \
   || true)
 if [ -n "$UNTRACKED" ]; then
@@ -225,18 +227,54 @@ else
   echo "  untracked_release_files: none"
 fi
 
-# ── Check for MM state: staged + unstaged changes on same tracked file ──────
+# ── Check for MM/AM state: staged + unstaged changes on same tracked file ────
 echo "--- MM state check (staged + unstaged on same file) ---"
-MM_FILES=$(git status --short mirrors/codex-chain config scripts fixtures plans bin 2>/dev/null \
+MM_FILES=$(git status --short mirrors/codex-chain config scripts fixtures plans commands docs bin results/release-evidence 2>/dev/null \
   | grep -E "^MM|^AM" | awk '{print $2}' || true)
 if [ -n "$MM_FILES" ]; then
   echo "  MM_STATE_FILES (staged changes with uncommitted working-tree modifications):"
   echo "$MM_FILES" | while read -r f; do echo "    $f"; done
-  echo "  Fix: run --apply again or stage the working-tree changes before release."
+  echo "  Fix: stage the working-tree changes before release."
   [ $FAIL_CODE -eq 0 ] && FAIL_CODE=13
 else
   echo "  mm_state: clean (no staged+unstaged conflicts)"
 fi
+
+# ── Check for unstaged tracked release files (' M' or ' D' state) ────────────
+echo "--- Unstaged tracked release files check ---"
+# git diff --name-only lists tracked files with working-tree changes not in index
+UNSTAGED=$(git diff --name-only \
+  mirrors/codex-chain config scripts fixtures plans commands docs bin results/release-evidence 2>/dev/null \
+  | grep -v "\.pyc$" | grep -v "__pycache__" || true)
+if [ -n "$UNSTAGED" ]; then
+  echo "  UNSTAGED_TRACKED_RELEASE_FILES (tracked but not staged — will not be committed as-is):"
+  echo "$UNSTAGED" | while read -r f; do echo "    $f"; done
+  echo "  Fix: stage these files (git add) before release."
+  [ $FAIL_CODE -eq 0 ] && FAIL_CODE=13
+else
+  echo "  unstaged_tracked: clean (all tracked release files are staged or unmodified)"
+fi
+echo ""
+
+# ── review2_command parity status ──────────────────────────────────────────
+echo "--- review2_command parity (SOURCE_READY, install not yet authorized) ---"
+R2_OUT=$(bash "$ROOT/scripts/gd-parity-verify.sh" --bundle review2_command 2>/dev/null || true)
+R2_STATUS=$(echo "$R2_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('status','error'))" 2>/dev/null || echo "error")
+case "$R2_STATUS" in
+  installed_parity_pass)
+    echo "  [PARITY] review2_command: INSTALLED_PASS"
+    ;;
+  runtime_missing)
+    echo "  [PARITY] review2_command: SOURCE_READY_INSTALL_BLOCKED (not installed; use install-review-route-command.sh --route review2 --apply when authorized)"
+    ;;
+  installed_runtime_drift)
+    echo "  [PARITY] review2_command: DRIFT_DETECTED — installed copy differs from source"
+    [ $FAIL_CODE -eq 0 ] && FAIL_CODE=14
+    ;;
+  *)
+    echo "  [PARITY] review2_command: UNKNOWN ($R2_STATUS)"
+    ;;
+esac
 echo ""
 
 # ── Summary ────────────────────────────────────────────────────────────────

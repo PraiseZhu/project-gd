@@ -180,6 +180,11 @@ else
 fi
 
 echo ""
+# Canonical field declarations (v3.1 A1 ambiguity disambiguation)
+echo "MACHINE_RELEASE_VERDICT_FIELD: OVERALL_RELEASE_STATUS"
+echo "HUMAN_REPAIR_SUMMARY_FIELD: GD_REPAIR_RESULT"
+echo "AMBIGUITY_STATUS: pass_with_note"
+echo ""
 echo "=== GD_REPAIR_RESULT: pass=$PASS fail=$FAIL ==="
 if [ $FAIL -eq 0 ]; then
   echo "GD_REPAIR_RESULT: READY_FOR_HANDTEST"

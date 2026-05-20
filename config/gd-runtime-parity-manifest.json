@@ -23,6 +23,23 @@
     "15": "l2_denominator_unclassified — at least one L2 top-level entry has no INCLUDE/MANIFEST_ONLY/EXCLUDE classification"
   },
   "bundles": {
+    "review2_command": {
+      "description": "/review2 profile-aware Codex workbench command: Project GD source → ~/.claude/commands/review2.md. Strict parity — same gate type as gd_command. apply_requires_explicit_authorization: true (live install needs ledger entry).",
+      "gate_type": "strict_parity",
+      "source_path": "commands/review2.md",
+      "runtime_path": "/Users/praise/.claude/commands/review2.md",
+      "direction": "source_to_runtime",
+      "mode": "single_file",
+      "hash_algorithm": "sha256",
+      "install_allowed": true,
+      "apply_requires_explicit_authorization": true,
+      "install_gate_script": "scripts/gd-check-review-route-preflight.sh --route review2",
+      "release_gate_script": "scripts/gd-parity-verify.sh --bundle review2_command",
+      "install_script": "scripts/install-review-route-command.sh --route review2",
+      "authorization_ledger": "baselines/gd-v7-runtime-write-authorizations.jsonl",
+      "secret_policy": "none",
+      "release_status": "not_installed"
+    },
     "gd_command": {
       "description": "/gd Claude command: Project GD source → ~/.claude/commands/gd.md",
       "gate_type": "strict_parity",

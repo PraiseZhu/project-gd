@@ -1,0 +1,13 @@
+{
+  "run_id": "fixture-positive-001",
+  "created_at": "2026-05-20T00:00:00Z",
+  "profile": "release_closure",
+  "artifacts": [
+    {
+      "path": "fixtures/release-evidence/sample-capsule.md",
+      "sha256": "50768743a8e6f4df68b960381d8694efaef24b2f4440214bb3b0dad0a35b9e58",
+      "kind": "capsule",
+      "commit_policy": "optional_committed"
+    }
+  ]
+}

@@ -52,3 +52,10 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+
+# === review2 / release-evidence run artifacts ===
+# raw capsule runs and review route split artifacts are local-only by default
+results/review-route-split/*/raw-*
+results/review-route-split/*/codex-output-*
+# run-manifest.json and curated evidence under release-evidence/ should be committed explicitly
+# results/release-evidence/ is NOT gitignored — commit run-manifest.json + approved artifacts
