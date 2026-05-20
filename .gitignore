@@ -46,3 +46,9 @@ mirrors/codex-chain/**/.run-jitter-salt
 mirrors/codex-chain/**/__pycache__/
 mirrors/codex-chain/**/computer-use/
 mirrors/codex-chain/**/ambient-suggestions/
+
+# === Python bytecode (global) ===
+__pycache__/
+*.pyc
+*.pyo
+*.pyd

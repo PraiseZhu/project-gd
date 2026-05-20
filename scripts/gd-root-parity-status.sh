@@ -10,10 +10,10 @@ echo "main_root: $MAIN"
 echo ""
 
 # Check installed parity
-main_hash=$(md5 -q "$MAIN/commands/gd.md" 2>/dev/null || echo "MISSING")
-inst_hash=$(md5 -q "$INSTALLED_GD" 2>/dev/null || echo "MISSING")
+main_hash=$(shasum -a 256 "$MAIN/commands/gd.md" 2>/dev/null | awk '{print $1}' || echo "MISSING")
+inst_hash=$(shasum -a 256 "$INSTALLED_GD" 2>/dev/null | awk '{print $1}' || echo "MISSING")
 if [ "$main_hash" = "$inst_hash" ]; then
-  echo "INSTALLED_PARITY: PASS (hash=$main_hash)"
+  echo "INSTALLED_PARITY: PASS (sha256=$main_hash)"
 else
   echo "INSTALLED_PARITY: DRIFT"
   echo "  main:      $main_hash"
@@ -41,7 +41,7 @@ ALLOWLIST=(
 MISSING=0; PRESENT=0
 for f in "${ALLOWLIST[@]}"; do
   if [ -f "$MAIN/$f" ]; then
-    hash=$(md5 -q "$MAIN/$f")
+    hash=$(shasum -a 256 "$MAIN/$f" | awk '{print $1}')
     echo "  OK  $f ($hash)"
     PRESENT=$((PRESENT+1))
   else

@@ -1,0 +1,28 @@
+{
+  "template_kind": "gd-plan-review",
+  "reviewer": "codex",
+  "review_target": "fixtures/plans/sample-plan.md",
+  "review_kind": "plan",
+  "review_run_status": "completed_with_constraint",
+  "gd_review_decision": "REQUIRES_CHANGES",
+  "scope_checked": [
+    {"facet": "目标链完整性", "result": "pass", "evidence": "Codex 确认 PROJECT_GOAL 存在"},
+    {"facet": "SC 验收路径", "result": "fail", "evidence": "SC-2 verify 命令缺失实际执行证据"}
+  ],
+  "findings": [
+    {
+      "severity": "P2",
+      "title": "SC-2 verify 命令缺少 expected_exit 字段",
+      "sc_refs": ["SC-2"],
+      "evidence": "verify 块存在但 expected_exit 未声明，无法机械验收",
+      "impact": "验收时无法确认预期退出码，降低可重复验证性",
+      "required_fix": "在 SC-2 verify 块中补充 expected_exit: 0",
+      "verify": "grep -q expected_exit plan.md && echo PASS"
+    }
+  ],
+  "merge_notes": {
+    "conflict_with_other_reviewer": false
+  },
+  "residual_risk": [],
+  "timestamp": "2026-05-12T08:01:00Z"
+}
