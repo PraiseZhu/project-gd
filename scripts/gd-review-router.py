@@ -808,6 +808,12 @@ def _run_live_code_only(
             ),
         }],
     }
+    # L3 content-evidence validation note (SC-W2-2):
+    # code_only router does not have a real Codex review to validate at this stage.
+    # The diff_path is the diff itself, not a review output. L3 would be a no-op
+    # (target == review). The actual L3 gate runs in parse-transport when Codex
+    # returns a real review result. No L3 call here prevents the no-op false pass.
+
     write_and_validate_route_report(report, output_dir)
     return 1  # REQUIRES_CHANGES — actual verdict from skill_orchestrated review
 

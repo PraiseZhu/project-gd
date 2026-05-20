@@ -81,10 +81,7 @@ check "G4 gate rejects controller-report invalid-json" \
     fixtures/negative/final-controller-report-invalid-json.json 2>&1 | grep -q controller_report_invalid_json'
 
 # 10 (F2/C4). Deterministic capsule-build checks for execution_outcome and combined.
-# Replaces previous --live-transport check (which invoked Codex writer; unstable, slow).
-# build-capsule does NOT call writer; only validates the capsule construction stage
-# where F1 (INVALID_REVIEW_KIND_FOR_MODE) would surface as regression.
-F2_EO_OUT="/tmp/gd-f2-eo-$$.txt"
+F2_EO_OUT="${TMPDIR:-/var/tmp}/gd-f2-eo-$$.txt"
 F2_EO_STDOUT=$(python3 scripts/gd-codex-bridge-review.py build-capsule \
   --kind execution_outcome \
   --target fixtures/execution-outcome/valid-agent-exec-outcome.json \
@@ -98,7 +95,7 @@ else
   FAIL=$((FAIL+1))
 fi
 
-F2_CB_OUT="/tmp/gd-f2-cb-$$.txt"
+F2_CB_OUT="${TMPDIR:-/var/tmp}/gd-f2-cb-$$.txt"
 F2_CB_STDOUT=$(python3 scripts/gd-codex-bridge-review.py build-capsule \
   --kind combined \
   --target fixtures/execution-outcome/valid-agent-exec-outcome.json \
@@ -116,18 +113,12 @@ fi
 check "D4 positive route-with-ledger-approved passes validator" \
   python3 scripts/gd-validate-route-report.py fixtures/positive/route-with-ledger-approved.json
 
-# D4 negative: APPROVED route report missing ledger must fail validator (regression guard)
+# D4 negative: APPROVED route report missing ledger must fail validator
 check "D4 negative route-missing-child-review-ledger rejected by validator" \
   bash -c '! python3 scripts/gd-validate-route-report.py \
     fixtures/negative/route-missing-child-review-ledger.json 2>/dev/null'
 
-# P2 fix: preflight gate — distinguish "not run / inconclusive / escalated / ready"
-# Route decision determines whether bridge is ready for handtest:
-#   no_fix_needed_or_intermittent → PASS (bridge works, no code fix needed)
-#   config_isolation | bypass_daemon | shard → PASS-WITH-BLOCKER (fix route identified)
-#   inconclusive → FAIL (need more preflight data)
-#   escalate_outside_scope → FAIL (outside GD scope, user decision required)
-#   not run → INFO only (does not affect pass/fail)
+# Preflight bridge route (informational — does not block if not yet run)
 PREFLIGHT_DIR="reports/bridge-preflight"
 PREFLIGHT_PASS_ROUTES="no_fix_needed_or_intermittent config_isolation bypass_daemon shard"
 if [ -d "$PREFLIGHT_DIR" ]; then
@@ -138,25 +129,85 @@ if [ -d "$PREFLIGHT_DIR" ]; then
       echo "  FAIL: preflight-report.json exists but route_decision is null/empty"
       FAIL=$((FAIL+1))
     elif echo "$PREFLIGHT_PASS_ROUTES" | grep -qw "$ROUTE"; then
-      echo "  PASS: preflight route=$ROUTE (bridge fix path identified or not needed)"
+      echo "  PASS: preflight route=$ROUTE"
       PASS=$((PASS+1))
     elif [ "$ROUTE" = "escalate_outside_scope" ]; then
-      echo "  FAIL: preflight route=escalate_outside_scope — outside GD scope, user decision required"
+      echo "  FAIL: preflight route=escalate_outside_scope"
       FAIL=$((FAIL+1))
     elif [ "$ROUTE" = "inconclusive" ]; then
-      echo "  FAIL: preflight route=inconclusive — re-run with more trials or different budget"
+      echo "  FAIL: preflight route=inconclusive"
       FAIL=$((FAIL+1))
     else
-      echo "  FAIL: preflight route=$ROUTE (unknown/unhandled)"
+      echo "  FAIL: preflight route=$ROUTE (unknown)"
       FAIL=$((FAIL+1))
     fi
   else
-    echo "  FAIL: preflight dir exists but no preflight-report.json found (run was interrupted?)"
+    echo "  FAIL: preflight dir exists but no preflight-report.json found"
     FAIL=$((FAIL+1))
   fi
 else
-  echo "  INFO: bridge preflight not yet run (run scripts/gd-bridge-preflight.py first)"
+  echo "  INFO: bridge preflight not yet run"
 fi
+
+# 11. Plan preflight (master-plan consistency) checks
+check "plan-preflight: script exists" \
+  test -f scripts/gd-validate-master-plan-consistency.py
+
+check "plan-preflight: positive clean-plan fixture passes" \
+  python3 scripts/gd-validate-master-plan-consistency.py \
+    fixtures/preflight/positive-clean-plan.md
+
+check "plan-preflight: negative owned-forbidden-overlap fires (exit=1)" \
+  bash -c '! python3 scripts/gd-validate-master-plan-consistency.py \
+    fixtures/preflight/negative-owned-forbidden-overlap.md 2>/dev/null'
+
+check "plan-preflight: negative sc-verify-missing fires (exit=1)" \
+  bash -c '! python3 scripts/gd-validate-master-plan-consistency.py \
+    fixtures/preflight/negative-sc-verify-missing.md 2>/dev/null'
+
+check "plan-preflight: negative protected-runtime-owned fires (exit=1)" \
+  bash -c '! python3 scripts/gd-validate-master-plan-consistency.py \
+    fixtures/preflight/negative-protected-runtime-owned.md 2>/dev/null'
+
+check "plan-preflight: semantic-regression fixture passes" \
+  python3 scripts/gd-validate-master-plan-consistency.py \
+    fixtures/preflight/semantic-regression-passes-preflight.md
+
+check "plan-preflight: legacy plan returns SKIPPED_LEGACY_PLAN" \
+  bash -c 'out=$(python3 scripts/gd-validate-master-plan-consistency.py \
+    fixtures/plans/phase2-good-plan.md 2>&1); \
+    echo "$out" | grep -q SKIPPED_LEGACY_PLAN'
+
+# 12. L1+L3+L1.5 production wiring sanity
+check "L1: capsule externalized for plan kind" \
+  bash -c 'out=$(python3 scripts/gd-codex-bridge-review.py build-capsule \
+    --kind plan --target plans/gd/2026-05-19-review-chain-hardening/master-plan.md \
+    --cwd . --out "${TMPDIR:-/var/tmp}/gd-l1-sanity-$$.json" --compat-v1 2>&1); \
+    size=$(wc -c < "${TMPDIR:-/var/tmp}/gd-l1-sanity-$$.json" 2>/dev/null || echo 999999); \
+    rm -f "${TMPDIR:-/var/tmp}/gd-l1-sanity-$$.json"; [ "$size" -le 30720 ]'
+
+check "L3: validator wired into parse-transport" \
+  grep -q "gd-validate-review-content-evidence" scripts/gd-codex-bridge-review.py
+
+check "L3: fake SC-ID detected" \
+  bash -c '! python3 scripts/gd-validate-review-content-evidence.py \
+    --target fixtures/preflight/dispatch-map-without-ghost-step.json \
+    --review fixtures/preflight/l3-fake-review-sample.md 2>/dev/null'
+
+check "L1.5: execution_outcome capsule has MANDATORY VERIFY STEP" \
+  bash -c 'python3 scripts/gd-codex-bridge-review.py build-capsule \
+    --kind execution_outcome \
+    --target fixtures/execution-results/valid-closure.json \
+    --cwd . --out "${TMPDIR:-/var/tmp}/gd-l15-sanity-$$.json" 2>/dev/null && \
+    grep -q "MANDATORY VERIFY STEP" "${TMPDIR:-/var/tmp}/gd-l15-sanity-$$.json" && \
+    rm -f "${TMPDIR:-/var/tmp}/gd-l15-sanity-$$.json"'
+
+check "L1: combined capsule <= 30KB" \
+  bash scripts/gd-l1-combined-bundle-smoke.sh
+
+# 13. L3 v1 fixture regression (no false positives)
+check "L3 v1 fixture regression" \
+  bash scripts/gd-l3-regression-v1-fixtures.sh
 
 echo ""
 echo "=== GD_REPAIR_RESULT: pass=$PASS fail=$FAIL ==="

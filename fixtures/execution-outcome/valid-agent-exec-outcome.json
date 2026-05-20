@@ -1,0 +1,38 @@
+{
+  "outcome_version": "1.0",
+  "outcome_id": "h4b-fixture-valid-agent-exec",
+  "source_batch": "fixtures/agent-exec/valid-agent-exec-batch.json",
+  "task_outcomes": [
+    {
+      "task_id": "t-h3-command",
+      "exec_status": "completed",
+      "deliverables": [
+        {
+          "path": "fixtures/agent-exec/valid-agent-exec-batch.json",
+          "must_exist": true,
+          "verified": true
+        }
+      ],
+      "verify_reruns": [
+        {
+          "sc_ref": "SC-1",
+          "cmd": "test -f fixtures/agent-exec/valid-agent-exec-batch.json",
+          "expected_exit": 0,
+          "actual_exit": 0,
+          "actual_stdout": ""
+        }
+      ],
+      "sc_acceptance": [
+        {
+          "sc_ref": "SC-1",
+          "status": "pass",
+          "evidence": "verify_reruns[0] exit 0"
+        }
+      ],
+      "owned_paths_post_audit": {
+        "owned_paths": ["fixtures/agent-exec/**"],
+        "writes_outside_owned": []
+      }
+    }
+  ]
+}

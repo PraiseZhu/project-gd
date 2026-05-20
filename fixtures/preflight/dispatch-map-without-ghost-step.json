@@ -1,0 +1,17 @@
+{
+  "dispatch_id": "test-drift-map",
+  "source_master_plan": "fixtures/preflight/negative-dispatch-drift.md",
+  "_built_at": "2026-05-19T00:00:00Z",
+  "tracks": [
+    {
+      "track_id": "t1",
+      "agents": [
+        {
+          "agent_id": "real-step-01",
+          "step_id": "real-step-01",
+          "owned_paths": ["output/real.txt"]
+        }
+      ]
+    }
+  ]
+}

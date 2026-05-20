@@ -44,9 +44,11 @@ BRIDGE_SCRIPT = GD_PROJECT_ROOT / "scripts" / "gd-codex-bridge-review.py"
 AGGREGATE_SCRIPT = GD_PROJECT_ROOT / "scripts" / "gd-aggregate-codex-cross-review.py"
 MANIFEST_VALIDATOR = GD_PROJECT_ROOT / "scripts" / "gd-validate-codex-cross-review-manifest.py"
 AGGREGATE_VALIDATOR = GD_PROJECT_ROOT / "scripts" / "gd-validate-codex-cross-review-aggregate.py"
+PREFLIGHT_SCRIPT = GD_PROJECT_ROOT / "scripts" / "gd-validate-master-plan-consistency.py"
 
 # Error buckets that block final approval (all must be empty for APPROVED)
 BLOCKING_BUCKETS = [
+    "preflight_failed",
     "transport_failed",
     "wrapper_schema_fail",
     "codex_requires_changes",
@@ -850,6 +852,48 @@ def main(argv: list[str]) -> int:
         target_set_id = ""
         kind = "plan"
         compat_v1 = True
+
+    # ── Preflight: master_plan consistency check (live mode only) ────────────
+    if not fixture_mode and PREFLIGHT_SCRIPT.exists():
+        master_plan_targets = [
+            (role, path) for role, path in args.targets if role == "master_plan"
+        ]
+        for role, mp_path in master_plan_targets:
+            preflight_report = out_dir / f"preflight-{role}.json"
+            rc_pre, out_pre, err_pre = _run_subprocess(
+                [sys.executable, str(PREFLIGHT_SCRIPT), mp_path,
+                 "--json-report", str(preflight_report)],
+                f"preflight-{role}",
+            )
+            if rc_pre != 0:
+                print(f"PREFLIGHT_FAILED: role={role} target={mp_path}", file=sys.stderr)
+                print(out_pre)
+                preflight_job = {
+                    "queue_job_id": f"{target_set_id}-{role}",
+                    "target_role": role,
+                    "primary_target": mp_path,
+                    "bridge_exit": -1,
+                    "bridge_stderr_path": None,
+                    "bridge_stderr_summary": "preflight_failed — Codex bridge not invoked",
+                    "raw_verdict": "FAILED",
+                    "mapped_status": "preflight_failed",
+                    "aggregate_bucket": "preflight_failed",
+                    "target_hash": _sha256_file(Path(mp_path)),
+                    "raw_path": None,
+                    "git_gate_status": "skipped_preflight_failed",
+                    "_dirty": False,
+                }
+                _write_controller_report(
+                    out_dir, [preflight_job],
+                    "FAILED", ["PREFLIGHT_FAILED"],
+                    "FAILED", ["PREFLIGHT_FAILED"],
+                    True, False,
+                    out_dir / "aggregate-final.json",
+                    out_dir / "manifest-final.json",
+                    started_at,
+                    run_mode="live",
+                )
+                return 1
 
     # ── Dispatch: fixture or live ─────────────────────────────────────────────
     if fixture_mode:
