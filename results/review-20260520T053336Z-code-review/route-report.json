@@ -1,0 +1,33 @@
+{
+  "schema_version": "2.0",
+  "router_invocation_id": "review-code-20260520T053336Z",
+  "mode": "live_dry_run",
+  "notes": "mock bridge: Codex code sidecar pending Plan 6; live_dry_run used for code-only LOCAL_STATIC_ONLY path",
+  "review_target_kind": "code_only",
+  "decision": "REQUIRES_CHANGES",
+  "capability_status": "local_only",
+  "claude_review_verdict": "APPROVED",
+  "codex_review_status": "pending_future_plan",
+  "codex_review_kind": "code_diff",
+  "closure_eligible": false,
+  "closure_ineligible_reason": "CLOSURE_INELIGIBLE: code_only Codex sidecar pending Plan 6",
+  "diff_source": "git_staged_changes_worktree_gd-runtime-parity",
+  "diff_hash": "a6d0d6de74b2827b6d6723fb92e6e95c7c5b6a8362345a4076ef690efd28df43",
+  "patch_generation_method": "git_diff",
+  "child_review_ledger_path": "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/.claude/worktrees/gd-runtime-parity/results/review-20260520T053336Z-code-review/stage-dispatch-ledger.json",
+  "validator_signature": {
+    "validator": "gd-validate-route-report.py",
+    "schema_version": "2.0"
+  },
+  "recorded_at": "2026-05-20T05:35:03Z",
+  "findings": [
+    {
+      "severity": "info",
+      "sc_refs": [
+        "SC-review-code"
+      ],
+      "description": "Claude child review completed APPROVED after 1 round (4 findings fixed). Codex cross-review mock (pending Plan 6).",
+      "reviewer": "router_mock"
+    }
+  ]
+}

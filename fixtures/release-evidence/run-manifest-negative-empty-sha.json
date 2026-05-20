@@ -1,0 +1,13 @@
+{
+  "run_id": "fixture-negative-001",
+  "created_at": "2026-05-20T00:00:00Z",
+  "profile": "release_closure",
+  "artifacts": [
+    {
+      "path": "fixtures/release-evidence/sample-capsule.md",
+      "sha256": "",
+      "kind": "capsule",
+      "commit_policy": "required_committed"
+    }
+  ]
+}

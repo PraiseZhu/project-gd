@@ -1,8 +1,22 @@
-# GD Runtime Activation Plan (stub for self-test fixtures)
+# Plan H v3.4 Master Plan — `/gd` Runtime Activation (Bridge Self-Test Fixture Target)
 
 GD_STANDARD: Project GD/prompts/gd-review-standard.md
 GOAL_SOURCE: Project GD/docs/gd-v7-project-goal.md
 TEMPLATE_KIND: gd-master-plan
 
-This file exists as a minimal stub for build-capsule self-test fixtures.
-The original plan (2026-05-12) was superseded; this stub preserves fixture paths.
+日期：2026-05-12
+状态：fixture-target（本文件仅用于 bridge self-test routing fixtures 的 target 引用，内容精简）
+
+## PROJECT_GOAL
+Project GD runtime activation: validate /gd review end-to-end with live Codex transport.
+
+## SC-1: bridge self-test passes
+verify: bash scripts/gd-codex-bridge-review.py self-test && exit 0
+
+## SC-2: routing fixtures resolve target paths
+verify: all v2-routing fixtures find their target files
+
+## owned_paths
+- scripts/
+- fixtures/
+- plans/
