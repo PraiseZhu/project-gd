@@ -257,21 +257,25 @@ fi
 echo ""
 
 # ── review2_command parity status ──────────────────────────────────────────
-echo "--- review2_command parity (SOURCE_READY, install not yet authorized) ---"
 R2_OUT=$(bash "$ROOT/scripts/gd-parity-verify.sh" --bundle review2_command 2>/dev/null || true)
 R2_STATUS=$(echo "$R2_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('status','error'))" 2>/dev/null || echo "error")
 case "$R2_STATUS" in
   installed_parity_pass)
-    echo "  [PARITY] review2_command: INSTALLED_PASS"
+    echo "--- review2_command parity (installed, hash verified) ---"
+    R2_SHA=$(echo "$R2_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('sha256','?'))" 2>/dev/null || echo "?")
+    echo "  [PARITY] review2_command: INSTALLED_PASS (sha256=${R2_SHA:0:16}...)"
     ;;
   runtime_missing)
-    echo "  [PARITY] review2_command: SOURCE_READY_INSTALL_BLOCKED (not installed; use install-review-route-command.sh --route review2 --apply when authorized)"
+    echo "--- review2_command parity (source ready, not yet installed) ---"
+    echo "  [PARITY] review2_command: SOURCE_READY_INSTALL_BLOCKED (use install-review-route-command.sh --route review2 --apply when authorized)"
     ;;
   installed_runtime_drift)
-    echo "  [PARITY] review2_command: DRIFT_DETECTED — installed copy differs from source"
+    echo "--- review2_command parity (DRIFT DETECTED) ---"
+    echo "  [PARITY] review2_command: DRIFT_DETECTED — installed copy differs from source; re-run installer"
     [ $FAIL_CODE -eq 0 ] && FAIL_CODE=14
     ;;
   *)
+    echo "--- review2_command parity (unknown state) ---"
     echo "  [PARITY] review2_command: UNKNOWN ($R2_STATUS)"
     ;;
 esac
