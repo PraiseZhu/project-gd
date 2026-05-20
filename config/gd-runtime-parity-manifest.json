@@ -1,0 +1,156 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": "2.0.0",
+  "description": "Runtime parity and release mirror manifest for Project GD. Three bundles: gd_command (strict parity), codex_l1_audit_mirror (release mirror completeness), codex_l2_audit_mirror (release mirror completeness). Gate types are explicitly labelled: [PARITY] or [RELEASE_MIRROR].",
+  "secret_scan_regex_version": "1.0.0",
+  "secret_scan_regex_ssot": "config/secret-scan-regexes.json",
+  "excluded_filenames": [
+    "auth.json",
+    "*.token.json",
+    "credentials.json",
+    "*.key",
+    "*.pem",
+    "*.p8",
+    "*.pfx"
+  ],
+  "release_gate_exit_codes": {
+    "0":  "ready",
+    "10": "mirror_incomplete — sync not run or incomplete; run bin/gd-sync-codex-chain.sh --apply",
+    "11": "manifest_sync_drift — manifest excluded_patterns do not match sync script actual behavior",
+    "12": "secret_found — secret token found in mirror file (after redaction); manual review required",
+    "13": "untracked_release_files — expected release files are untracked in git",
+    "14": "l1_must_include_missing — one or more L1 must_include files absent or hash mismatch",
+    "15": "l2_denominator_unclassified — at least one L2 top-level entry has no INCLUDE/MANIFEST_ONLY/EXCLUDE classification"
+  },
+  "bundles": {
+    "gd_command": {
+      "description": "/gd Claude command: Project GD source → ~/.claude/commands/gd.md",
+      "gate_type": "strict_parity",
+      "source_path": "commands/gd.md",
+      "runtime_path": "/Users/praise/.claude/commands/gd.md",
+      "direction": "source_to_runtime",
+      "mode": "single_file",
+      "hash_algorithm": "sha256",
+      "install_allowed": true,
+      "install_gate_script": "scripts/check-gd-command-parity.sh",
+      "release_gate_script": "scripts/gd-parity-verify.sh --bundle gd-command",
+      "authorization_ledger": "baselines/gd-v7-runtime-write-authorizations.jsonl",
+      "secret_policy": "none",
+      "release_status": "ready"
+    },
+    "codex_l1_audit_mirror": {
+      "description": "L1 Codex binary release mirror. Captures installed package snapshot (no node_modules). Gate: release_mirror completeness — all must_include files present and hash-verified against runtime.",
+      "gate_type": "release_mirror",
+      "runtime_base": "/Users/praise/.npm-global/lib/node_modules/@openai/codex",
+      "mirror_base": "mirrors/codex-chain/l1-binary",
+      "direction": "runtime_to_mirror",
+      "mode": "directory",
+      "hash_algorithm": "sha256",
+      "install_allowed": false,
+      "sync_script": "bin/gd-sync-codex-chain.sh",
+      "sync_hash_file": "mirrors/codex-chain/.sync-content-hash",
+      "secret_policy": "redact_on_sync",
+      "release_status": "pending_sync_verification",
+      "must_include": [
+        {
+          "runtime_path": "bin/codex.js",
+          "mirror_path": "codex.js",
+          "description": "Codex CLI entry point"
+        },
+        {
+          "runtime_path": "bin/rg",
+          "mirror_path": "rg",
+          "description": "ripgrep binary bundled with Codex"
+        },
+        {
+          "runtime_path": "package.json",
+          "mirror_path": "package.json",
+          "description": "Package metadata — version lock and dependency manifest"
+        },
+        {
+          "runtime_path": "README.md",
+          "mirror_path": "README.md",
+          "description": "Package readme"
+        }
+      ],
+      "excluded_patterns": [
+        "node_modules/**",
+        ".cache/**",
+        "*.log"
+      ],
+      "exclusion_reason": "node_modules/ vendored dependency tree — not committed to avoid size and license concerns; cache and log files are runtime ephemera"
+    },
+    "codex_l2_audit_mirror": {
+      "description": "L2 Codex config/memories/skills/automations release mirror. Release mirror completeness: all top-level entries classified; INCLUDE_FULL content committed; MANIFEST_ONLY metadata committed; EXCLUDE content not committed.",
+      "gate_type": "release_mirror",
+      "runtime_base": "/Users/praise/.codex",
+      "mirror_base": "mirrors/codex-chain",
+      "direction": "runtime_to_mirror",
+      "mode": "directory",
+      "hash_algorithm": "sha256",
+      "install_allowed": false,
+      "sync_script": "bin/gd-sync-codex-chain.sh",
+      "sync_hash_file": "mirrors/codex-chain/.sync-content-hash",
+      "secret_policy": "redact_on_sync",
+      "release_status": "pending_sync_verification",
+      "top_level_classification": {
+        "include_full": {
+          "description": "Content committed verbatim (after secret redaction). User/version data only — low churn.",
+          "top_level_files": [
+            {"name": "config.toml",     "secret_scan": "pass", "redact": false, "note": "User config; scanned clean"},
+            {"name": "AGENTS.md",       "secret_scan": "pass", "redact": false, "note": "User agent instructions; 0 bytes, empty"},
+            {"name": "version.json",    "secret_scan": "pass", "redact": false, "note": "Codex version pin"}
+          ],
+          "directories": [
+            {"name": "rules/",       "redact": true,  "note": "default.rules contains API key — redact before commit"},
+            {"name": "memories/",    "redact": false, "note": "User-authored memory snippets; no secrets expected"},
+            {"name": "automations/", "redact": false, "note": "User automation scripts; no secrets expected"}
+          ]
+        },
+        "manifest_only": {
+          "description": "Only metadata committed (name, version, sha256, file_count, total_bytes, license). Full content NOT committed — upstream or frequently-changing assets.",
+          "top_level_files": [
+            {"name": "models_cache.json",           "note": "Runtime model list cache — high churn, metadata sufficient"},
+            {"name": "cloud-requirements-cache.json","note": "Cloud dependency cache — high churn, metadata sufficient"},
+            {"name": ".codex-global-state.json",    "note": "Runtime state — changes on every session, metadata sufficient"}
+          ],
+          "directories": [
+            {"name": "skills/",       "note": "User-installed skills — 1473 files; manifest records name+version+sha256"},
+            {"name": "computer-use/", "note": "Computer-use assets — 158 files; upstream assets, manifest only"},
+            {"name": "plugins/",      "note": "Plugin files — 1626 files; upstream/third-party, manifest only"}
+          ]
+        },
+        "exclude": {
+          "description": "Content NOT committed. Privacy, security, runtime-state, or size reasons.",
+          "top_level_files": [
+            {"name": "auth.json",                    "reason": "credentials — in excluded_filenames deny-list"},
+            {"name": ".codex-global-state.json.bak", "reason": "backup of runtime state — ephemeral"},
+            {"name": ".personality_migration",       "reason": "migration marker — host-specific runtime artifact"},
+            {"name": "installation_id",              "reason": "host-specific identifier — PII risk"},
+            {"name": "session_index.jsonl",          "reason": "session index — pairs with excluded sessions/"},
+            {"name": "state_5.sqlite",               "reason": "runtime state DB — ephemeral, binary"},
+            {"name": "state_5.sqlite-shm",           "reason": "sqlite shared memory — ephemeral"},
+            {"name": "state_5.sqlite-wal",           "reason": "sqlite write-ahead log — ephemeral"},
+            {"name": "history.jsonl",                "reason": "conversation history — privacy"},
+            {"name": "logs_2.sqlite",                "reason": "log DB — runtime ephemera"},
+            {"name": "logs_2.sqlite-shm",            "reason": "sqlite shared memory — ephemeral"},
+            {"name": "logs_2.sqlite-wal",            "reason": "sqlite write-ahead log — ephemeral"}
+          ],
+          "directories": [
+            {"name": "sessions/",          "reason": "active session data — privacy"},
+            {"name": "archived_sessions/", "reason": "archived session data — privacy; 91 files"},
+            {"name": "log/",               "reason": "runtime logs — ephemera"},
+            {"name": "cache/",             "reason": "runtime cache — ephemera"},
+            {"name": "sqlite/",            "reason": "sqlite state — ephemera"},
+            {"name": "tmp/",               "reason": "temp files — ephemera"},
+            {"name": ".tmp/",             "reason": "temp files — ephemera"},
+            {"name": "vendor_imports/",    "reason": "vendored dependency tree — 839 files, size/license concerns"},
+            {"name": "shell_snapshots/",   "reason": "shell state snapshots — runtime ephemera"},
+            {"name": "ambient-suggestions/","reason": "runtime suggestion cache — ephemera"},
+            {"name": "pets/",              "reason": "0 files — nothing to commit"}
+          ]
+        }
+      }
+    }
+  }
+}

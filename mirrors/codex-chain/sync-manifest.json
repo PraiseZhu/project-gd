@@ -1,0 +1,88 @@
+{
+  "generated_at": "2026-05-20T06:39:01Z",
+  "apply_mode": true,
+  "runtime_top_level_count": 35,
+  "included_count": 67,
+  "manifest_only_count": 3,
+  "manifest_only_metadata": [
+    {
+      "name": ".codex-global-state.json",
+      "type": "file",
+      "size_bytes": 14502,
+      "sha256": "584afc3769c0db104a02632aba38bd91ebcb8be229c7f16189935fbb5f1ac6cf",
+      "note": "metadata_only_not_committed"
+    },
+    {
+      "name": "models_cache.json",
+      "type": "file",
+      "size_bytes": 200577,
+      "sha256": "2f6ff163e2e33ed8f94a687485ccb58982118c9901f84da187f0933b7724573b",
+      "note": "metadata_only_not_committed"
+    },
+    {
+      "name": "cloud-requirements-cache.json",
+      "type": "file",
+      "size_bytes": 324,
+      "sha256": "09de7ca8af6a2bf905f6eeb9b46e05e7a8725e971ab05c258cf6d3def9b1beaf",
+      "note": "metadata_only_not_committed"
+    },
+    {
+      "name": "skills/",
+      "type": "directory",
+      "file_count": 1473,
+      "total_bytes": 6892236,
+      "names_hash": "12ace071c3802d6ce3f8bdf72bc8d89a44e5816ac9f88b1a2ca0ea2542434a72",
+      "note": "metadata_only_not_committed"
+    },
+    {
+      "name": "computer-use/",
+      "type": "directory",
+      "file_count": 158,
+      "total_bytes": 52524188,
+      "names_hash": "1c32617697da12c19229ffa9a91d77f86a3f8083edceb1cd2a3151290485498b",
+      "note": "metadata_only_not_committed"
+    },
+    {
+      "name": "plugins/",
+      "type": "directory",
+      "file_count": 1626,
+      "total_bytes": 75695801,
+      "names_hash": "026e9e36172ad941102719bc3967a80b2d97441accb66e5bd6b5b6e68156cbc0",
+      "note": "metadata_only_not_committed"
+    }
+  ],
+  "excluded_count": 23,
+  "unclassified_count": 0,
+  "unclassified_entries": [],
+  "redaction_count": 1,
+  "secret_scan_status": "pass",
+  "per_bucket_hash": {
+    "l1_binary": {
+      "file_count": 4,
+      "sha256": "275b7782ad7d8b0c0f1f272f8aa1ad66596278ce449696410bdd97b09be13e54"
+    },
+    "l2_config": {
+      "file_count": 4,
+      "sha256": "2a27d2826d35df4f63f24cf6667ce8af5d279be4f20ca3066e38c5f175a82627"
+    },
+    "l2_memories": {
+      "file_count": 11,
+      "sha256": "9abda6530f4e440f17a27ffe42dcdd6e991c342bada6b18392b677d4e45b445b"
+    },
+    "l2_system_skills": {
+      "file_count": 46,
+      "sha256": "a772cd15660c3125266623b6d4fb290c0134837f30e2c89c506c9c64cbc0e886"
+    },
+    "l2_automations": {
+      "file_count": 2,
+      "sha256": "85172c0531c152087f2ac35ccde2e35f952e59e80ea35a27b098c5225f239550"
+    }
+  },
+  "manifest_only_items": [
+    ".codex-global-state.json",
+    "models_cache.json",
+    "cloud-requirements-cache.json"
+  ],
+  "secret_scan_regex_version": "1.0.0",
+  "secret_scan_regex_ssot": "config/secret-scan-regexes.json"
+}

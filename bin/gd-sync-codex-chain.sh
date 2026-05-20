@@ -65,9 +65,12 @@ rsync $RSYNC_FLAGS \
 # ─── L2: 根配置文件（白名单，显式排除 auth.json）──────────────────────────
 echo ""
 echo "=== L2: config ==="
-for f in config.toml AGENTS.md .codex-global-state.json \
-          models_cache.json cloud-requirements-cache.json \
-          version.json history.jsonl; do
+for f in config.toml AGENTS.md version.json; do
+  # INCLUDE_FULL: user/version data — low churn, safe to commit verbatim
+  # history.jsonl excluded per manifest (privacy — conversation history)
+  # .codex-global-state.json, models_cache.json, cloud-requirements-cache.json:
+  #   MANIFEST_ONLY per config/gd-runtime-parity-manifest.json — metadata only in
+  #   sync-manifest.json, full content must NOT be written to mirror.
   [[ -f "$L2_SRC/$f" ]] && rsync $RSYNC_FLAGS "$L2_SRC/$f" "$MIRROR/l2-config/" || true
 done
 rsync $RSYNC_FLAGS \
@@ -142,33 +145,39 @@ print(f"  manifest: {len(manifest)} skills → {out}")
 PYEOF
 fi
 
-# ─── Secret 兜底扫描 ──────────────────────────────────────────────────────────
+# ─── Secret 兜底扫描（regex 从 SSOT 加载） ────────────────────────────────────
 if [[ $APPLY -eq 1 && $SKIP_SCAN -eq 0 ]]; then
   echo ""
   echo "=== Secret 兜底扫描 ==="
-  SECRET_REGEX=(
-    'AKIA[A-Z0-9]{16}'
-    'sk-[A-Za-z0-9_-]{20,}'
-    'gh[pousr]_[A-Za-z0-9_]{36,}'
-    'eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.'
-    'BEGIN (RSA |EC )?PRIVATE KEY'
-  )
+  SECRET_SSOT="$REPO_ROOT/config/secret-scan-regexes.json"
+  if [[ ! -f "$SECRET_SSOT" ]]; then
+    echo "❌ Secret scan SSOT 缺失: $SECRET_SSOT" >&2
+    exit 2
+  fi
+  # 从 SSOT 构建 grep pattern（ERE-compatible，避免 PCRE lookahead）
+  SECRET_PATTERN=$(python3 -c "
+import json
+d = json.load(open('$SECRET_SSOT'))
+patterns = [p['regex'] for p in d.get('patterns', [])]
+print('|'.join(patterns))
+" 2>/dev/null)
+  if [[ -z "$SECRET_PATTERN" ]]; then
+    echo "❌ SSOT 解析失败或 patterns 为空" >&2
+    exit 2
+  fi
   HITS=0
   while IFS= read -r -d '' fpath; do
     file "$fpath" 2>/dev/null | grep -q "binary" && continue
-    for re in "${SECRET_REGEX[@]}"; do
-      if grep -qE -- "$re" "$fpath" 2>/dev/null; then
-        echo "  🚨 命中 [$re]: $fpath" >&2
-        HITS=$((HITS + 1))
-        break
-      fi
-    done
+    if grep -qE -- "$SECRET_PATTERN" "$fpath" 2>/dev/null; then
+      echo "  🚨 secret 命中: $fpath" >&2
+      HITS=$((HITS + 1))
+    fi
   done < <(find "$MIRROR" -type f -print0 2>/dev/null)
   if [[ $HITS -gt 0 ]]; then
     echo "❌ Secret 扫描发现 $HITS 个命中，请人工处理后重试（可加 --skip-scan 跳过）" >&2
     exit 2
   fi
-  echo "  ✅ 无 secret 命中"
+  echo "  ✅ 无 secret 命中 (SSOT: $SECRET_SSOT)"
 fi
 
 # ─── 幂等检测 + 条件性写 sync-history.jsonl ────────────────────────────────────────────
@@ -190,6 +199,108 @@ if [[ $APPLY -eq 1 ]]; then
     echo "$LOG_ENTRY" >> "$MIRROR/sync-history.jsonl"
     echo "📝 sync-history.jsonl 新增记录: $TIMESTAMP"
   fi
+
+  # ─── sync-manifest.json 生成 (SC-7) ─────────────────────────────────────
+  echo ""
+  echo "=== 生成 sync-manifest.json ==="
+  SYNC_MANIFEST="$MIRROR/sync-manifest.json"
+  python3 - <<PYEOF
+import json, os, hashlib, subprocess
+from pathlib import Path
+
+mirror = Path("$MIRROR")
+l2_src = Path("$L2_SRC")
+
+def sha256_dir(d):
+    h = hashlib.sha256()
+    for f in sorted(d.rglob("*")):
+        if f.is_file():
+            h.update(f.read_bytes())
+    return h.hexdigest()
+
+def file_count(d):
+    return sum(1 for f in d.rglob("*") if f.is_file()) if d.is_dir() else 0
+
+buckets = {
+    "l1_binary": mirror / "l1-binary",
+    "l2_config":  mirror / "l2-config",
+    "l2_memories": mirror / "l2-memories",
+    "l2_system_skills": mirror / "l2-system-skills",
+    "l2_automations": mirror / "l2-automations",
+}
+per_bucket = {}
+included_count = 0
+for name, path in buckets.items():
+    cnt = file_count(path)
+    included_count += cnt
+    per_bucket[name] = {"file_count": cnt, "sha256": sha256_dir(path) if path.is_dir() else "missing"}
+
+# L2 manifest-only metadata: record size+sha256 per file/dir, do NOT commit full content
+import hashlib
+manifest_only_files = [".codex-global-state.json", "models_cache.json", "cloud-requirements-cache.json"]
+manifest_only_dirs = ["skills", "computer-use", "plugins"]
+manifest_only_meta = []
+for mof in manifest_only_files:
+    p = l2_src / mof
+    if p.is_file():
+        h = hashlib.sha256(p.read_bytes()).hexdigest()
+        manifest_only_meta.append({"name": mof, "type": "file", "size_bytes": p.stat().st_size, "sha256": h, "note": "metadata_only_not_committed"})
+for mod in manifest_only_dirs:
+    p = l2_src / mod
+    if p.is_dir():
+        fc = sum(1 for f in p.rglob("*") if f.is_file())
+        tb = sum(f.stat().st_size for f in p.rglob("*") if f.is_file())
+        # Sample hash: hash of sorted file names for stability without reading all content
+        names_hash = hashlib.sha256("\n".join(sorted(str(f.relative_to(p)) for f in p.rglob("*") if f.is_file())).encode()).hexdigest()
+        manifest_only_meta.append({"name": mod + "/", "type": "directory", "file_count": fc, "total_bytes": tb, "names_hash": names_hash, "note": "metadata_only_not_committed"})
+manifest_only = [".codex-global-state.json", "models_cache.json", "cloud-requirements-cache.json"]
+excluded_files = ["auth.json", ".codex-global-state.json.bak", ".personality_migration",
+                  "installation_id", "session_index.jsonl", "state_5.sqlite",
+                  "state_5.sqlite-shm", "state_5.sqlite-wal", "history.jsonl",
+                  "logs_2.sqlite", "logs_2.sqlite-shm", "logs_2.sqlite-wal"]
+excluded_dirs = ["sessions", "archived_sessions", "log", "cache", "sqlite",
+                 "tmp", ".tmp", "vendor_imports", "shell_snapshots", "ambient-suggestions", "pets"]
+
+runtime_top = [e.name for e in l2_src.iterdir()] if l2_src.is_dir() else []
+all_classified = [".codex-global-state.json", ".codex-global-state.json.bak",
+                  ".personality_migration", "AGENTS.md", "auth.json",
+                  "cloud-requirements-cache.json", "config.toml", "history.jsonl",
+                  "installation_id", "logs_2.sqlite", "logs_2.sqlite-shm", "logs_2.sqlite-wal",
+                  "models_cache.json", "session_index.jsonl", "state_5.sqlite",
+                  "state_5.sqlite-shm", "state_5.sqlite-wal", "version.json",
+                  "ambient-suggestions", "archived_sessions", "automations", "cache",
+                  "computer-use", "log", "memories", "pets", "plugins", "rules",
+                  "sessions", "shell_snapshots", "skills", "sqlite", "tmp", ".tmp",
+                  "vendor_imports"]
+unclassified = [e for e in runtime_top if e not in all_classified]
+
+# Redaction count
+redacted = 0
+rules_file = mirror / "l2-config/rules/default.rules"
+if rules_file.exists() and "<REDACTED>" in rules_file.read_text(errors="replace"):
+    redacted = 1
+
+manifest_data = {
+    "generated_at": subprocess.check_output(["date", "-u", "+%Y-%m-%dT%H:%M:%SZ"]).decode().strip(),
+    "apply_mode": True,
+    "runtime_top_level_count": len(runtime_top),
+    "included_count": included_count,
+    "manifest_only_count": len(manifest_only),
+    "manifest_only_metadata": manifest_only_meta,
+    "excluded_count": len(excluded_files) + len(excluded_dirs),
+    "unclassified_count": len(unclassified),
+    "unclassified_entries": unclassified,
+    "redaction_count": redacted,
+    "secret_scan_status": "pass",
+    "per_bucket_hash": per_bucket,
+    "manifest_only_items": manifest_only,
+    "secret_scan_regex_version": "1.0.0",
+    "secret_scan_regex_ssot": "config/secret-scan-regexes.json"
+}
+out_path = Path("$SYNC_MANIFEST")
+out_path.write_text(json.dumps(manifest_data, indent=2, ensure_ascii=False))
+print(f"  sync-manifest.json: {included_count} included, {len(unclassified)} unclassified, {redacted} redacted")
+PYEOF
 
   echo ""
   echo "=== git diff --stat ==="

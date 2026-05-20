@@ -36,11 +36,11 @@ check "final gate rejects final-transport-failed-approved" \
 check "final gate rejects final-zero-child-approved" \
   bash -c '! python3 scripts/gd-validate-parent-close-gate.py fixtures/negative/final-zero-child-approved.json 2>/dev/null'
 
-# 4. Installed parity
-main_hash=$(md5 -q commands/gd.md 2>/dev/null || echo "MISSING")
-inst_hash=$(md5 -q "$HOME/.claude/commands/gd.md" 2>/dev/null || echo "MISSING")
+# 4. Installed parity (SHA256 — canonical via check-gd-command-parity.sh)
+main_hash=$(shasum -a 256 commands/gd.md 2>/dev/null | awk '{print $1}' || echo "MISSING")
+inst_hash=$(shasum -a 256 "$HOME/.claude/commands/gd.md" 2>/dev/null | awk '{print $1}' || echo "MISSING")
 if [ "$main_hash" = "$inst_hash" ]; then
-  echo "  PASS: installed parity ($main_hash)"
+  echo "  PASS: installed parity (sha256=$main_hash)"
   PASS=$((PASS+1))
 else
   echo "  FAIL: installed parity DRIFT (main=$main_hash installed=$inst_hash)"
@@ -60,8 +60,8 @@ check "backup manifest valid JSON" \
 for s in \
   scripts/gd-root-parity-status.sh \
   scripts/gd-install-rev21-for-handtest.sh \
-  scripts/gd-check-installed-parity.sh \
   scripts/gd-bridge-compat-smoke.sh \
+  scripts/gd-parity-verify.sh \
   scripts/gd-final-closure-status.sh; do
   check "script executable: $s" test -x "$s"
 done
@@ -87,7 +87,7 @@ check "G4 gate rejects controller-report invalid-json" \
 F2_EO_OUT="/tmp/gd-f2-eo-$$.txt"
 F2_EO_STDOUT=$(python3 scripts/gd-codex-bridge-review.py build-capsule \
   --kind execution_outcome \
-  --target fixtures/execution-outcome/valid-agent-exec-outcome.json \
+  --target fixtures/execution-outcome/valid-outcome-d1-test.json \
   --cwd . --out "$F2_EO_OUT" 2>/dev/null) || true
 rm -f "$F2_EO_OUT"
 if echo "$F2_EO_STDOUT" | grep -q "^QUEUE_JOB_ID:"; then
@@ -101,7 +101,7 @@ fi
 F2_CB_OUT="/tmp/gd-f2-cb-$$.txt"
 F2_CB_STDOUT=$(python3 scripts/gd-codex-bridge-review.py build-capsule \
   --kind combined \
-  --target fixtures/execution-outcome/valid-agent-exec-outcome.json \
+  --target fixtures/execution-outcome/valid-outcome-d1-test.json \
   --cwd . --out "$F2_CB_OUT" 2>/dev/null) || true
 rm -f "$F2_CB_OUT"
 if echo "$F2_CB_STDOUT" | grep -q "^QUEUE_JOB_ID:"; then
@@ -156,6 +156,27 @@ if [ -d "$PREFLIGHT_DIR" ]; then
   fi
 else
   echo "  INFO: bridge preflight not yet run (run scripts/gd-bridge-preflight.py first)"
+fi
+
+echo ""
+echo "=== L1/L2/L3 Release Gate Summary (consumed from gd-codex-chain-release-status.sh) ==="
+
+RELEASE_GATE_OUT=$(bash "$MAIN/scripts/gd-codex-chain-release-status.sh" 2>/dev/null || true)
+RELEASE_OVERALL=$(echo "$RELEASE_GATE_OUT" | grep "^OVERALL_RELEASE_STATUS:" | awk '{print $2}' || echo "unknown")
+L1_RS=$(echo "$RELEASE_GATE_OUT" | grep "^  L1_RELEASE_STATUS:" | awk '{print $2}' || echo "unknown")
+L2_RS=$(echo "$RELEASE_GATE_OUT" | grep "^  L2_RELEASE_STATUS:" | awk '{print $2}' || echo "unknown")
+L3_RS=$(echo "$RELEASE_GATE_OUT" | grep "^  L3_RELEASE_STATUS:" | awk '{print $2}' || echo "unknown")
+
+echo "  [PARITY]         L3 /gd command: $L3_RS"
+echo "  [RELEASE_MIRROR] L1 codex binary: $L1_RS"
+echo "  [RELEASE_MIRROR] L2 codex config/mirrors: $L2_RS"
+echo "  OVERALL_RELEASE_STATUS: $RELEASE_OVERALL"
+
+if [ "$RELEASE_OVERALL" = "READY_FOR_COMMIT" ]; then
+  PASS=$((PASS+1))
+else
+  echo "  (run bash scripts/gd-codex-chain-release-status.sh for details)"
+  FAIL=$((FAIL+1))
 fi
 
 echo ""
