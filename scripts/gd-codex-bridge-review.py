@@ -50,6 +50,11 @@ GOAL_PATH = GD_PROJECT_ROOT / "docs" / "gd-v7-project-goal.md"
 TEMPLATE_BY_KIND_V1 = {
     "plan": GD_PROJECT_ROOT / "templates" / "gd-plan-review-template.md",
     "code": GD_PROJECT_ROOT / "templates" / "gd-execution-review-template.md",
+    # revision=20: execution kinds added for compat-v1 parse-transport.
+    "execution_outcome": GD_PROJECT_ROOT / "templates" / "gd-execution-outcome-review-template.md",
+    "combined": GD_PROJECT_ROOT / "templates" / "gd-combined-review-template.md",
+    # R8/R9: code_diff writer emits v1 VERDICT markdown; uses execution-review template as base.
+    "code_diff": GD_PROJECT_ROOT / "templates" / "gd-execution-review-template.md",
 }
 # v2 (default) template files — Agent E owns the file content; this map only
 # carries the path strings. The bridge does not load the v2 templates' bytes
@@ -126,6 +131,9 @@ TEMPLATE_KIND_BY_REVIEW_KIND_V1 = {
     # --compat-v1 can map real Codex execution raw into a valid v2 mapped JSON.
     "execution_outcome": "gd-execution-outcome-review",
     "combined": "gd-combined-review",
+    # R8 fix: code_diff writer still emits v1 "Code Review Result" header.
+    # In compat-v1 mode code_diff is treated as "code" for parsing purposes.
+    "code_diff": "gd-code-diff-review",
 }
 # Back-compat alias (older callers expect the v1-shaped dict).
 TEMPLATE_KIND_BY_REVIEW_KIND = TEMPLATE_KIND_BY_REVIEW_KIND_V1
@@ -133,6 +141,8 @@ TEMPLATE_KIND_BY_REVIEW_KIND = TEMPLATE_KIND_BY_REVIEW_KIND_V1
 TITLE_BY_KIND_V1 = {
     "plan": "Plan Review Result",
     "code": "Code Review Result",
+    # R8: code_diff writer emits same "Code Review Result" title as code.
+    "code_diff": "Code Review Result",
     # revision=20: execution_outcome and combined added so that --compat-v1
     # parse-transport can handle real Codex raw that uses v1-style headers.
     # Codex execution review raw uses "# Code Review Result" header at present;
@@ -178,8 +188,15 @@ V2_JSON_BLOCK_RE = re.compile(
 
 
 def _get_active_kind_enum(compat_v1: bool) -> frozenset:
-    """Return the active review_kind enum given the mode flag."""
-    return REVIEW_KIND_V1_ENUM if compat_v1 else REVIEW_KIND_ENUM
+    """Return the active review_kind enum given the mode flag.
+
+    R8 fix: compat_v1 mode also accepts code_diff (writer emits v1 markdown).
+    REVIEW_KIND_V1_ENUM comes from SSOT and does not include code_diff, so we
+    extend it locally for compat-v1 parse paths only.
+    """
+    if compat_v1:
+        return REVIEW_KIND_V1_ENUM | frozenset({"code_diff"})
+    return REVIEW_KIND_ENUM
 
 
 def _get_active_template_kind_enum(compat_v1: bool) -> frozenset:
@@ -224,7 +241,7 @@ def _get_title_by_kind(kind: str, compat_v1: bool) -> str:
         return TITLE_BY_KIND_V1[kind]
     return TITLE_BY_KIND_V2[kind]
 REQUIRED_FINDING_FIELDS_CN = ["问题", "证据", "影响", "最小修复", "验收"]
-SC_REF_RE = re.compile(r"\bSC-\d+\b")
+SC_REF_RE = re.compile(r"\b(?:[A-Za-z][A-Za-z0-9]*-)?SC-[A-Za-z]*[0-9]+(?:-[0-9]+)?\b")
 VERDICT_LINE_RE = re.compile(r"^VERDICT:\s*(APPROVED|REQUIRES_CHANGES)\s*$", re.MULTILINE)
 BARE_VERDICT_ANY_RE = re.compile(r"^(VERDICT|REV_VERDICT)\s*:", re.MULTILINE)
 TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$")
@@ -363,11 +380,15 @@ def validate_mapped_schema_v1(d: dict) -> list[str]:
     if errs:
         return errs
 
-    if d["template_kind"] not in TEMPLATE_KIND_V1_ENUM:
+    # R8: code_diff is allowed in v1 compat mode (writer emits v1 VERDICT markdown).
+    # Extend the SSOT enums locally rather than modifying the SSOT module.
+    _v1_kind_enum_extended = REVIEW_KIND_V1_ENUM | frozenset({"code_diff"})
+    _v1_template_kind_extended = TEMPLATE_KIND_V1_ENUM | frozenset({"gd-code-diff-review"})
+    if d["template_kind"] not in _v1_template_kind_extended:
         errs.append(f"template_kind 不合法: {d['template_kind']!r}")
     if not _is_valid_reviewer(d["reviewer"]):
         errs.append(f"reviewer 不合法: {d['reviewer']!r}")
-    if d["review_kind"] not in REVIEW_KIND_V1_ENUM:
+    if d["review_kind"] not in _v1_kind_enum_extended:
         errs.append(f"review_kind 不合法: {d['review_kind']!r}")
     if d["review_run_status"] not in {"completed", "completed_with_constraint", "degraded", "failed_to_run"}:
         errs.append(f"review_run_status 不合法: {d['review_run_status']!r}")
@@ -407,7 +428,7 @@ def validate_mapped_schema_v1(d: dict) -> list[str]:
                     errs.append(f"findings[{i}].sc_refs 必须非空数组")
                 else:
                     for sc_ref in fd["sc_refs"]:
-                        if not isinstance(sc_ref, str) or not re.match(r"^SC-\d+$", sc_ref):
+                        if not isinstance(sc_ref, str) or not re.match(r"^(?:[A-Za-z][A-Za-z0-9]*-)?SC-[A-Za-z]*[0-9]+(?:-[0-9]+)?$", sc_ref):
                             errs.append(f"findings[{i}].sc_refs 含不合法 {sc_ref!r}")
 
     mn = d["merge_notes"]
@@ -839,7 +860,7 @@ def parse_raw_to_mapped(
     a clear INVALID_REVIEW_KIND_FOR_MODE reason.
     """
     target_str = str(target)
-    active_enum = REVIEW_KIND_V1_ENUM if compat_v1 else REVIEW_KIND_ENUM
+    active_enum = _get_active_kind_enum(compat_v1)
     if kind not in active_enum:
         mode_label = "v1 compat" if compat_v1 else "v2 default"
         reason = (
@@ -939,7 +960,9 @@ def build_capsule_text(
             f"INVALID_REVIEW_KIND_FOR_MODE: no template path for kind={kind!r} compat_v1={compat_v1}"
         )
     target_hash = _sha256_file(target)
-    target_text = target.read_text(encoding="utf-8")
+    # L1: Target externalized — capsule no longer inlines target_text (47KB savings on
+    # Sentinel-sized plans). Reviewer must Read the path; bridge enforces via L3
+    # content-evidence validator (gd-validate-review-content-evidence.py).
     standard_text = STANDARD_PATH.read_text(encoding="utf-8") if STANDARD_PATH.exists() else "(missing)"
     template_text = template_path.read_text(encoding="utf-8") if template_path.exists() else "(missing)"
     goal_text = GOAL_PATH.read_text(encoding="utf-8")[:3000] if GOAL_PATH.exists() else "(missing)"
@@ -1001,14 +1024,38 @@ def build_capsule_text(
         f"## Goal Chain\n\n```\n{goal_text}\n```\n\n"
         f"## Review Standard\n\n```\n{standard_text}\n```\n\n"
         f"## Review Template ({template_path.name})\n\n```\n{template_text}\n```\n\n"
-        f"## Target Artifact ({target_abs})\n\n```\n{target_text}\n```\n\n"
-        f"## Reviewer Instructions\n\n"
+        f"## Target Artifact\n\n"
+        f"PRIMARY_TARGET_PATH: {target_abs}\n"
+        f"PRIMARY_TARGET_HASH: {target_hash}\n"
+        f"\n"
+        f"**MANDATORY READ STEP** — Before producing any output, you MUST use your Read tool\n"
+        f"to open the file at PRIMARY_TARGET_PATH and consume its full content. The capsule\n"
+        f"does NOT inline the target text; reviewing without Read is impossible and will be\n"
+        f"detected by the L3 content-evidence validator (see Reviewer Instructions).\n"
+        f"\n"
+        + (
+            f"## MANDATORY VERIFY STEP\n\n"
+            f"Before producing your verdict, you MUST:\n"
+            f"1. Read PRIMARY_TARGET_PATH and locate every `deliverables_produced[].path` entry.\n"
+            f"   For each deliverable path: run `test -f <path>` (or equivalent Read) and echo the actual exit code.\n"
+            f"2. Locate every `verify_results[].cmd` entry.\n"
+            f"   Rerun each command and echo the actual stdout + exit code.\n"
+            f"   Do NOT trust the stored `result` field — it may be stale.\n"
+            f"3. Report each check as PASS/FAIL with the real observed output.\n"
+            f"Skipping this step will be detected by the L3 content-evidence validator and rejected as wrapper_schema_fail.\n\n"
+            if kind in {"execution_outcome", "combined"} else ""
+        )
+        + f"## Reviewer Instructions\n\n"
         f"- 你是 Codex sidecar reviewer\n"
+        f"- **第一步**：Read PRIMARY_TARGET_PATH 全文（capsule 内未内联）\n"
         f"- 按 §Review Standard 给出 review\n"
         f"- 输出 raw markdown，必须含: 行首 'VERDICT: APPROVED' 或 'VERDICT: REQUIRES_CHANGES'\n"
         f"- 标题: '# {title_for_kind}'；包含 'Scope Checked' / '## Findings' / '## Residual Risk' 段\n"
         f"- 每个 Finding 含 severity 标记 + 'SC: SC-<N>' 行 + 5 中文字段 (问题/证据/影响/最小修复/验收)\n"
         f"- REQUIRES_CHANGES 必须含 ≥1 ### Finding\n"
+        f"- **每条 finding 必须 evidence: 含真实 path:line 引用**（L3 validator 会校验行号指向 target 真实内容）\n"
+        f"- **每条 finding 的 sc_refs / SC-<N> 必须是 target 中真实存在的 SC-ID**（L3 validator 会校验）\n"
+        f"- **APPROVED 时**必须输出 SCOPE_CHECKED 表，列出已审查的 SC-IDs（必须在 target 中真实存在）\n"
     )
     capsule_hash = _sha256_str(capsule)
     return capsule, target_hash, capsule_hash, gd_baseline_key, run_id
@@ -1070,17 +1117,24 @@ def cmd_build_capsule(args: argparse.Namespace) -> int:
 _EXECUTION_KINDS_REQUIRING_ROUTER: frozenset[str] = frozenset({"execution_outcome", "combined"})
 _GD_ROUTER_INVOCATION_ENV = "GD_REVIEW_ROUTER_INVOCATION_ID"
 
+# All kinds where the live writer still emits v1 VERDICT markdown.
+# code_diff is included because the current codex-send-wait / writer pipeline
+# has no v2 JSON fenced block support for code_diff yet (R8 fix).
+_COMPAT_V1_DEFAULT_KINDS: frozenset[str] = frozenset({
+    "execution_outcome", "combined", "code_diff",
+})
+
 
 def _resolve_compat_v1(kind: str, explicit: "bool | None") -> bool:
     """G2: infer compat_v1 from --kind when the flag is omitted (None).
 
-    execution_outcome / combined → True  (Codex still writes v1 header).
-    plan / code_diff → False             (v2 default, writers emit v2 header).
+    execution_outcome / combined / code_diff → True  (writer emits v1 header).
+    plan → False                                      (v2 default).
     Explicit --compat-v1 / --no-compat-v1 always overrides inference.
     """
     if explicit is not None:
         return explicit
-    return kind in _EXECUTION_KINDS_REQUIRING_ROUTER
+    return kind in _COMPAT_V1_DEFAULT_KINDS
 
 
 def cmd_run_bridge(args: argparse.Namespace) -> int:
@@ -1113,7 +1167,7 @@ def _cmd_run_bridge_inner(args: argparse.Namespace) -> int:
     target = Path(args.target)
     cwd = Path(args.cwd)
     out_path = Path(args.out)
-    compat_v1 = bool(getattr(args, "compat_v1", False))
+    compat_v1 = _resolve_compat_v1(args.kind, getattr(args, "compat_v1", None))
 
     related = _load_related_context(getattr(args, "related_context", None))
     try:
@@ -1170,11 +1224,12 @@ def _cmd_run_bridge_inner(args: argparse.Namespace) -> int:
             ],
             capture_output=True,
             text=True,
-            timeout=600,
+            timeout=getattr(args, "writer_timeout_sec", 600),
         )
     except subprocess.TimeoutExpired:
+        timeout_sec = getattr(args, "writer_timeout_sec", 600)
         mapped = _failed_mapped("codex", args.kind, target_str,
-                                "writer subprocess timeout >600s")
+                                f"writer subprocess timeout >{timeout_sec}s")
         out_path.write_text(json.dumps(mapped, ensure_ascii=False, indent=2), encoding="utf-8")
         print("GD_CODEX_BRIDGE_STATUS: failed_to_run")
         print("GD_REVIEW_DECISION: FAILED")
@@ -1243,6 +1298,49 @@ def _cmd_run_bridge_inner(args: argparse.Namespace) -> int:
     mapped, errs = parse_raw_to_mapped(args.kind, target_str, raw_text, compat_v1=compat_v1)
     out_path.write_text(json.dumps(mapped, ensure_ascii=False, indent=2), encoding="utf-8")
 
+    # L3: run content-evidence validator on the live transport result (same as
+    # parse-transport path). Fail-closed on failure, timeout, missing script, or
+    # missing target (F2+F5 fix). Also updates source_of_truth_decision.value (F-R6-2).
+    l3_script = GD_PROJECT_ROOT / "scripts" / "gd-validate-review-content-evidence.py"
+    target_for_l3 = Path(args.target)
+    raw_path_for_l3 = Path(result_path)
+    _l3_precond_failed = False
+    _l3_precond_reason = ""
+    if not l3_script.exists():
+        _l3_precond_failed = True
+        _l3_precond_reason = "L3 content-evidence script missing — fail-closed"
+        print("L3_CONTENT_EVIDENCE: script missing — fail-closed", file=sys.stderr)
+    elif not target_for_l3.exists():
+        _l3_precond_failed = True
+        _l3_precond_reason = f"L3 target not found ({target_for_l3}) — fail-closed"
+        print(f"L3_CONTENT_EVIDENCE: target not found ({target_for_l3}) — fail-closed", file=sys.stderr)
+    if _l3_precond_failed:
+        _apply_l3_failure(mapped, _l3_precond_reason, out_path)
+    else:
+        l3_failed = False
+        l3_reason = ""
+        try:
+            l3_result = subprocess.run(
+                [sys.executable, str(l3_script),
+                 "--target", str(target_for_l3), "--review", str(raw_path_for_l3)],
+                capture_output=True, text=True, timeout=30,
+            )
+            if l3_result.returncode != 0:
+                l3_failed = True
+                l3_reason = "L3 content-evidence validator rejected review: " + l3_result.stdout.strip()[:200]
+                print(f"L3_CONTENT_EVIDENCE: FAILED — {l3_result.stdout.strip()[:200]}", file=sys.stderr)
+        except subprocess.TimeoutExpired:
+            l3_failed = True
+            l3_reason = "L3 content-evidence validator timed out (30s) — fail-closed"
+            print("L3_CONTENT_EVIDENCE: timeout (30s) — fail-closed", file=sys.stderr)
+        except Exception as l3_err:
+            l3_failed = True
+            l3_reason = f"L3 content-evidence validator error — {l3_err}"
+            print(f"L3_CONTENT_EVIDENCE: error — {l3_err}", file=sys.stderr)
+
+        if l3_failed:
+            _apply_l3_failure(mapped, l3_reason, out_path)
+
     decision = mapped["gd_review_decision"]
     status = mapped["review_run_status"]
     print(f"GD_CODEX_BRIDGE_STATUS: {status}")
@@ -1250,6 +1348,22 @@ def _cmd_run_bridge_inner(args: argparse.Namespace) -> int:
     print(f"MAPPED_RESULT: {out_path}")
     print(f"TRANSPORT_RESULT: {result_path}")
     return 0 if decision == "APPROVED" else (1 if decision == "FAILED" else 0)
+
+
+def _apply_l3_failure(mapped: dict, reason: str, out_path: "Path") -> None:
+    """Apply L3 failure to mapped result and write to disk (F-R6-2 fix).
+
+    Updates review_run_status, gd_review_decision, merge_notes.degraded_reason,
+    and source_of_truth_decision.value so all decision fields stay consistent.
+    """
+    mapped["review_run_status"] = "degraded"
+    mapped["gd_review_decision"] = "FAILED"
+    mapped["merge_notes"]["degraded_reason"] = reason
+    # Sync source_of_truth_decision.value so v2 consumers see a consistent picture.
+    sotd = mapped.get("source_of_truth_decision")
+    if isinstance(sotd, dict):
+        sotd["value"] = "FAILED"
+    out_path.write_text(json.dumps(mapped, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def cmd_parse_transport(args: argparse.Namespace) -> int:
@@ -1280,6 +1394,48 @@ def cmd_parse_transport(args: argparse.Namespace) -> int:
 
     out_path = Path(args.out)
     out_path.write_text(json.dumps(mapped, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    # L3: content-evidence validator (SC-W1-1)
+    # Failure → aggregate bucket "wrapper_schema_fail" (blocking).
+    # review_run_status must stay schema-valid ("degraded"); wrapper_schema_fail
+    # is an aggregate-level bucket, not a review_run_status enum value (F1 fix).
+    # Timeout, exceptions, missing script/target are all fail-closed (F2+F5 fix).
+    l3_script = GD_PROJECT_ROOT / "scripts" / "gd-validate-review-content-evidence.py"
+    _l3_pre_fail = False
+    _l3_pre_reason = ""
+    if not l3_script.exists():
+        _l3_pre_fail = True
+        _l3_pre_reason = "L3 content-evidence script missing — fail-closed"
+        print("L3_CONTENT_EVIDENCE: script missing — fail-closed", file=sys.stderr)
+    elif not target.exists():
+        _l3_pre_fail = True
+        _l3_pre_reason = f"L3 target not found ({target}) — fail-closed"
+        print(f"L3_CONTENT_EVIDENCE: target not found ({target}) — fail-closed", file=sys.stderr)
+    if _l3_pre_fail:
+        _apply_l3_failure(mapped, _l3_pre_reason, out_path)
+    else:
+        l3_failed = False
+        l3_reason = ""
+        try:
+            l3_result = subprocess.run(
+                [sys.executable, str(l3_script), "--target", str(target), "--review", str(raw_path)],
+                capture_output=True, text=True, timeout=30,
+            )
+            if l3_result.returncode != 0:
+                l3_failed = True
+                l3_reason = "L3 content-evidence validator rejected review: " + l3_result.stdout.strip()[:200]
+                print(f"L3_CONTENT_EVIDENCE: FAILED — {l3_result.stdout.strip()[:200]}", file=sys.stderr)
+        except subprocess.TimeoutExpired:
+            l3_failed = True
+            l3_reason = "L3 content-evidence validator timed out (30s) — fail-closed"
+            print("L3_CONTENT_EVIDENCE: timeout (30s) — fail-closed", file=sys.stderr)
+        except Exception as l3_err:
+            l3_failed = True
+            l3_reason = f"L3 content-evidence validator error — {l3_err}"
+            print(f"L3_CONTENT_EVIDENCE: error — {l3_err}", file=sys.stderr)
+
+        if l3_failed:
+            _apply_l3_failure(mapped, l3_reason, out_path)
 
     decision = mapped["gd_review_decision"]
     status = mapped["review_run_status"]
@@ -1335,7 +1491,9 @@ def cmd_merge(args: argparse.Namespace) -> int:
         print(f"ERROR: JSON 语法错误 {e}", file=sys.stderr)
         return 1
 
-    compat_v1 = bool(getattr(args, "compat_v1", False))
+    # cmd_merge has no --kind arg; infer from the loaded JSON (review_kind field).
+    _merge_kind = claude.get("review_kind") or codex.get("review_kind") or "plan"
+    compat_v1 = _resolve_compat_v1(_merge_kind, getattr(args, "compat_v1", None))
 
     # Matrix #5: 任一 schema fail → FAILED
     schema_errs = []
@@ -1768,9 +1926,9 @@ def main(argv: list[str]) -> int:
     p_b.add_argument("--target", required=True)
     p_b.add_argument("--cwd", required=True)
     p_b.add_argument("--out", required=True)
-    p_b.add_argument("--compat-v1", action="store_true",
-                     help="Plan 8 v4.1 Step 7: opt-in to legacy v1 enum {plan, code} "
-                          "and v1 schema. Default is v2.")
+    p_b.add_argument("--compat-v1", action=argparse.BooleanOptionalAction, default=None,
+                     help="Opt-in/out of legacy v1 enum. If omitted, inferred from --kind "
+                          "(code_diff/execution_outcome/combined → True; plan → False).")
     # Review Trust §Step 2: queue metadata
     p_b.add_argument("--queue-job-id", default=None,
                      help="Optional queue job id (e.g. 'q1-master_plan'); default=adhoc-<run_id>")
@@ -1793,6 +1951,9 @@ def main(argv: list[str]) -> int:
     p_r.add_argument("--related-context", default=None)
     p_r.add_argument("--live-transport", action="store_true",
                      help="必须显式传入才允许调用旧 writer 投递 Codex")
+    p_r.add_argument("--writer-timeout-sec", type=int, default=600,
+                     metavar="SEC",
+                     help="Writer subprocess timeout in seconds (300-1800). Default: 600.")
 
     p_p = sub.add_parser("parse-transport")
     p_p.add_argument("--kind", required=True, choices=_all_kind_choices)
@@ -1806,8 +1967,9 @@ def main(argv: list[str]) -> int:
     p_m.add_argument("--claude", required=True)
     p_m.add_argument("--codex", required=True)
     p_m.add_argument("--out", required=True)
-    p_m.add_argument("--compat-v1", action="store_true",
-                     help="Plan 8 v4.1 Fix P1-1: validate inputs as v1 schema (default v2).")
+    p_m.add_argument("--compat-v1", action=argparse.BooleanOptionalAction, default=None,
+                     help="Opt-in/out of v1 schema validation. If omitted, inferred from "
+                          "review_kind in the input JSONs (code_diff/execution_outcome → True; plan → False).")
 
     sub.add_parser("self-test")
 

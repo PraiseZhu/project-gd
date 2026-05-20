@@ -1,12 +1,19 @@
 {
   "_test_meta": {
     "_expect": "FAIL",
-    "_reason": "execution_outcome is a v2-only kind; with --compat-v1 it must be rejected with INVALID_REVIEW_KIND_FOR_MODE"
+    "_reason": "unknown_kind is not in any review_kind enum; must be rejected with INVALID_REVIEW_KIND_FOR_MODE. Original fixture tested execution_outcome in compat_v1, but revision=20 added it to v1 compat enum."
   },
   "subcommand": "build-capsule",
-  "args": ["--kind", "execution_outcome", "--target", "plans/gd/2026-05-12-gd-runtime-activation/master-plan.md", "--cwd", ".", "--compat-v1"],
-  "compat_v1": true,
-  "kind": "execution_outcome",
+  "args": [
+    "--kind",
+    "unknown_kind",
+    "--target",
+    "plans/gd/2026-05-12-gd-runtime-activation/master-plan.md",
+    "--cwd",
+    "."
+  ],
+  "compat_v1": false,
+  "kind": "unknown_kind",
   "target": "plans/gd/2026-05-12-gd-runtime-activation/master-plan.md",
   "expected_error_substring": "INVALID_REVIEW_KIND_FOR_MODE"
 }
