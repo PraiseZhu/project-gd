@@ -30,10 +30,11 @@ import sys
 from pathlib import Path
 
 
-PROFILES = {"code_diff", "release_closure", "runtime_parity"}
+PROFILES = {"code_diff", "plan_review", "release_closure", "runtime_parity"}
 
 # --- Mandatory read lists per profile ---
 MANDATORY_READ = {
+    "plan_review": [],  # bridge sends original plan directly; no additional mandatory reads
     "release_closure": [
         {"path": "config/gd-runtime-parity-manifest.json",
          "reason": "SSOT for L1/L2/L3 bundle classification and must_include",
@@ -154,11 +155,18 @@ def validate_capsule_data(profile: str, inline_facts: dict, mandatory_reads: lis
 
 def render_capsule(profile: str, target: str | None, inline_facts: dict,
                    mandatory_reads: list, run_id: str) -> str:
+    if profile == "plan_review":
+        goal = "Review the plan for Goal-Driven completeness and anti-fill compliance."
+    elif profile == "release_closure":
+        goal = "Verify release readiness and correctness of the current worktree changes."
+    else:
+        goal = "Review code changes for correctness and quality."
+
     lines = [
         f"# /review2 Capsule — {run_id}",
         "",
         f"REVIEW_PROFILE: {profile}",
-        f"REVIEW_GOAL: Verify release readiness and correctness of the current worktree changes." if profile == "release_closure" else f"REVIEW_GOAL: Review code changes for correctness and quality.",
+        f"REVIEW_GOAL: {goal}",
         "",
         "SCOPE:",
         "  - Changes in staged / working tree relative to HEAD",
@@ -179,6 +187,10 @@ def render_capsule(profile: str, target: str | None, inline_facts: dict,
 
     if target:
         lines += ["REVIEW_TARGET:", f"  {target}", ""]
+        if profile == "plan_review":
+            target_hash = sha256_file(Path(target)) if Path(target).is_file() else "FILE_MISSING"
+            lines += [f"REVIEW_TARGET_HASH: {target_hash}", ""]
+            lines += ["BRIDGE_TARGET_POLICY: original_plan_only", ""]
 
     lines += [
         "MANDATORY_READ:",
@@ -236,11 +248,24 @@ def render_capsule(profile: str, target: str | None, inline_facts: dict,
 
 def main() -> int:
     p = argparse.ArgumentParser(description="Build /review2 profile-aware capsule")
-    p.add_argument("--profile", default="code_diff", choices=sorted(PROFILES))
+    p.add_argument("--profile", default="code_diff", choices=sorted(PROFILES),
+                   help="Review profile: plan_review | code_diff | release_closure | runtime_parity")
     p.add_argument("--target", default=None, help="File or directory to review")
     p.add_argument("--cwd", default=None, help="Project root (default: git root)")
     p.add_argument("--out-dir", required=True, help="Output directory")
     args = p.parse_args()
+
+    # plan_review requires --target (original plan file)
+    if args.profile == "plan_review":
+        if not args.target:
+            print("PLAN_REVIEW_TARGET_REQUIRED: --profile plan_review requires --target <plan-file>",
+                  file=sys.stderr)
+            return 1
+        target_path = Path(args.target)
+        if not target_path.exists():
+            print(f"PLAN_REVIEW_TARGET_NOT_FOUND: target file does not exist: {args.target}",
+                  file=sys.stderr)
+            return 1
 
     # Resolve cwd
     cwd = Path(args.cwd) if args.cwd else Path.cwd()

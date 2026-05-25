@@ -16,7 +16,7 @@ RELEASE_VERDICT: NOT_APPLICABLE (default)
 ## Usage
 
 ```
-/review2 [--profile code_diff|release_closure|runtime_parity] [--target <path>]
+/review2 [--profile code_diff|plan_review|release_closure|runtime_parity] [--target <path>]
 ```
 
 Defaults:
@@ -26,11 +26,21 @@ Defaults:
 
 ## Profiles
 
-| Profile | Use when | RELEASE_VERDICT |
-|---------|---------|-----------------|
-| `code_diff` | Reviewing code changes (scripts, config, fixtures) | NOT_APPLICABLE |
-| `release_closure` | Verifying full release readiness before committing | Full evidence contract required |
-| `runtime_parity` | Auditing parity between source and installed runtime | NOT_APPLICABLE |
+| Profile | Use when | BRIDGE_TARGET_POLICY | RELEASE_VERDICT |
+|---------|---------|---------------------|-----------------|
+| `code_diff` | Reviewing code changes (scripts, config, fixtures) | — | NOT_APPLICABLE |
+| `plan_review` | Reviewing a Goal-Driven plan for completeness and anti-fill compliance | `original_plan_only` | NOT_APPLICABLE |
+| `release_closure` | Verifying full release readiness before committing | — | Full evidence contract required |
+| `runtime_parity` | Auditing parity between source and installed runtime | — | NOT_APPLICABLE |
+
+### plan_review routing semantics
+
+When `--profile plan_review`:
+- L2 helper generates an audit-context capsule (`BRIDGE_TARGET_POLICY: original_plan_only`).
+- The bridge **must** send the **original plan file** to Codex, not the capsule itself.
+- The capsule contains `REVIEW_TARGET_HASH` for integrity verification.
+- Capsule target guard: bridge rejects any `--target capsule.md` invocation with `PLAN_TARGET_MUST_BE_ORIGINAL_PLAN`.
+- Target preflight: `gd-validate-review2-plan-target.py` enforces field-based compliance (SC-IDs, REVIEW_DOMAIN, REVIEW_FOCUS, step fields) without binding to a specific template.
 
 ## Execution Flow
 
@@ -49,6 +59,7 @@ Defaults:
 | Profile | CAPABILITY_STATUS |
 |---------|-----------------|
 | `code_diff` | `active` |
+| `plan_review` | `active` (target preflight + capsule policy guard enforced) |
 | `release_closure` | `active` (capsule completeness + mandatory_read coverage enforced) |
 | `runtime_parity` | `active` |
 
@@ -88,10 +99,15 @@ python3 scripts/gd-codex-bridge-review.py run-bridge \
 ## Fail-Closed Rules
 
 - Capsule validation failure → stop, print `CAPSULE_VALIDATE_FAIL`, do not send to Codex
+- `plan_review` capsule missing `BRIDGE_TARGET_POLICY` → `BRIDGE_TARGET_POLICY_MISSING`, stop
+- `plan_review` capsule with wrong policy value → `BRIDGE_TARGET_POLICY_INVALID`, stop
+- `plan_review` + capsule file passed as bridge target → `PLAN_TARGET_MUST_BE_ORIGINAL_PLAN`, stop
+- `plan_review` plan target fails field preflight → `PLAN_TEMPLATE_STATUS: fail`, `BRIDGE_INVOCATION_STATUS: not_started`
 - `release_closure` with missing mandatory_read files → `CAPSULE_BUILD_FAIL`, stop
 - Codex output with `missing` coverage on mandatory read → `COVERAGE_VALIDATE_FAIL`
 - `release_closure` + `missing` coverage → `RELEASE_VERDICT: BLOCKED`
 - No Codex transport → `CODEX_RUN_STATE: failed`, `RELEASE_VERDICT: BLOCKED` (for release_closure)
+- v2 template missing + no `--compat-v1` → `V2_TEMPLATE_NOT_READY`, exit 1
 
 ## Install / Parity
 

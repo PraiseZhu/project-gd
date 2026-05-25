@@ -60,3 +60,32 @@ LIBRARY_CONSUMER_LIST:
 - B1/B3 实施代码（创建 3 个 Python 脚本 + `commands/review2.md`）需用户显式授权
 - live install（写 `/Users/praise/.claude/commands/review2.md`）需复用 `baselines/gd-v7-runtime-write-authorizations.jsonl` ledger
 - 本 memo 不写 runtime；只产出决策
+
+---
+
+## v8 追加: plan_review profile 路由语义 (2026-05-26)
+
+> v8 修正轮次新增，不替代上方 B0 原始决策，是对 `plan_review` profile 独立路由理由的补充说明。
+
+### 为什么 plan_review 需要单独 profile
+
+现有 `/review2` profiles（`code_diff`, `release_closure`, `runtime_parity`）均以 target 本身为 Codex 直接审查对象。`plan_review` 打破此模式：target 是原始计划文件，bridge 必须把计划文件发给 Codex，而不是发 capsule（capsule 只是审查上下文载体）。
+
+无专属 profile 时：
+- capsule builder 无锚点声明传输策略，bridge 无机器可读信号区分"转发 capsule"与"转发 capsule 指向的文件"
+- bridge 可能把 capsule 发给 Codex，Codex 审查的是脚手架而非计划
+
+### 各组件守卫存在理由
+
+| 组件 | 守卫 | 不存在时的问题 |
+|------|------|--------------|
+| `gd-validate-review2-plan-target.py` | field-based preflight | 结构不合规的计划进入 bridge，Codex 收到无法审查的内容 |
+| `BRIDGE_TARGET_POLICY: original_plan_only` | capsule 字段 | bridge 无机器可读信号，无法判断该转发 capsule 还是计划文件 |
+| `BRIDGE_TARGET_POLICY_MISSING/INVALID` | capsule validator | misconfigured capsule 在到达 bridge 前就被拦截 |
+| `PLAN_TARGET_MUST_BE_ORIGINAL_PLAN` | bridge 运行时守卫 | 即使 preflight 被绕过，bridge 仍能阻止 capsule 被当作 plan 发送 |
+| `V2_TEMPLATE_NOT_READY` (B3) | build_capsule_text guard | 模板缺失时静默降级为 `(missing)`，Codex 收到无审查模板的 capsule |
+| `GD_WRITER_PATH_OVERRIDE` (B2) | WRITER_PATH env override | smoke test 无法在 lab-only 环境运行完整 bridge→writer→L3 pipeline |
+
+### 当前 live drift（v8 round 结束时）
+
+源码侧修正已完成，live runtime (`~/.claude/**`) 未同步。详见 `commands/review2.md` Install / Parity 节。

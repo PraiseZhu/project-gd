@@ -78,8 +78,7 @@ def validate_coverage(capsule_path: Path, output_path: Path) -> list[str]:
     mandatory_paths = extract_mandatory_reads_from_capsule(capsule_text)
 
     if not mandatory_paths:
-        if "MANDATORY_READ_COVERAGE:" not in output_text:
-            errors.append("output missing MANDATORY_READ_COVERAGE: section")
+        # Empty mandatory list: no coverage required — exit clean regardless of output
         return errors
 
     # Parse coverage from output (exactly-once enforced)

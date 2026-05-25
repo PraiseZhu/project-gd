@@ -18,6 +18,7 @@ from pathlib import Path
 
 REQUIRED_FIELDS = {
     "all": ["REVIEW_PROFILE:", "REVIEW_GOAL:", "OUTPUT_CONTRACT:"],
+    "plan_review": ["REVIEW_TARGET:", "REVIEW_TARGET_HASH:", "BRIDGE_TARGET_POLICY:"],
     "release_closure": [
         "INLINE_FACTS:",
         "git_status_short:",
@@ -31,6 +32,10 @@ REQUIRED_FIELDS = {
     "runtime_parity": ["MANDATORY_READ:", "BLOCKING_CHECKS:"],
     "code_diff": [],
 }
+
+_BRIDGE_TARGET_POLICY_RE = re.compile(
+    r"^BRIDGE_TARGET_POLICY:\s*(.+)$", re.MULTILINE
+)
 
 REQUIRED_OUTPUT_CONTRACT = [
     "MANDATORY_READ_COVERAGE:",
@@ -61,6 +66,17 @@ def validate(capsule_path: Path) -> list[str]:
     for elem in REQUIRED_OUTPUT_CONTRACT:
         if elem not in text:
             errors.append(f"OUTPUT_CONTRACT missing: {elem}")
+
+    # For plan_review: enforce BRIDGE_TARGET_POLICY = original_plan_only
+    if profile == "plan_review":
+        m_policy = _BRIDGE_TARGET_POLICY_RE.search(text)
+        if not m_policy:
+            errors.append("BRIDGE_TARGET_POLICY_MISSING: plan_review capsule must declare BRIDGE_TARGET_POLICY:")
+        elif m_policy.group(1).strip() != "original_plan_only":
+            errors.append(
+                f"BRIDGE_TARGET_POLICY_INVALID: expected 'original_plan_only', "
+                f"got '{m_policy.group(1).strip()}'"
+            )
 
     # For release_closure: ensure MANDATORY_READ has ≥1 entry with sha256
     if profile == "release_closure":

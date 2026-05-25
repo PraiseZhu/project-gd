@@ -69,7 +69,7 @@ TEMPLATE_BY_KIND_V2 = {
 }
 # Back-compat alias (kept so any legacy reference still resolves to v1 map).
 TEMPLATE_BY_KIND = TEMPLATE_BY_KIND_V1
-WRITER_PATH = Path("/Users/praise/.claude/scripts/review-result-writer.sh")
+WRITER_PATH = Path(os.environ.get("GD_WRITER_PATH_OVERRIDE", "/Users/praise/.claude/scripts/review-result-writer.sh"))
 SEND_WAIT_PATH = Path("/Users/praise/.claude/handoff/bin/codex-send-wait")
 
 FIXTURES_DIR = GD_PROJECT_ROOT / "fixtures" / "review-bridge"
@@ -959,6 +959,15 @@ def build_capsule_text(
         raise ValueError(
             f"INVALID_REVIEW_KIND_FOR_MODE: no template path for kind={kind!r} compat_v1={compat_v1}"
         )
+    # B3: if the v2 template for this kind is missing and compat_v1 was not requested,
+    # refuse to build a degraded capsule.  Caller should retry with --compat-v1.
+    if (not compat_v1
+            and kind in _KINDS_REQUIRING_COMPAT_V1_WHEN_V2_TEMPLATE_MISSING
+            and not template_path.exists()):
+        raise ValueError(
+            f"V2_TEMPLATE_NOT_READY: v2 template for kind={kind!r} does not exist at "
+            f"{template_path}. Use --compat-v1 until the template is delivered."
+        )
     target_hash = _sha256_file(target)
     # L1: Target externalized — capsule no longer inlines target_text (47KB savings on
     # Sentinel-sized plans). Reviewer must Read the path; bridge enforces via L3
@@ -1087,9 +1096,9 @@ def cmd_build_capsule(args: argparse.Namespace) -> int:
         )
     except ValueError as e:
         msg = str(e)
-        # Strict mode-mismatch errors exit 1 so callers can distinguish from
+        # Strict mode-mismatch / guard errors exit 1 so callers can distinguish from
         # generic usage errors (exit 2 for missing flags / file-not-found).
-        if msg.startswith("INVALID_REVIEW_KIND_FOR_MODE"):
+        if msg.startswith("INVALID_REVIEW_KIND_FOR_MODE") or msg.startswith("V2_TEMPLATE_NOT_READY"):
             print(f"ERROR: {msg}", file=sys.stderr)
             return 1
         print(f"ERROR: {msg}", file=sys.stderr)
@@ -1124,6 +1133,14 @@ _COMPAT_V1_DEFAULT_KINDS: frozenset[str] = frozenset({
     "execution_outcome", "combined", "code_diff",
 })
 
+# B3: kinds where compat_v1=False (v2 default) cannot proceed because the v2 template
+# file does not yet exist.  Derived from Phase 1 report (v2-dependency-check.md):
+# plan=MISSING, code_diff=MISSING.  When this guard fires, build_capsule_text raises
+# ValueError("V2_TEMPLATE_NOT_READY: ...") so callers can exit 1 cleanly.
+_KINDS_REQUIRING_COMPAT_V1_WHEN_V2_TEMPLATE_MISSING: frozenset[str] = frozenset({
+    "plan", "code_diff",
+})
+
 
 def _resolve_compat_v1(kind: str, explicit: "bool | None") -> bool:
     """G2: infer compat_v1 from --kind when the flag is omitted (None).
@@ -1156,6 +1173,21 @@ def cmd_run_bridge(args: argparse.Namespace) -> int:
             )
             return 1
 
+    # Plan live guard: for plan review, the target must be the original plan file,
+    # NOT a /review2 capsule.  A capsule path (filename == "capsule.md") indicates
+    # the caller is forwarding the L2 audit context instead of the plan itself.
+    if args.kind == "plan":
+        sys.path.insert(0, str(GD_PROJECT_ROOT / "scripts"))
+        from lib.path_classification import is_review2_capsule_path  # noqa: E402
+        if is_review2_capsule_path(args.target):
+            print(
+                "PLAN_TARGET_MUST_BE_ORIGINAL_PLAN: --kind=plan received a capsule "
+                f"file as target ({args.target!r}). Pass the original plan file, "
+                "not the /review2 capsule.",
+                file=sys.stderr,
+            )
+            return 1
+
     # Bounded-parallel controller (revision=19+) manages concurrency at the
     # suite level via ThreadPoolExecutor. The per-bridge global lock file is
     # no longer needed and has been removed. Each bridge invocation is
@@ -1180,7 +1212,7 @@ def _cmd_run_bridge_inner(args: argparse.Namespace) -> int:
         )
     except ValueError as e:
         msg = str(e)
-        if msg.startswith("INVALID_REVIEW_KIND_FOR_MODE"):
+        if msg.startswith("INVALID_REVIEW_KIND_FOR_MODE") or msg.startswith("V2_TEMPLATE_NOT_READY"):
             print(f"ERROR: {msg}", file=sys.stderr)
             return 1
         print(f"ERROR: {msg}", file=sys.stderr)
