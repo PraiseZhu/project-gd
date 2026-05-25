@@ -1,0 +1,15 @@
+=== approved-plan ===
+L3_RESULT: EVIDENCE_VALID (verdict=APPROVED, target_sc_ids=0, review_sc_ids=0)
+EXIT:0
+=== approved-code ===
+L3_RESULT: EVIDENCE_VALID (verdict=APPROVED, target_sc_ids=0, review_sc_ids=0)
+EXIT:0
+=== requires-changes-missing-sc ===
+ERROR: FAKE_EVIDENCE_DETECTED: Finding #1 has no SC-ID reference
+ERROR: FAKE_EVIDENCE_DETECTED: Finding #1 has no path:line evidence pointing to target 'raw-requires-changes-missing-sc.md' (found 0 ref(s) to other files — reviewer must cite 'raw-requires-changes-missing-sc.md:<line>')
+L3_RESULT: FAKE_EVIDENCE_DETECTED (2 error(s), verdict=REQUIRES_CHANGES)
+EXIT:1
+=== requires-changes-plan ===
+ERROR: FAKE_EVIDENCE_DETECTED: Finding #1 has no path:line evidence pointing to target 'raw-requires-changes-plan.md' (found 0 ref(s) to other files — reviewer must cite 'raw-requires-changes-plan.md:<line>')
+L3_RESULT: FAKE_EVIDENCE_DETECTED (1 error(s), verdict=REQUIRES_CHANGES)
+EXIT:1

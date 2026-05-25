@@ -1,7 +1,7 @@
 {
   "_test_meta": {
-    "_expect": "PASS",
-    "_reason": "v2 default mode + code_diff kind is supported"
+    "_expect": "FAIL",
+    "_reason": "v2 code_diff template (gd-code-diff-review-template.md) does not yet exist; B3 guard raises V2_TEMPLATE_NOT_READY when --no-compat-v1 is used"
   },
   "subcommand": "build-capsule",
   "args": ["--kind", "code_diff", "--target", "plans/gd/2026-05-12-gd-runtime-activation/master-plan.md", "--cwd", "."],

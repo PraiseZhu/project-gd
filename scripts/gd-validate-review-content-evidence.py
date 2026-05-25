@@ -21,10 +21,8 @@ import sys
 from pathlib import Path
 from typing import Optional  # noqa: F401 — used in string annotations
 
-# SC-ID grammar: must end with a digit; supports compound forms like SC-W1-1,
-# H2B-SC-14, SC-GS1. The optional -[0-9]+ suffix preserves full precision so
-# SC-W1-1 and SC-W1-999 are treated as distinct IDs.
-_SC_ID_RE = re.compile(r"\b(?:[A-Za-z][A-Za-z0-9]*-)?SC-[A-Za-z]*[0-9]+(?:-[0-9]+)?\b")
+sys.path.insert(0, str(Path(__file__).parent))
+from lib.sc_extraction import SC_ID_RE as _SC_ID_RE  # noqa: E402
 
 # Evidence line ref: matches "path:NN" or "path:NN-MM". The path part is a
 # best-effort match (ends at the colon-digit boundary).
