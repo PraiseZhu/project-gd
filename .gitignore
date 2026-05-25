@@ -29,6 +29,9 @@ logs/
 .idea/
 .vscode/
 
+# === Planning workflow (pwf skill — local only) ===
+.planning/
+
 # === Tip: 大数据目录建议加 .nosync 后缀，iCloud 不同步 ===
 # 例：raw-data.nosync/  models.nosync/
 
