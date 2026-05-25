@@ -140,6 +140,8 @@ L2_KNOWN_ENTRIES=(
   "ambient-suggestions" "archived_sessions" "automations" "cache"
   "computer-use" "log" "memories" "pets" "plugins" "rules"
   "sessions" "shell_snapshots" "skills" "sqlite" "tmp" ".tmp" "vendor_imports"
+  ".stignore" "browser" "goals_1.sqlite" "goals_1.sqlite-shm"
+  "goals_1.sqlite-wal" "node_repl"
 )
 L2_UNCLASSIFIED=()
 while IFS= read -r entry; do

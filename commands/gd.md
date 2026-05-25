@@ -13,9 +13,9 @@ description: Claude-first /gd Goal-Driven 多 Agent 主入口。当前阶段（P
 ## Authoritative paths（绝对路径，installed command 在任意 cwd 触发都能找到）
 
 ```text
-GD_PROJECT_ROOT: /Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD
-GD_STANDARD:    /Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/prompts/gd-review-standard.md
-GOAL_SOURCE:    /Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/docs/gd-v7-project-goal.md
+GD_PROJECT_ROOT: /Users/praise/AI-Agent/Claude/projects/Project GD
+GD_STANDARD:    /Users/praise/AI-Agent/Claude/projects/Project GD/prompts/gd-review-standard.md
+GOAL_SOURCE:    /Users/praise/AI-Agent/Claude/projects/Project GD/docs/gd-v7-project-goal.md
 ```
 
 任何引用 shared core 的路径都从 `GD_PROJECT_ROOT` 拼接，绝不使用 `Project GD/...` 相对路径。
@@ -145,7 +145,7 @@ degraded                    # 运行时降级（如 Codex 网络故障）
 
 ```text
 GD_STAGE: <plan | review plan | execute | review code | help>
-GD_PROJECT_ROOT: /Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD
+GD_PROJECT_ROOT: /Users/praise/AI-Agent/Claude/projects/Project GD
 TARGET_PROJECT_ROOT: <绝对路径 或 N/A（review plan / help）>
 CAPABILITY_STATUS: <按映射表枚举值>
 ```
