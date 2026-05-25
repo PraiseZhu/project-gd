@@ -45,7 +45,7 @@ Domain-specific notes：
 - 在不破坏现有 `/review` 链路的前提下，用 `Project GD/` 建设 lab-only `/rev` 同步 review runner，验证 Goal-Driven + Anti-Fill 长模板机制是否能减少"格式完整但计划不具体"的 AI 填表问题。
 
 成功标准：
-- [ ] **SC-1**：所有新增/修改文件只在 `/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/**` 下。
+- [ ] **SC-1**：所有新增/修改文件只在 `/Users/praise/AI-Agent/Claude/projects/Project GD/**` 下。
 - [ ] **SC-2**：`/rev` 在实验期不是 Claude Code slash command；真实入口是 `Project GD/bin/rev plan <file>` / `Project GD/bin/rev code <file>`。
 - [ ] **SC-3**：不创建、不软链、不注册 `/Users/praise/.claude/commands/rev.md`，不新增 `rev-watch` daemon。
 - [ ] **SC-4**：`bin/rev` 直接调用 `codex exec --ephemeral`，自行拼接 prompt、解析 `REV_VERDICT`、写 lab result/baseline。
@@ -80,10 +80,10 @@ Domain-specific notes：
 - baseline schema 不应承载 template parity / review parity；这些是报告验收项。
 
 现有入口：
-- 实验根目录：`/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/`
+- 实验根目录：`/Users/praise/AI-Agent/Claude/projects/Project GD/`
 - 旧 `/review` command：`/Users/praise/.claude/commands/review.md`
 - live plan template：`/Users/praise/.claude/templates/plan-template.md`
-- Codex plan template copy：`/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Codex/templates/plan-template.md`
+- Codex plan template copy：`/Users/praise/AI-Agent/Codex/templates/plan-template.md`
 - 旧 review prompt 源（用于只读提取）：`/Users/praise/.claude/handoff/bin/codex-watch` L58-160
 
 约束：
@@ -113,8 +113,8 @@ Domain-specific notes：
 
 不修改：
 - `/Users/praise/.claude/**`
-- `/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Codex/templates/**`
-- `/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Codex/plugins/**`
+- `/Users/praise/AI-Agent/Codex/templates/**`
+- `/Users/praise/AI-Agent/Codex/plugins/**`
 - AKB2.0 vault/wiki/toolbox/fetch 链路
 
 **复用 vs 绕开**：
@@ -273,12 +273,12 @@ CLI 合约：
 - execution result `SC-*` completeness 测试
 
 集成验证：
-- `diff -q /Users/praise/.claude/templates/plan-template.md "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Codex/templates/plan-template.md"` → 无 drift
+- `diff -q /Users/praise/.claude/templates/plan-template.md "/Users/praise/AI-Agent/Codex/templates/plan-template.md"` → 无 drift
 - `test ! -e /Users/praise/.claude/commands/rev.md` → exit 0
-- `find "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD" -type f | sort` → 所有新增/修改文件只在 `Project GD/`
-- `rg -n "REVIEW_STANDARD: .*rev-review-standard.md" "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD"` → 计划模板/阶段计划/报告引用唯一标准源
-- `rg -n "anti-generic|SC-\*|WHERE|WHAT|WHY|VERIFY" "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/prompts" "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/templates"` → 命中 lab prompt/template
-- `rg -n "^VERDICT:|\[REVIEW\]" "/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD"` → 不在 runtime output contract 中出现；只允许在旧链路对照说明中出现
+- `find "/Users/praise/AI-Agent/Claude/projects/Project GD" -type f | sort` → 所有新增/修改文件只在 `Project GD/`
+- `rg -n "REVIEW_STANDARD: .*rev-review-standard.md" "/Users/praise/AI-Agent/Claude/projects/Project GD"` → 计划模板/阶段计划/报告引用唯一标准源
+- `rg -n "anti-generic|SC-\*|WHERE|WHAT|WHY|VERIFY" "/Users/praise/AI-Agent/Claude/projects/Project GD/prompts" "/Users/praise/AI-Agent/Claude/projects/Project GD/templates"` → 命中 lab prompt/template
+- `rg -n "^VERDICT:|\[REVIEW\]" "/Users/praise/AI-Agent/Claude/projects/Project GD"` → 不在 runtime output contract 中出现；只允许在旧链路对照说明中出现
 - A/B report：3 个 fixture × 2 链路结果，含中文 summary、false positive/false negative
 - `find /Users/praise/.claude/commands /Users/praise/.claude/review-baselines /Users/praise/.claude/state /Users/praise/.claude/handoff /Users/praise/.claude/scripts/hooks -newer <phase-start-marker>` → 无与本计划相关的新增/修改
 

@@ -11,7 +11,7 @@
 
 set -euo pipefail
 
-GD_PROJECT_ROOT="/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD"
+GD_PROJECT_ROOT="/Users/praise/AI-Agent/Claude/projects/Project GD"
 SOURCE="${GD_PROJECT_ROOT}/commands/gd.md"
 TARGET="/Users/praise/.claude/commands/gd.md"
 
