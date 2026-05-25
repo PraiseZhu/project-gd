@@ -1,0 +1,10 @@
+# Project GD deploy-live manifest
+# Each non-empty / non-comment line is a JSON artifact spec
+# Fields: source, target, method (install_script|direct_cp), installer?, installer_args?, ledger_scope
+#
+# === review2 route (v8 已部署) ===
+{"source":"commands/review2.md","target":"~/.claude/commands/review2.md","method":"install_script","installer":"scripts/install-review-route-command.sh","installer_args":["--route","review2","--apply"],"ledger_scope":"install_claude_command"}
+{"source":"scripts/gd-build-review2-capsule.py","target":"~/.claude/scripts/gd-build-review2-capsule.py","method":"direct_cp","ledger_scope":"sync_script_to_live"}
+{"source":"scripts/gd-validate-review2-capsule.py","target":"~/.claude/scripts/gd-validate-review2-capsule.py","method":"direct_cp","ledger_scope":"sync_script_to_live"}
+{"source":"scripts/gd-codex-bridge-review.py","target":"~/.claude/scripts/gd-codex-bridge-review.py","method":"direct_cp","ledger_scope":"sync_script_to_live"}
+{"source":"scripts/gd-validate-review2-output.py","target":"~/.claude/scripts/gd-validate-review2-output.py","method":"direct_cp","ledger_scope":"sync_script_to_live"}
