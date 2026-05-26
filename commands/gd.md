@@ -93,7 +93,7 @@ GOAL_SOURCE:    /Users/praise/AI-Agent/Claude/projects/Project GD/docs/gd-v7-pro
 | Stage | CAPABILITY_STATUS（Plan H lock_revision=17 锁定） | 原因 |
 |-------|--------------------------------|------|
 | `/gd help` | `active` | 仅输出说明，不依赖未实现能力 |
-| `/gd plan` | `local_only` | Claude 本地生成 plan suite + dispatch contract（Plan H lock_revision=2）；dispatch 结果写入 planning_dispatch_log.json |
+| `/gd plan` | `local_only` | Claude 本地生成 plan suite + dispatch contract（lock_revision=21）；dispatch 结果写入 stage dispatch ledger + controller report（Rev21 合同；planning_dispatch_log.json + Plan 4 strict-live-proof 已 superseded） |
 | `/gd review` | `active` | Plan 3a (lock_revision=17)：router 5 target 全部有 live/fail-closed 行为；无 NOT_IMPLEMENTED；plan-only → skill_orchestrated Claude review + Codex bridge；execution-only → gd-validate-execution-outcome.py；code-only → LOCAL_STATIC_ONLY（skill_orchestrated）；execution-plus-code → outcome-first；no-artifact → REVIEW_TARGET_MISSING exit 2 |
 | `/gd review plan` | `active` | Plan 3a skill_orchestrated path：command orchestration 自产 Claude review JSON + 收集 Codex raw（gd-codex-bridge-review.py run-bridge --live-transport）→ router 作为 consumer（不 spawn Claude subprocess）；claude_review_origin=skill_orchestrated；transport 不可达时 fail-closed 降 `local_only`/`blocked_missing_artifact` |
 | `/gd execute` | `local_only` | Plan 5 v5 上线 human_exec；H3 (lock_revision=6) 引入 agent_exec contract — capability probe + child dispatch via execution_dispatch_ledger + child prompt builder + post-wave path audit；capability unavailable/unknown 时 fail-closed（不得 silent 降级 human_exec） |
@@ -183,71 +183,55 @@ CAPABILITY_STATUS: <按映射表枚举值>
 
 <!-- gd-runtime-strict-required:start stage=plan -->
 
-**Multi-step dispatch contract v1.1（Plan H lock_revision=12）**：
+**Mandatory Subagent Dispatch Contract（lock_revision=21；supersedes Plan 4 strict-live-proof v1.1）**：
 
 适用条件：plan suite 含 >1 个 wave 或 >1 个 step。执行顺序（fail-closed）：
 
-1. **Capability probe**：按 `docs/gd-v7-multi-agent-dispatch.md §12` 检查 child_planner 可用性，输出 `CHILD_AGENT_CAPABILITY: available | unavailable | unknown`。完成后写 `probe.json`（schema 见 §Probe 合约）。
-2. **Build dispatch map**：`python3 scripts/gd-build-dispatch-map.py <master-plan.md>` → `dispatch_map.json`；必须 exit 0。计算 `dispatch_map.json` 的 SHA-256 作为 `source_dispatch_map_hash`（用于后续 cross-check）。
-3. **Validate dispatch map**：`python3 scripts/gd-validate-dispatch.py <dispatch_map.json>` → 必须 exit 0。
-4. **Dispatch or fallback**：
-   - `available`：按 wave matrix 顺序 dispatch child_planner；单 wave 并发上限 **2**；child 输出按 `templates/gd-child-plan-prompt-template.md` 结构；主 agent 用 `scripts/gd-validate-child-proposal.py` 校验每份 child 草稿后合并。`proof_mode: live_child_dispatch`。
-   - `unavailable / unknown`：`fallback_mode: manual_packet`，主 agent 自己写 task packet；**不得**声称已并行调度。`proof_mode: manual_packet_fallback`。
-   - 硬前置失败（无法 build/validate dispatch map）：`proof_mode: fail_closed_no_dispatch`；`source_dispatch_map_hash: null`。
-5. **Write planning dispatch log v1.1**：不论 dispatch 成功还是 fallback，都必须写 `planning_dispatch_log.json`，含 `runtime_proof` 块（**5 字段**：`proof_mode` + `source_dispatch_map_hash` + `probe_artifact_ref` + `parent_run_id` + `recorded_at`）；用 `python3 scripts/gd-validate-planning-dispatch-log.py --strict-live-proof <planning_dispatch_log.json>` 校验，必须 exit 0 后 plan suite 才算完成。`--strict-live-proof` 强制 `runtime_proof` 块必填，并校验：
-   - `source_dispatch_map_hash` 必须是 64-char SHA-256 hex（`fail_closed_no_dispatch` 时为 `null`）
-   - `probe_artifact_ref` 必须为非空字符串路径，指向 step 1 写入的 `probe.json`（`fail_closed_no_dispatch` 时为 `null`）
-6. **Cross-validate dispatch hash**：`python3 scripts/gd-validate-dispatch.py <dispatch_map.json> --check-hash <runtime_proof.source_dispatch_map_hash> --proof-mode <runtime_proof.proof_mode>` → 必须 exit 0；`null` 仅在 `fail_closed_no_dispatch` 时允许。
-7. **Live dispatch smoke**：`python3 scripts/gd-validate-live-dispatch-smoke.py --planning-log <planning_dispatch_log.json> [--dispatch-map <dispatch_map.json>] [--probe <probe.json>]` → 必须 `SMOKE_STATUS: PASS`；输出 PDL ↔ probe ↔ dispatch_map 三者一致性。
-   - **probe schema 强制**：smoke 委托给 `scripts/gd-validate-probe.py` 跑完整 `gd-probe.schema.json` 约束（enum / type / additionalProperties / SHA-256 hex / ISO 8601 date-time / conditional null）。任何字段越界 smoke 直接 `SMOKE_STATUS: FAIL`。
-   - **fail_closed_no_dispatch 真"no dispatch"语义**：当 `proof_mode=fail_closed_no_dispatch` 时：
-     - `--dispatch-map` 可省略（dispatch map 不必存在，因为 build/probe 失败本就没产出）
-     - `runtime_proof.fallback_reason` 必须是非空字符串解释失败原因（live 证据，不是 silent skip）
-     - `runtime_proof.probe_artifact_ref` 必须为 `null`
-   - 非 `fail_closed_no_dispatch` 时 `--dispatch-map` 与 probe 都 REQUIRED。
+> **历史合同迁移说明**：Plan 4 v1.1 的 `planning_dispatch_log.json` + `runtime_proof` + `live_dispatch_smoke` 路径已 superseded — 同等约束（capability、dispatch 真实性、child 结果证据、并发上限）现由 stage dispatch ledger + schema-validated controller report 承担。Plan 4 时代的以下脚本已废弃，不得再调用：
+> - `scripts/gd-build-dispatch-map.py`（dispatch_map 现按 `templates/gd-dispatch-map-template.md` 手写，仍用 `gd-validate-dispatch.py` 校验）
+> - `scripts/gd-validate-probe.py`（probe schema 现以 stage ledger 的 `capability_status` 字段承载）
+> - `scripts/gd-validate-planning-dispatch-log.py`（由 `gd-validate-stage-dispatch-ledger.py` 取代）
+> - `scripts/gd-validate-live-dispatch-smoke.py`（由 `gd-validate-controller-report.py` 取代）
+
+1. **Capability probe**：按 `docs/gd-v7-multi-agent-dispatch.md §12` 检查 child_planner 可用性，输出 `CHILD_AGENT_CAPABILITY: available | unavailable | unknown`。capability 结果由主 agent 在 stage dispatch ledger 的 `capability_status` 字段记录（参见步骤 4）。
+2. **Author dispatch map**：按 `templates/gd-dispatch-map-template.md` 写 `dispatch_map.json`；用 `python3 scripts/gd-validate-dispatch.py <dispatch_map.json>` 校验，必须 exit 0。
+3. **Dispatch with concurrency cap**：
+   - `available`：按 wave matrix 顺序 dispatch child_planner；单 wave 并发上限 **2**；child 输出按 `templates/gd-child-plan-prompt-template.md` 结构；主 agent 用 `scripts/gd-validate-child-proposal.py` 校验每份 child 草稿后合并。
+   - `unavailable / unknown`：进入 `manual_packet_fallback`，主 agent 自己写 task packet；**不得**声称已并行调度；该状态属 `closure_ineligible`（参见 §Mandatory Subagent Stage Contract）。
+4. **Write stage dispatch ledger（Rev21 final-gate 必须证据）**：必须写 `schema/gd-stage-dispatch-ledger.schema.json` 格式的 ledger，含：
+   - `stage: "plan"`
+   - `child_agent_count`（1 或 2；**0 直接 closure_ineligible**）
+   - `max_parallel`（≤2；超出由 validator 拒）
+   - `capability_status`（available / unavailable / unknown；与步骤 1 一致）
+   - `child_jobs[]`（每条含 child result path + SHA-256 hash + status）
+   - `main_agent_merge`（含 merge_report_path）
+   - 用 `python3 scripts/gd-validate-stage-dispatch-ledger.py <ledger.json>` 校验，必须 exit 0。
+5. **Write controller / merge report（Rev21 final-gate 必须证据）**：必须写 schema-valid controller report（`schema/gd-controller-report.schema.json`），含 `run_mode`（必须为 `live`；`fixture` / `mock_only` 直接被 validator 拒）/ `jobs[]`（含 result path + hash + status）/ `final_decision` / `main_agent_merge.merge_report_path`；用 `python3 scripts/gd-validate-controller-report.py <controller-report.json>` 校验，必须 exit 0 后 plan suite 才算 closure-eligible。
 
 <!-- gd-runtime-strict-required:end stage=plan -->
 
-**Fail-closed**：
+**Fail-closed（lock_revision=21 — Rev21 合同绑定）**：
 
 - 无法解析 `TARGET_PROJECT_ROOT` → 停止
 - 计划缺 `PROJECT_GOAL` / `CHAIN_GOAL` / `SC-*` → 停止
 - 不得生成 anti-fill 规则 B 列举的 generic 改进类 token（权威列表：`${GD_PROJECT_ROOT}/fixtures/anti-fill/banned-generic-tokens.json` 的 `tokens` 字段；本文件作为合约源不内联 literal token，受 `exempt_paths` 保护）
-- 多 step 计划未写 `planning_dispatch_log.json` 就声称已 dispatch → 停止（`missing_planning_dispatch_log`）
-- capability 为 `unavailable / unknown` 但 `dispatch_mode` 声称 `child_dispatch` → 停止（`capability_fallback_mismatch`）
-- 单 wave child_planner 数量 > 2 → 停止（`wave_concurrency_exceeded`）
-- `scripts/gd-build-dispatch-map.py` exit ≠ 0 → 列出错误，停止
+- capability 为 `unavailable / unknown` 但 ledger 声称 child_dispatch → 停止（`capability_fallback_mismatch`）
+- 单 wave child_planner 数量 > 2 → 停止（`wave_concurrency_exceeded`，由 stage-dispatch-ledger validator 兜底）
 - `scripts/gd-validate-dispatch.py` exit ≠ 0 → 列出错误，停止
+- **缺 stage dispatch ledger** → `CLOSURE_INELIGIBLE: missing_stage_dispatch_ledger`，停止
+- **`scripts/gd-validate-stage-dispatch-ledger.py` exit ≠ 0** → `CLOSURE_INELIGIBLE: stage_dispatch_ledger_invalid`，停止
+- **ledger `child_agent_count = 0`** → `CLOSURE_INELIGIBLE: zero_child_closure`，停止
+- **缺 controller / merge report** → `CLOSURE_INELIGIBLE: missing_controller_report`，停止
+- **`scripts/gd-validate-controller-report.py` exit ≠ 0** → `CLOSURE_INELIGIBLE: controller_report_invalid`，停止
+- **以下 closure_ineligible 状态不得 APPROVED**（参见 §Mandatory Subagent Stage Contract 全量列表）：`run_mode=fixture` / `fixture_mode` / `mock_only` / `transport_failed` / `degraded` / `failed_to_run` / `timeout` / `wrapper_schema_fail` / `pending_future_plan` / `LOCAL_STATIC_ONLY` / `manual_packet_fallback`（非用户授权 emergency） / `human_exec`（非 emergency） → 输出 `CLOSURE_INELIGIBLE: <state>`，停止
 
 ---
 
-### Probe 合约（Plan H lock_revision=12 — p4-contract round 2）
+### Probe 合约（lock_revision=21 — **SUPERSEDED**）
 
-<!-- gd-runtime-strict-required:start stage=probe -->
-
-`probe.json` 是 `/gd plan` 第 1 步 Capability probe 的输出工件。schema 见 `schema/gd-probe.schema.json`。
-
-字段：
-
-| 字段 | 类型 | 值域 | 说明 |
-|------|------|------|------|
-| `stage` | string | `plan \| execute \| review \| help` | 触发 probe 的 stage |
-| `capability_status` | string | `available \| unavailable \| unknown` | 探测结论 |
-| `fallback_mode` | string | `manual_packet \| fail_closed \| n_a` | capability 不可达时的 fallback |
-| `effective_execution_mode` | string | `child_dispatch \| manual_packet \| fail_closed` | 实际执行模式 |
-| `probe_method` | string | `tool_list_inspection \| timeout_sentinel \| n_a` | 探测方法 |
-| `proof_mode` | string | `live_child_dispatch \| manual_packet_fallback \| fail_closed_no_dispatch` | dispatch 实证模式（v1.1） |
-| `probe_artifact_ref` | string \| null | 路径 或 null | probe 证据文件路径 |
-| `source_dispatch_map_hash` | string \| null | SHA-256 或 null | dispatch_map.json 的 hash；fail_closed 时 null |
-| `recorded_at` | string | ISO 8601 | probe 时间 |
-
-**完整性约束**：
-- `capability_status = available` → `effective_execution_mode = child_dispatch`；`proof_mode = live_child_dispatch`
-- `capability_status ∈ {unavailable, unknown}` → `effective_execution_mode = manual_packet`；`proof_mode = manual_packet_fallback`
-- dispatch map build/validate 失败 → `proof_mode = fail_closed_no_dispatch`；`source_dispatch_map_hash = null`
-- `proof_mode ≠ fail_closed_no_dispatch` → `source_dispatch_map_hash` 不得为 null（必须是 SHA-256 hex 字符串）
-
-<!-- gd-runtime-strict-required:end stage=probe -->
+> **SUPERSEDED by Rev21 stage dispatch ledger**：原 `probe.json` 工件 + `schema/gd-probe.schema.json` + `scripts/gd-validate-probe.py` 已全部废弃。capability 探测语义现整体迁入 `stage-dispatch-ledger.capability_status`（available / unavailable / unknown）；`proof_mode` / `source_dispatch_map_hash` / `planning_dispatch_log` 等 Plan 4 v1.1 概念由 ledger 的 `child_agent_count` + `child_jobs[].result_path / hash` + controller report 的 `run_mode=live` 共同承担证据职责。
+>
+> 主 agent 仍可在 capability 探测阶段写一份 `probe.json` 作为**信息性**调试记录，但**不再要求 schema 校验**，也**不进入 final gate 决策路径**。final-gate 必读证据仅有两类：stage dispatch ledger + controller / merge report。
 
 ---
 
@@ -419,9 +403,9 @@ CAPABILITY_STATUS: <按映射表枚举值>
   4. **Dispatch with concurrency cap**：单 wave 最多 2 child executor（与 H1 planning_dispatch / H4a execution_dispatch_ledger 同上限）；`proof_mode: live_child_dispatch`
   5. **Record execution_dispatch_ledger**：每个 wave 后写一条 `execution_dispatch_ledger.json`（schema：H4a v1.6 owned `gd-validate-execution-dispatch-ledger.py` 接受），包含 `wave_id` / `track_ids` / `concurrency_count` / `capability_status` / `fallback_mode` / `result_path`
   6. **Post-wave path audit**：每个 wave 完成后，调用 `python3 scripts/gd-detect-path-changes.py --before <pre-snap.json> --after <post-snap.json> --owned-paths <track-owned-paths.json>` → 任何 child writes 越界 → exit 1 with `OWNED_PATH_VIOLATION`，整批 batch fail
-  7. **Write planning dispatch log v1.1**：execute-agent-exec 完成后必须写 `planning_dispatch_log.json`（与 /gd plan 同 schema），含 `runtime_proof` 块（**5 字段**：`proof_mode` + `source_dispatch_map_hash` + `probe_artifact_ref` + `parent_run_id` + `recorded_at`）；用 `python3 scripts/gd-validate-planning-dispatch-log.py --strict-live-proof <planning_dispatch_log.json>` 校验，必须 exit 0。`--strict-live-proof` 强制 `runtime_proof` 块必填且校验 SHA-256 hex 格式 + `probe_artifact_ref` 非 fail_closed 必填。
-  8. **Cross-validate dispatch hash**：`python3 scripts/gd-validate-dispatch.py <dispatch_map.json> --check-hash <runtime_proof.source_dispatch_map_hash> --proof-mode <runtime_proof.proof_mode>` → 必须 exit 0。
-  9. **Live dispatch smoke**：`python3 scripts/gd-validate-live-dispatch-smoke.py --planning-log <planning_dispatch_log.json> [--dispatch-map <dispatch_map.json>] [--probe <probe.json>]` → 必须 `SMOKE_STATUS: PASS`。probe schema 校验委托给 `scripts/gd-validate-probe.py`（跑完整 schema：enum / type / additionalProperties / SHA-256 / ISO 8601 / conditional null），任何字段越界 smoke 直接 FAIL。`fail_closed_no_dispatch` 时 `--dispatch-map` 可省略且 `fallback_reason` 必填。
+  7. **Write stage dispatch ledger（Rev21 final-gate 证据，supersedes Plan 4 planning_dispatch_log v1.1）**：execute-agent-exec 完成后必须写 `schema/gd-stage-dispatch-ledger.schema.json` 格式的 ledger，`stage: "execute"`，含 `child_agent_count` / `max_parallel` / `capability_status` / `child_jobs[]`（result path + SHA-256 hash + status）/ `main_agent_merge`；用 `python3 scripts/gd-validate-stage-dispatch-ledger.py <ledger.json>` 校验，必须 exit 0。
+  8. **Cross-validate dispatch map**：`python3 scripts/gd-validate-dispatch.py <dispatch_map.json>` → 必须 exit 0。
+  9. **Write controller / merge report（Rev21 final-gate 证据，supersedes Plan 4 live dispatch smoke）**：必须写 schema-valid controller report（`schema/gd-controller-report.schema.json`），`run_mode=live`（`fixture` / `mock_only` 直接被 validator 拒），含 `jobs[]`（result path + hash + status）/ `final_decision` / `main_agent_merge.merge_report_path`；用 `python3 scripts/gd-validate-controller-report.py <controller-report.json>` 校验，必须 exit 0 后 execute batch 才算 closure-eligible。
   10. **Validate batch + closure**：与 human_exec 流程相同（`gd-validate-execution-batch.py` 双跑 batch + closure，含 H3 引入的 capability check + sc_acceptance check）
 
 <!-- gd-runtime-strict-required:end stage=execute-agent-exec -->
