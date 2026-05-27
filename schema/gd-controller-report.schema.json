@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "gd-controller-report.schema.json",
   "title": "GD Controller Report",
-  "description": "Schema for the /gd controller run report produced after a full dispatch+review+gate cycle.",
+  "description": "Schema for the /gd controller run report produced after a full dispatch+review+gate cycle. Supports schema_version 1.0 (legacy) and 1.1 (Rev21 batch ledger + suite_target_closure).",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -21,13 +21,13 @@
   "properties": {
     "schema_version": {
       "type": "string",
-      "const": "1.0",
-      "description": "Schema version — always '1.0'."
+      "enum": ["1.0", "1.1"],
+      "description": "Schema version. '1.0' = legacy; '1.1' = Rev21 (adds batch_ledgers[] + suite_target_closure[])."
     },
     "run_mode": {
       "type": "string",
-      "enum": ["live", "fixture"],
-      "description": "Execution mode. 'fixture' runs are closure-ineligible and will be rejected by the validator."
+      "enum": ["live", "fixture", "mock_only"],
+      "description": "Execution mode. 'fixture' / 'mock_only' runs are closure-ineligible and will be rejected by the parent close gate."
     },
     "started_at": {
       "type": "string",
@@ -143,6 +143,60 @@
           }
         }
       }
+    },
+    "batch_ledgers": {
+      "type": "array",
+      "description": "v1.1: list of stage dispatch ledger files produced by this controller run, with hashes for integrity verification.",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["path", "hash"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Filesystem path to the ledger file (relative to controller report or absolute)."
+          },
+          "hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "SHA-256 hex digest of the ledger file contents."
+          }
+        }
+      }
+    },
+    "suite_target_closure": {
+      "type": "array",
+      "description": "v1.1: closure summary for every dispatched job, mirroring jobs[] for closure-gate consumption.",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["target_id", "mapped_status", "evidence_kind"],
+        "properties": {
+          "target_id": {
+            "type": "string",
+            "description": "Job identifier matching jobs[].queue_job_id."
+          },
+          "mapped_status": {
+            "type": "string",
+            "description": "Normalized closure status; INELIGIBLE_STATUSES are rejected by the parent close gate."
+          },
+          "evidence_kind": {
+            "type": "string",
+            "enum": ["controller_approved", "mapped_status_approved", "n_a"],
+            "description": "Provenance of the closure verdict: controller_approved (controller-level approval), mapped_status_approved (status-derived), n_a (no applicable evidence)."
+          }
+        }
+      }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "schema_version": { "const": "1.1" } }
+      },
+      "then": {
+        "required": ["batch_ledgers", "suite_target_closure"]
+      }
+    }
+  ]
 }

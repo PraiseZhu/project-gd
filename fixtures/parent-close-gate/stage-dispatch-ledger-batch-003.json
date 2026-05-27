@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "stage": "plan",
+  "parent_run_id": "run-eight-target-v11-fixture",
+  "batch_id": "batch-003",
+  "recorded_at": "2026-05-27T12:00:00Z",
+  "child_agent_count": 2,
+  "max_parallel": 2,
+  "child_jobs": [
+    {
+      "job_id": "gd-v11-fixture-step-5",
+      "result_path": "fixture/step-5.md",
+      "result_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "status": "completed"
+    },
+    {
+      "job_id": "gd-v11-fixture-step-6",
+      "result_path": "fixture/step-6.md",
+      "result_hash": "gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg",
+      "status": "completed"
+    }
+  ],
+  "main_agent_merge": {
+    "merge_report_path": "fixture/merge-batch-003.md",
+    "merge_report_hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "final_decision": "APPROVED",
+    "blocking_buckets": []
+  }
+}

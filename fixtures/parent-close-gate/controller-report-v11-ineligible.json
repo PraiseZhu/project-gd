@@ -1,0 +1,168 @@
+{
+  "schema_version": "1.1",
+  "run_mode": "live",
+  "started_at": "2026-05-27T12:00:00Z",
+  "finished_at": "2026-05-27T12:05:00Z",
+  "primary_gate": {
+    "verdict": "APPROVED",
+    "blocking": []
+  },
+  "secondary_gate": {
+    "verdict": "APPROVED",
+    "blocking": []
+  },
+  "gate_consistent": true,
+  "dirty_detected": false,
+  "aggregate_path": "fixtures/parent-close-gate/aggregate-final.json",
+  "manifest_path": "fixtures/parent-close-gate/manifest-final.json",
+  "jobs": [
+    {
+      "queue_job_id": "gd-v11-fixture-step-1",
+      "target_role": "step-1",
+      "primary_target": "fixture/step-1.md",
+      "bridge_exit": 0,
+      "bridge_stderr_path": null,
+      "bridge_stderr_summary": "none",
+      "raw_verdict": "APPROVED",
+      "mapped_status": "completed",
+      "aggregate_bucket": "primary"
+    },
+    {
+      "queue_job_id": "gd-v11-fixture-step-2",
+      "target_role": "step-2",
+      "primary_target": "fixture/step-2.md",
+      "bridge_exit": 0,
+      "bridge_stderr_path": null,
+      "bridge_stderr_summary": "none",
+      "raw_verdict": "APPROVED",
+      "mapped_status": "transport_failed",
+      "aggregate_bucket": "transport_failed"
+    },
+    {
+      "queue_job_id": "gd-v11-fixture-step-3",
+      "target_role": "step-3",
+      "primary_target": "fixture/step-3.md",
+      "bridge_exit": 0,
+      "bridge_stderr_path": null,
+      "bridge_stderr_summary": "none",
+      "raw_verdict": "APPROVED",
+      "mapped_status": "completed",
+      "aggregate_bucket": "primary"
+    },
+    {
+      "queue_job_id": "gd-v11-fixture-step-4",
+      "target_role": "step-4",
+      "primary_target": "fixture/step-4.md",
+      "bridge_exit": 0,
+      "bridge_stderr_path": null,
+      "bridge_stderr_summary": "none",
+      "raw_verdict": "APPROVED",
+      "mapped_status": "completed",
+      "aggregate_bucket": "primary"
+    },
+    {
+      "queue_job_id": "gd-v11-fixture-step-5",
+      "target_role": "step-5",
+      "primary_target": "fixture/step-5.md",
+      "bridge_exit": 0,
+      "bridge_stderr_path": null,
+      "bridge_stderr_summary": "none",
+      "raw_verdict": "APPROVED",
+      "mapped_status": "completed",
+      "aggregate_bucket": "primary"
+    },
+    {
+      "queue_job_id": "gd-v11-fixture-step-6",
+      "target_role": "step-6",
+      "primary_target": "fixture/step-6.md",
+      "bridge_exit": 0,
+      "bridge_stderr_path": null,
+      "bridge_stderr_summary": "none",
+      "raw_verdict": "APPROVED",
+      "mapped_status": "completed",
+      "aggregate_bucket": "primary"
+    },
+    {
+      "queue_job_id": "gd-v11-fixture-step-7",
+      "target_role": "step-7",
+      "primary_target": "fixture/step-7.md",
+      "bridge_exit": 0,
+      "bridge_stderr_path": null,
+      "bridge_stderr_summary": "none",
+      "raw_verdict": "APPROVED",
+      "mapped_status": "completed",
+      "aggregate_bucket": "primary"
+    },
+    {
+      "queue_job_id": "gd-v11-fixture-step-8",
+      "target_role": "step-8",
+      "primary_target": "fixture/step-8.md",
+      "bridge_exit": 0,
+      "bridge_stderr_path": null,
+      "bridge_stderr_summary": "none",
+      "raw_verdict": "APPROVED",
+      "mapped_status": "completed",
+      "aggregate_bucket": "primary"
+    }
+  ],
+  "batch_ledgers": [
+    {
+      "path": "stage-dispatch-ledger-batch-001.json",
+      "hash": "b1abac5cb81362d1cc0e140194345cd48bfc9ce61e2d2ba78ce24c32bd78e3fb"
+    },
+    {
+      "path": "stage-dispatch-ledger-batch-002.json",
+      "hash": "c1dd1d65b28a37c2a1d3ffc445ee8aeaa727130c57146ad8139b1fe482d06bc2"
+    },
+    {
+      "path": "stage-dispatch-ledger-batch-003.json",
+      "hash": "c2d4a9b35e851b2d9d082c7f8b1f6a1ebb761868edc8ec1ba86b2eec0f62df5c"
+    },
+    {
+      "path": "stage-dispatch-ledger-batch-004.json",
+      "hash": "54cd403ad0da786b07fbee6a0e0bff868cb460ff6b703922c5edb3ba20962868"
+    }
+  ],
+  "suite_target_closure": [
+    {
+      "target_id": "gd-v11-fixture-step-1",
+      "mapped_status": "completed",
+      "evidence_kind": "mapped_status_approved"
+    },
+    {
+      "target_id": "gd-v11-fixture-step-2",
+      "mapped_status": "transport_failed",
+      "evidence_kind": "n_a"
+    },
+    {
+      "target_id": "gd-v11-fixture-step-3",
+      "mapped_status": "completed",
+      "evidence_kind": "mapped_status_approved"
+    },
+    {
+      "target_id": "gd-v11-fixture-step-4",
+      "mapped_status": "completed",
+      "evidence_kind": "mapped_status_approved"
+    },
+    {
+      "target_id": "gd-v11-fixture-step-5",
+      "mapped_status": "completed",
+      "evidence_kind": "mapped_status_approved"
+    },
+    {
+      "target_id": "gd-v11-fixture-step-6",
+      "mapped_status": "completed",
+      "evidence_kind": "mapped_status_approved"
+    },
+    {
+      "target_id": "gd-v11-fixture-step-7",
+      "mapped_status": "completed",
+      "evidence_kind": "mapped_status_approved"
+    },
+    {
+      "target_id": "gd-v11-fixture-step-8",
+      "mapped_status": "completed",
+      "evidence_kind": "mapped_status_approved"
+    }
+  ]
+}

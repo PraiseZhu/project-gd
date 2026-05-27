@@ -140,7 +140,7 @@ def _validate_manual(data):
 
     # required top-level keys
     required = {
-        "schema_version", "stage", "parent_run_id", "recorded_at",
+        "schema_version", "stage", "parent_run_id", "batch_id", "recorded_at",
         "child_agent_count", "max_parallel", "child_jobs", "main_agent_merge",
     }
     missing = required - set(data.keys())
@@ -236,6 +236,7 @@ def _make_base(**overrides):
         "schema_version": "1.0",
         "stage": "plan",
         "parent_run_id": "run-abc-123",
+        "batch_id": "batch-single",
         "recorded_at": "2026-05-17T10:00:00Z",
         "child_agent_count": 1,
         "max_parallel": 1,
@@ -302,7 +303,58 @@ _SELF_TESTS = [
         ),
         False,
     ),
+    # batch_id tests
+    (
+        "pass: single ledger with batch_id=batch-single",
+        _make_base(),
+        True,
+    ),
+    (
+        "pass: batch ledger with batch_id=batch-001",
+        _make_base(batch_id="batch-001"),
+        True,
+    ),
+    (
+        "fail: missing batch_id",
+        {k: v for k, v in _make_base().items() if k != "batch_id"},
+        False,
+    ),
 ]
+
+# Focused selftest cases surfaced by --selftest flag
+_SELFTEST_CASES = [
+    ("single", _make_base(), True),
+    ("batch-001", _make_base(batch_id="batch-001"), True),
+    ("missing batch_id", {k: v for k, v in _make_base().items() if k != "batch_id"}, False),
+]
+
+
+def run_selftest():
+    """Focused selftest for batch_id: covers single, batch-001, and missing batch_id."""
+    results = []
+    for label, data, expect_valid in _SELFTEST_CASES:
+        errors = validate(data)
+        is_valid = len(errors) == 0
+        ok = is_valid == expect_valid
+        results.append((label, ok, is_valid, expect_valid, errors))
+
+    all_pass = all(ok for _, ok, *_ in results)
+    valid_labels = [label for label, ok, is_valid, _, _ in results if ok and is_valid]
+    invalid_labels = [label for label, ok, is_valid, _, _ in results if ok and not is_valid]
+
+    for label, ok, is_valid, expect_valid, errors in results:
+        verdict = "valid" if is_valid else "invalid"
+        expected = "valid" if expect_valid else "invalid"
+        status = "PASS" if ok else "FAIL"
+        print(f"{status}: {label} → {verdict} (expected {expected})")
+        if not ok and errors:
+            for e in errors:
+                print(f"      error: {e}")
+
+    valid_str = " + ".join(valid_labels) if valid_labels else "none"
+    invalid_str = ", ".join(invalid_labels) if invalid_labels else "none"
+    print(f"LEDGER_VALID ({valid_str}), invalid ({invalid_str})")
+    return all_pass
 
 
 def run_self_tests():
@@ -359,14 +411,42 @@ def main():
         ok = run_self_tests()
         sys.exit(0 if ok else 1)
 
+    if "--selftest" in args:
+        ok = run_selftest()
+        sys.exit(0 if ok else 1)
+
     if not args:
-        print("Usage: gd-validate-stage-dispatch-ledger.py <ledger.json>", file=sys.stderr)
+        print("Usage: gd-validate-stage-dispatch-ledger.py <ledger.json> [<ledger2.json> ...]", file=sys.stderr)
         print("       gd-validate-stage-dispatch-ledger.py --self-test-minimal", file=sys.stderr)
+        print("       gd-validate-stage-dispatch-ledger.py --selftest", file=sys.stderr)
         sys.exit(1)
 
-    path = args[0]
-    ok = validate_file(path)
-    sys.exit(0 if ok else 1)
+    # Multi-file mode: validate each file and check batch_id uniqueness across the run.
+    paths = [a for a in args if not a.startswith("--")]
+    seen_batch_ids: dict[str, str] = {}  # batch_id → first file that declared it
+    all_ok = True
+    for path in paths:
+        ok = validate_file(path)
+        all_ok = all_ok and ok
+        # Check batch_id uniqueness when multiple ledger files are validated together.
+        if len(paths) > 1:
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                bid = data.get("batch_id")
+                if bid:
+                    if bid in seen_batch_ids:
+                        print(
+                            f"LEDGER_INVALID: duplicate batch_id {bid!r} "
+                            f"(first seen in {seen_batch_ids[bid]}, now in {path})"
+                        )
+                        all_ok = False
+                    else:
+                        seen_batch_ids[bid] = path
+            except (OSError, json.JSONDecodeError):
+                pass  # already reported by validate_file
+
+    sys.exit(0 if all_ok else 1)
 
 
 if __name__ == "__main__":
