@@ -9,6 +9,7 @@
     "schema_version",
     "stage",
     "parent_run_id",
+    "batch_id",
     "recorded_at",
     "child_agent_count",
     "max_parallel",
@@ -16,6 +17,11 @@
     "main_agent_merge"
   ],
   "properties": {
+    "batch_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unique identifier for this batch within the controller run (e.g. 'batch-001')."
+    },
     "schema_version": {
       "type": "string",
       "const": "1.0",

@@ -1,0 +1,15 @@
+{
+  "target_set_id": "gd-eight-target-test",
+  "kind": "plan",
+  "compat_v1": true,
+  "jobs": [
+    {"target_role": "step_1", "queue_job_id": "gd-eight-target-test-step-1", "simulated_decision": "APPROVED", "simulated_run_status": "completed", "simulated_target_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+    {"target_role": "step_2", "queue_job_id": "gd-eight-target-test-step-2", "simulated_decision": "APPROVED", "simulated_run_status": "completed", "simulated_target_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+    {"target_role": "step_3", "queue_job_id": "gd-eight-target-test-step-3", "simulated_decision": "APPROVED", "simulated_run_status": "completed", "simulated_target_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"},
+    {"target_role": "step_4", "queue_job_id": "gd-eight-target-test-step-4", "simulated_decision": "APPROVED", "simulated_run_status": "completed", "simulated_target_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"},
+    {"target_role": "step_5", "queue_job_id": "gd-eight-target-test-step-5", "simulated_decision": "APPROVED", "simulated_run_status": "completed", "simulated_target_hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"},
+    {"target_role": "step_6", "queue_job_id": "gd-eight-target-test-step-6", "simulated_decision": "APPROVED", "simulated_run_status": "completed", "simulated_target_hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"},
+    {"target_role": "step_7", "queue_job_id": "gd-eight-target-test-step-7", "simulated_decision": "APPROVED", "simulated_run_status": "completed", "simulated_target_hash": "1111111111111111111111111111111111111111111111111111111111111111"},
+    {"target_role": "step_8", "queue_job_id": "gd-eight-target-test-step-8", "simulated_decision": "APPROVED", "simulated_run_status": "completed", "simulated_target_hash": "2222222222222222222222222222222222222222222222222222222222222222"}
+  ]
+}

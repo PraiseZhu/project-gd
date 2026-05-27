@@ -1076,11 +1076,29 @@ def build_capsule_text(
 def _load_related_context(path: str | None) -> list[dict] | None:
     if not path:
         return None
+    # Detect JSON-as-path: caller passed inline JSON instead of a file path
+    if path.lstrip().startswith(("[", "{")):
+        print(
+            "ERROR: --related-context value looks like inline JSON, not a file path. "
+            "Write the JSON to a file and pass the path instead.",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
     try:
-        return json.loads(Path(path).read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, FileNotFoundError) as e:
-        print(f"ERROR: --related-context: {e}", file=sys.stderr)
-        return None
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except FileNotFoundError as e:
+        print(f"ERROR: --related-context file not found: {e}", file=sys.stderr)
+        raise SystemExit(2)
+    except json.JSONDecodeError as e:
+        print(f"ERROR: --related-context invalid JSON: {e}", file=sys.stderr)
+        raise SystemExit(2)
+    if not isinstance(data, list):
+        print(
+            f"ERROR: --related-context must be a JSON array, got {type(data).__name__}",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    return data
 
 
 def cmd_build_capsule(args: argparse.Namespace) -> int:

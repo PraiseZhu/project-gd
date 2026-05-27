@@ -212,6 +212,8 @@ def _secondary_gate(aggregate_path: Path) -> tuple[str, list[str]]:
 
 
 def _infer_aggregate_bucket(raw_verdict: str, mapped_status: str, raw_path: str | None) -> str:
+    if mapped_status == "missing_primary_target":
+        return "missing_primary_target"
     if raw_path is None:
         return "transport_failed"
     if raw_verdict == "APPROVED":
@@ -501,6 +503,35 @@ def _write_parent_close(out_dir: Path, verdict: str, blocking: list[str]) -> Pat
     return p
 
 
+def _build_suite_target_closure(jobs: list[dict]) -> list[dict]:
+    """Build suite_target_closure for controller report v1.1.
+
+    evidence_kind:
+      controller_approved  — aggregate_bucket == "codex_approved"
+      mapped_status_approved — mapped_status == "completed" but not codex_approved
+      n_a                  — everything else (missing, failed, transport error)
+    """
+    closure = []
+    for j in jobs:
+        target_id = j.get("queue_job_id", "")
+        mapped_status = j.get("mapped_status", "transport_failed")
+        aggregate_bucket = j.get("aggregate_bucket", "transport_failed")
+
+        if aggregate_bucket == "codex_approved":
+            evidence_kind = "controller_approved"
+        elif mapped_status == "completed":
+            evidence_kind = "mapped_status_approved"
+        else:
+            evidence_kind = "n_a"
+
+        closure.append({
+            "target_id": target_id,
+            "mapped_status": mapped_status,
+            "evidence_kind": evidence_kind,
+        })
+    return closure
+
+
 def _write_controller_report(
     out_dir: Path,
     jobs: list[dict],
@@ -514,11 +545,15 @@ def _write_controller_report(
     manifest_path: Path,
     started_at: str,
     run_mode: str = "live",
+    batch_ledgers: list[dict] | None = None,
 ) -> Path:
     """Write controller-report.json. All six required fields per A6 must be present.
 
     run_mode: "live" for normal production runs, "fixture" for fixture-mode runs.
     The schema expects this field for dispatch ledger cross-validation.
+
+    batch_ledgers: list of {"path": str, "hash": str} entries for each batch ledger
+    written by the controller (Phase 4 v1.1).
     """
     job_reports = []
     for j in jobs:
@@ -529,7 +564,7 @@ def _write_controller_report(
         job_reports.append(entry)
 
     report = {
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "run_mode": run_mode,
         "started_at": started_at,
         "finished_at": _now_iso(),
@@ -540,6 +575,8 @@ def _write_controller_report(
         "aggregate_path": str(aggregate_path),
         "manifest_path": str(manifest_path),
         "jobs": job_reports,
+        "batch_ledgers": batch_ledgers or [],
+        "suite_target_closure": _build_suite_target_closure(jobs),
     }
     p = out_dir / "controller-report.json"
     p.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -698,7 +735,7 @@ def _selftest_controller_report_minimal() -> int:
 
         # Build a minimal valid live controller report
         _live_report = {
-            "schema_version": "1.0",
+            "schema_version": "1.1",
             "run_mode": "live",
             "started_at": _now_iso(),
             "finished_at": _now_iso(),
@@ -724,6 +761,8 @@ def _selftest_controller_report_minimal() -> int:
                     "bridge_stderr_summary": "",
                 }
             ],
+            "batch_ledgers": [],
+            "suite_target_closure": [],
         }
 
         live_path = td_path / "controller-report-live.json"
@@ -989,8 +1028,88 @@ def main(argv: list[str]) -> int:
     # ── Generate parent-close.md ──────────────────────────────────────────────
     parent_close_path = _write_parent_close(out_dir, primary_verdict, primary_blocking)
 
-    # ── Write controller-report.json ──────────────────────────────────────────
+    # ── Emit stage dispatch ledgers (batch mode, Phase 4) ─────────────────────
+    # Compute per-job result hashes from their mapped_out files.
+    invocation_id = target_set_id or "fixture-suite"
+    max_parallel_val = getattr(args, "max_parallel", 2)
+    if max_parallel_val is None:
+        max_parallel_val = 2
+    max_parallel_val = min(int(max_parallel_val), 2)
+
+    child_jobs_all: list[dict] = []
+    for j in jobs:
+        queue_job_id = j.get("queue_job_id", "")
+        mapped_out_path_str = str(out_dir / "mapped" / f"{queue_job_id}.json")
+        mapped_out_path = Path(mapped_out_path_str)
+        result_hash = _sha256_file(mapped_out_path) if mapped_out_path.exists() else None
+        bridge_exit = j.get("bridge_exit", -1)
+        if fixture_mode:
+            job_status = "completed"
+        else:
+            if j.get("aggregate_bucket") == "missing_primary_target":
+                job_status = "failed"
+            elif bridge_exit == 0:
+                job_status = "completed"
+            else:
+                job_status = "failed"
+        child_jobs_all.append({
+            "job_id": queue_job_id,
+            "result_path": mapped_out_path_str,
+            "result_hash": result_hash,
+            "status": job_status,
+        })
+
+    # Split into batches of max_parallel
+    batch_size = max_parallel_val
+    if child_jobs_all:
+        batches = [child_jobs_all[i:i + batch_size]
+                   for i in range(0, len(child_jobs_all), batch_size)]
+    else:
+        batches = [[]]  # ensure at least one batch
+
+    blocking_buckets_in_ledger = [
+        j["queue_job_id"]
+        for j in jobs
+        if j.get("aggregate_bucket") not in ("codex_approved", None)
+    ]
+
     run_mode = "fixture" if fixture_mode else "live"
+    controller_report_path_str = str(out_dir / "controller-report.json")
+    final_decision = "APPROVED" if primary_verdict == "APPROVED" else "REQUIRES_CHANGES"
+
+    # Pass 1: write each batch ledger to disk with merge_report_hash=None (placeholder)
+    batch_ledger_paths: list[Path] = []
+    batch_ledgers_meta: list[dict] = []
+    ledger_path = None
+    for batch_idx, batch_jobs in enumerate(batches):
+        batch_id = f"batch-{batch_idx + 1:03d}"
+        batch_ledger = {
+            "schema_version": "1.0",
+            "stage": "review_plan",
+            "parent_run_id": invocation_id,
+            "batch_id": batch_id,
+            "recorded_at": _now_iso(),
+            "child_agent_count": len(batch_jobs),
+            "max_parallel": max_parallel_val,
+            "child_jobs": batch_jobs,
+            "main_agent_merge": {
+                "merge_report_path": controller_report_path_str,
+                "merge_report_hash": None,  # placeholder; filled after controller report is written
+                "final_decision": final_decision,
+                "blocking_buckets": blocking_buckets_in_ledger,
+            },
+        }
+        batch_ledger_path = out_dir / f"stage-dispatch-ledger-batch-{batch_idx + 1:03d}.json"
+        batch_ledger_path.write_text(
+            json.dumps(batch_ledger, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        batch_ledger_hash = _sha256_file(batch_ledger_path)
+        batch_ledger_paths.append(batch_ledger_path)
+        batch_ledgers_meta.append({"path": str(batch_ledger_path), "hash": batch_ledger_hash})
+        ledger_path = batch_ledger_path  # last one for backward compat prints
+
+    # ── Write controller-report.json (after batch ledgers exist) ──────────────
     report_path = _write_controller_report(
         out_dir, jobs,
         primary_verdict, primary_blocking,
@@ -999,6 +1118,42 @@ def main(argv: list[str]) -> int:
         aggregate_path, manifest_path,
         started_at,
         run_mode=run_mode,
+        batch_ledgers=batch_ledgers_meta,
+    )
+
+    # Pass 2: backfill merge_report_hash into each batch ledger now that report exists
+    controller_report_hash = _sha256_file(report_path) if report_path.exists() else None
+    for bl_path in batch_ledger_paths:
+        try:
+            bl_data = json.loads(bl_path.read_text(encoding="utf-8"))
+            bl_data["main_agent_merge"]["merge_report_hash"] = controller_report_hash
+            bl_path.write_text(
+                json.dumps(bl_data, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except (json.JSONDecodeError, OSError) as e:
+            print(f"BATCH_LEDGER_BACKFILL_FAILED for {bl_path}: {e}", file=sys.stderr)
+
+    # Pass 3: re-hash batch ledger files (their content changed during Pass 2)
+    # and rewrite controller report so batch_ledgers[].hash matches on-disk files.
+    # NOTE: this means the controller report hash changes again; we keep the
+    # in-ledger merge_report_hash referencing the pre-rehash report (a known
+    # documented loop point). Downstream consumers should re-hash the report
+    # if they need the final hash.
+    batch_ledgers_meta_final: list[dict] = []
+    for bl_path in batch_ledger_paths:
+        final_hash = _sha256_file(bl_path)
+        batch_ledgers_meta_final.append({"path": str(bl_path), "hash": final_hash})
+
+    report_path = _write_controller_report(
+        out_dir, jobs,
+        primary_verdict, primary_blocking,
+        secondary_verdict, secondary_blocking,
+        gate_consistent, dirty_detected,
+        aggregate_path, manifest_path,
+        started_at,
+        run_mode=run_mode,
+        batch_ledgers=batch_ledgers_meta_final,
     )
 
     # ── Validate controller-report.json ───────────────────────────────────────
@@ -1012,70 +1167,20 @@ def main(argv: list[str]) -> int:
             print(f"CONTROLLER_REPORT_VALIDATOR_FAILED (exit {rc_crv}):\n{out_crv}{err_crv}",
                   file=sys.stderr)
 
-    # ── Emit stage dispatch ledger ────────────────────────────────────────────
-    # Compute per-job result hashes from their mapped_out files.
-    invocation_id = target_set_id or "fixture-suite"
-    child_jobs_ledger: list[dict] = []
-    for j in jobs:
-        queue_job_id = j.get("queue_job_id", "")
-        mapped_out_path_str = str(out_dir / "mapped" / f"{queue_job_id}.json")
-        mapped_out_path = Path(mapped_out_path_str)
-        result_hash = _sha256_file(mapped_out_path) if mapped_out_path.exists() else None
-        bridge_exit = j.get("bridge_exit", -1)
-        # fixture mode: all jobs are simulated as completed
-        if fixture_mode:
-            job_status = "completed"
-        else:
-            job_status = "completed" if (bridge_exit == 0 or bridge_exit is not None and bridge_exit >= 0 and j.get("aggregate_bucket") != "missing_primary_target") else "failed"
-            if j.get("aggregate_bucket") == "missing_primary_target":
-                job_status = "failed"
-            elif bridge_exit == 0:
-                job_status = "completed"
-            else:
-                job_status = "failed"
-        child_jobs_ledger.append({
-            "job_id": queue_job_id,
-            "result_path": mapped_out_path_str,
-            "result_hash": result_hash,
-            "status": job_status,
-        })
-
-    blocking_buckets_in_ledger = [
-        j["queue_job_id"]
-        for j in jobs
-        if j.get("aggregate_bucket") not in ("codex_approved", None)
-        and j.get("aggregate_bucket") != "missing_primary_target"
-        or j.get("aggregate_bucket") == "missing_primary_target"
-    ]
-
-    controller_report_hash = _sha256_file(report_path) if report_path.exists() else None
-    ledger = {
-        "stage": "review_plan",
-        "parent_run_id": invocation_id,
-        "recorded_at": _now_iso(),
-        "child_agent_count": len([j for j in jobs if j.get("aggregate_bucket") != "missing_primary_target"]),
-        "max_parallel": getattr(args, "max_parallel", 2),
-        "child_jobs": child_jobs_ledger,
-        "main_agent_merge": {
-            "merge_report_path": str(report_path),
-            "merge_report_hash": controller_report_hash,
-            "final_decision": "APPROVED" if primary_verdict == "APPROVED" else "REQUIRES_CHANGES",
-            "blocking_buckets": blocking_buckets_in_ledger,
-        },
-    }
-    ledger_path = out_dir / "stage-dispatch-ledger.json"
-    ledger_path.write_text(json.dumps(ledger, ensure_ascii=False, indent=2), encoding="utf-8")
-
-    # ── Validate stage dispatch ledger ────────────────────────────────────────
+    # ── Validate each stage dispatch ledger ───────────────────────────────────
     ledger_validator = GD_PROJECT_ROOT / "scripts" / "gd-validate-stage-dispatch-ledger.py"
     if ledger_validator.exists():
-        rc_ldv, out_ldv, err_ldv = _run_subprocess(
-            [sys.executable, str(ledger_validator), str(ledger_path)],
-            "ledger-validator",
-        )
-        if rc_ldv != 0:
-            print(f"STAGE_DISPATCH_LEDGER_VALIDATOR_FAILED (exit {rc_ldv}):\n{out_ldv}{err_ldv}",
-                  file=sys.stderr)
+        for bl_path in batch_ledger_paths:
+            rc_ldv, out_ldv, err_ldv = _run_subprocess(
+                [sys.executable, str(ledger_validator), str(bl_path)],
+                "ledger-validator",
+            )
+            if rc_ldv != 0:
+                print(
+                    f"STAGE_DISPATCH_LEDGER_VALIDATOR_FAILED for {bl_path.name} "
+                    f"(exit {rc_ldv}):\n{out_ldv}{err_ldv}",
+                    file=sys.stderr,
+                )
 
     # ── Print final status ────────────────────────────────────────────────────
     print(f"SUITE_CONTROLLER_VERDICT: {primary_verdict}")
@@ -1085,7 +1190,8 @@ def main(argv: list[str]) -> int:
     print(f"MANIFEST_PATH: {manifest_path}")
     print(f"PARENT_CLOSE_PATH: {parent_close_path}")
     print(f"CONTROLLER_REPORT_PATH: {report_path}")
-    print(f"STAGE_DISPATCH_LEDGER_PATH: {ledger_path}")
+    for bl_path in batch_ledger_paths:
+        print(f"STAGE_DISPATCH_LEDGER_PATH: {bl_path}")
 
     if not gate_consistent:
         print(
