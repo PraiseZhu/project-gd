@@ -237,6 +237,22 @@ Codex review of the original handoff returned `REQUIRES_CHANGES` with 3 P1 + 1 P
 
 ---
 
+## Codex Cross-Review Round 2 Fixes (2026-05-27, post-round-1)
+
+Round-2 review identified one additional structural issue in the bridge script for `code_diff` reviews:
+
+| Finding | Severity | Fix |
+|---------|----------|-----|
+| `gd-codex-bridge-review.py` applies L3 content-evidence validator and SC-ID requirement to `code_diff` reviews — but code diff findings review code quality, not plan SC-IDs, causing all `code_diff` bridge runs to return `degraded/FAILED` | P1 | Four targeted edits: (1) `_parse_raw_to_mapped_v1` line 677: skip SC-ID parse error for `kind=="code_diff"`; (2) `validate_mapped_schema_v1` line 428: allow empty `sc_refs` for `review_kind=="code_diff"`; (3) `_cmd_run_bridge_inner` L3 block: skip L3 validator for `code_diff`; (4) `cmd_parse_transport` L3 block: same skip |
+
+**Collateral action:** Deleted `results/review-route-split/review2-20260527T125003Z-c761ed/` (previously untracked) — it was a known-bad artifact from a failed round-1 `/review2` attempt and must not remain as misleading evidence.
+
+**Validation evidence:**
+- `python3 scripts/gd-codex-bridge-review.py self-test` → `self-test PASS` (all existing cases unaffected)
+- `git status --porcelain` → only `M scripts/gd-codex-bridge-review.py` (no untracked)
+
+---
+
 ## 是否可进入 Codex 验收
 
-**Yes** — all functional validators pass, fixtures are self-consistent, batch ledger hash verification works, parent close gate correctly rejects ineligible closure entries. The sole failing check (preflight parity) is pre-existing and cannot be resolved within the plan's hard boundaries. The worktree branch is ready for Codex bridge review.
+**Yes** — all functional validators pass, fixtures are self-consistent, batch ledger hash verification works, parent close gate correctly rejects ineligible closure entries. The bridge script now correctly skips the L3 content-evidence validator for `code_diff` reviews. The sole failing check (preflight parity) is pre-existing and cannot be resolved within the plan's hard boundaries. The worktree branch is ready for Codex bridge review.
