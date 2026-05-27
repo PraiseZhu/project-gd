@@ -1,0 +1,10 @@
+{
+  "_fixture_meta": {
+    "description": "Negative: closure references a controller report whose run_mode=fixture — must REJECT with fixture_mode_rejected",
+    "expected_exit_code": 1,
+    "expected_error_substring": "fixture_mode_rejected"
+  },
+  "verdict": "APPROVED",
+  "controller_report_path": "controller-report-v11-fixture-mode.json",
+  "stage_dispatch_ledger_path": "stage-dispatch-ledger-batch-001.json"
+}

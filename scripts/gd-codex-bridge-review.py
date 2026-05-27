@@ -424,8 +424,10 @@ def validate_mapped_schema_v1(d: dict) -> list[str]:
             if "severity" in fd and fd["severity"] not in {"P1", "P2"}:
                 errs.append(f"findings[{i}].severity 不合法")
             if "sc_refs" in fd:
-                if not isinstance(fd["sc_refs"], list) or not fd["sc_refs"]:
-                    errs.append(f"findings[{i}].sc_refs 必须非空数组")
+                if not isinstance(fd["sc_refs"], list):
+                    errs.append(f"findings[{i}].sc_refs 必须是数组")
+                elif not fd["sc_refs"] and d.get("review_kind") != "code_diff":
+                    errs.append(f"findings[{i}].sc_refs 必须非空数组（code_diff 除外）")
                 else:
                     for sc_ref in fd["sc_refs"]:
                         if not isinstance(sc_ref, str) or not re.match(r"^(?:[A-Za-z][A-Za-z0-9]*-)?SC-[A-Za-z]*[0-9]+(?:-[0-9]+)?$", sc_ref):
@@ -673,8 +675,8 @@ def _parse_raw_to_mapped_v1(
                 {"证据": "evidence", "影响": "impact", "最小修复": "required_fix", "验收": "verify"}[cn]
             ):
                 parse_errors.append(f"finding[{i}] 缺 {cn}")
-        # SC-N 必须有 (wrapper 加严)
-        if not f["sc_refs"]:
+        # SC-N 必须有 (wrapper 加严) — code_diff findings review code quality, not plan SC-IDs
+        if not f["sc_refs"] and kind != "code_diff":
             parse_errors.append(f"finding[{i}] 缺 SC: SC-<N>（wrapper schema 加严）")
 
     if parse_errors:
@@ -1076,11 +1078,29 @@ def build_capsule_text(
 def _load_related_context(path: str | None) -> list[dict] | None:
     if not path:
         return None
+    # Detect JSON-as-path: caller passed inline JSON instead of a file path
+    if path.lstrip().startswith(("[", "{")):
+        print(
+            "ERROR: --related-context value looks like inline JSON, not a file path. "
+            "Write the JSON to a file and pass the path instead.",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
     try:
-        return json.loads(Path(path).read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, FileNotFoundError) as e:
-        print(f"ERROR: --related-context: {e}", file=sys.stderr)
-        return None
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except FileNotFoundError as e:
+        print(f"ERROR: --related-context file not found: {e}", file=sys.stderr)
+        raise SystemExit(2)
+    except json.JSONDecodeError as e:
+        print(f"ERROR: --related-context invalid JSON: {e}", file=sys.stderr)
+        raise SystemExit(2)
+    if not isinstance(data, list):
+        print(
+            f"ERROR: --related-context must be a JSON array, got {type(data).__name__}",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    return data
 
 
 def cmd_build_capsule(args: argparse.Namespace) -> int:
@@ -1333,45 +1353,47 @@ def _cmd_run_bridge_inner(args: argparse.Namespace) -> int:
     # L3: run content-evidence validator on the live transport result (same as
     # parse-transport path). Fail-closed on failure, timeout, missing script, or
     # missing target (F2+F5 fix). Also updates source_of_truth_decision.value (F-R6-2).
-    l3_script = GD_PROJECT_ROOT / "scripts" / "gd-validate-review-content-evidence.py"
-    target_for_l3 = Path(args.target)
-    raw_path_for_l3 = Path(result_path)
-    _l3_precond_failed = False
-    _l3_precond_reason = ""
-    if not l3_script.exists():
-        _l3_precond_failed = True
-        _l3_precond_reason = "L3 content-evidence script missing — fail-closed"
-        print("L3_CONTENT_EVIDENCE: script missing — fail-closed", file=sys.stderr)
-    elif not target_for_l3.exists():
-        _l3_precond_failed = True
-        _l3_precond_reason = f"L3 target not found ({target_for_l3}) — fail-closed"
-        print(f"L3_CONTENT_EVIDENCE: target not found ({target_for_l3}) — fail-closed", file=sys.stderr)
-    if _l3_precond_failed:
-        _apply_l3_failure(mapped, _l3_precond_reason, out_path)
-    else:
-        l3_failed = False
-        l3_reason = ""
-        try:
-            l3_result = subprocess.run(
-                [sys.executable, str(l3_script),
-                 "--target", str(target_for_l3), "--review", str(raw_path_for_l3)],
-                capture_output=True, text=True, timeout=30,
-            )
-            if l3_result.returncode != 0:
+    # code_diff findings review code quality rather than plan SC-IDs; L3 skipped.
+    if args.kind not in {"code_diff"}:
+        l3_script = GD_PROJECT_ROOT / "scripts" / "gd-validate-review-content-evidence.py"
+        target_for_l3 = Path(args.target)
+        raw_path_for_l3 = Path(result_path)
+        _l3_precond_failed = False
+        _l3_precond_reason = ""
+        if not l3_script.exists():
+            _l3_precond_failed = True
+            _l3_precond_reason = "L3 content-evidence script missing — fail-closed"
+            print("L3_CONTENT_EVIDENCE: script missing — fail-closed", file=sys.stderr)
+        elif not target_for_l3.exists():
+            _l3_precond_failed = True
+            _l3_precond_reason = f"L3 target not found ({target_for_l3}) — fail-closed"
+            print(f"L3_CONTENT_EVIDENCE: target not found ({target_for_l3}) — fail-closed", file=sys.stderr)
+        if _l3_precond_failed:
+            _apply_l3_failure(mapped, _l3_precond_reason, out_path)
+        else:
+            l3_failed = False
+            l3_reason = ""
+            try:
+                l3_result = subprocess.run(
+                    [sys.executable, str(l3_script),
+                     "--target", str(target_for_l3), "--review", str(raw_path_for_l3)],
+                    capture_output=True, text=True, timeout=30,
+                )
+                if l3_result.returncode != 0:
+                    l3_failed = True
+                    l3_reason = "L3 content-evidence validator rejected review: " + l3_result.stdout.strip()[:200]
+                    print(f"L3_CONTENT_EVIDENCE: FAILED — {l3_result.stdout.strip()[:200]}", file=sys.stderr)
+            except subprocess.TimeoutExpired:
                 l3_failed = True
-                l3_reason = "L3 content-evidence validator rejected review: " + l3_result.stdout.strip()[:200]
-                print(f"L3_CONTENT_EVIDENCE: FAILED — {l3_result.stdout.strip()[:200]}", file=sys.stderr)
-        except subprocess.TimeoutExpired:
-            l3_failed = True
-            l3_reason = "L3 content-evidence validator timed out (30s) — fail-closed"
-            print("L3_CONTENT_EVIDENCE: timeout (30s) — fail-closed", file=sys.stderr)
-        except Exception as l3_err:
-            l3_failed = True
-            l3_reason = f"L3 content-evidence validator error — {l3_err}"
-            print(f"L3_CONTENT_EVIDENCE: error — {l3_err}", file=sys.stderr)
+                l3_reason = "L3 content-evidence validator timed out (30s) — fail-closed"
+                print("L3_CONTENT_EVIDENCE: timeout (30s) — fail-closed", file=sys.stderr)
+            except Exception as l3_err:
+                l3_failed = True
+                l3_reason = f"L3 content-evidence validator error — {l3_err}"
+                print(f"L3_CONTENT_EVIDENCE: error — {l3_err}", file=sys.stderr)
 
-        if l3_failed:
-            _apply_l3_failure(mapped, l3_reason, out_path)
+            if l3_failed:
+                _apply_l3_failure(mapped, l3_reason, out_path)
 
     decision = mapped["gd_review_decision"]
     status = mapped["review_run_status"]
@@ -1432,42 +1454,44 @@ def cmd_parse_transport(args: argparse.Namespace) -> int:
     # review_run_status must stay schema-valid ("degraded"); wrapper_schema_fail
     # is an aggregate-level bucket, not a review_run_status enum value (F1 fix).
     # Timeout, exceptions, missing script/target are all fail-closed (F2+F5 fix).
-    l3_script = GD_PROJECT_ROOT / "scripts" / "gd-validate-review-content-evidence.py"
-    _l3_pre_fail = False
-    _l3_pre_reason = ""
-    if not l3_script.exists():
-        _l3_pre_fail = True
-        _l3_pre_reason = "L3 content-evidence script missing — fail-closed"
-        print("L3_CONTENT_EVIDENCE: script missing — fail-closed", file=sys.stderr)
-    elif not target.exists():
-        _l3_pre_fail = True
-        _l3_pre_reason = f"L3 target not found ({target}) — fail-closed"
-        print(f"L3_CONTENT_EVIDENCE: target not found ({target}) — fail-closed", file=sys.stderr)
-    if _l3_pre_fail:
-        _apply_l3_failure(mapped, _l3_pre_reason, out_path)
-    else:
-        l3_failed = False
-        l3_reason = ""
-        try:
-            l3_result = subprocess.run(
-                [sys.executable, str(l3_script), "--target", str(target), "--review", str(raw_path)],
-                capture_output=True, text=True, timeout=30,
-            )
-            if l3_result.returncode != 0:
+    # code_diff findings review code quality rather than plan SC-IDs; L3 skipped.
+    if args.kind not in {"code_diff"}:
+        l3_script = GD_PROJECT_ROOT / "scripts" / "gd-validate-review-content-evidence.py"
+        _l3_pre_fail = False
+        _l3_pre_reason = ""
+        if not l3_script.exists():
+            _l3_pre_fail = True
+            _l3_pre_reason = "L3 content-evidence script missing — fail-closed"
+            print("L3_CONTENT_EVIDENCE: script missing — fail-closed", file=sys.stderr)
+        elif not target.exists():
+            _l3_pre_fail = True
+            _l3_pre_reason = f"L3 target not found ({target}) — fail-closed"
+            print(f"L3_CONTENT_EVIDENCE: target not found ({target}) — fail-closed", file=sys.stderr)
+        if _l3_pre_fail:
+            _apply_l3_failure(mapped, _l3_pre_reason, out_path)
+        else:
+            l3_failed = False
+            l3_reason = ""
+            try:
+                l3_result = subprocess.run(
+                    [sys.executable, str(l3_script), "--target", str(target), "--review", str(raw_path)],
+                    capture_output=True, text=True, timeout=30,
+                )
+                if l3_result.returncode != 0:
+                    l3_failed = True
+                    l3_reason = "L3 content-evidence validator rejected review: " + l3_result.stdout.strip()[:200]
+                    print(f"L3_CONTENT_EVIDENCE: FAILED — {l3_result.stdout.strip()[:200]}", file=sys.stderr)
+            except subprocess.TimeoutExpired:
                 l3_failed = True
-                l3_reason = "L3 content-evidence validator rejected review: " + l3_result.stdout.strip()[:200]
-                print(f"L3_CONTENT_EVIDENCE: FAILED — {l3_result.stdout.strip()[:200]}", file=sys.stderr)
-        except subprocess.TimeoutExpired:
-            l3_failed = True
-            l3_reason = "L3 content-evidence validator timed out (30s) — fail-closed"
-            print("L3_CONTENT_EVIDENCE: timeout (30s) — fail-closed", file=sys.stderr)
-        except Exception as l3_err:
-            l3_failed = True
-            l3_reason = f"L3 content-evidence validator error — {l3_err}"
-            print(f"L3_CONTENT_EVIDENCE: error — {l3_err}", file=sys.stderr)
+                l3_reason = "L3 content-evidence validator timed out (30s) — fail-closed"
+                print("L3_CONTENT_EVIDENCE: timeout (30s) — fail-closed", file=sys.stderr)
+            except Exception as l3_err:
+                l3_failed = True
+                l3_reason = f"L3 content-evidence validator error — {l3_err}"
+                print(f"L3_CONTENT_EVIDENCE: error — {l3_err}", file=sys.stderr)
 
-        if l3_failed:
-            _apply_l3_failure(mapped, l3_reason, out_path)
+            if l3_failed:
+                _apply_l3_failure(mapped, l3_reason, out_path)
 
     decision = mapped["gd_review_decision"]
     status = mapped["review_run_status"]

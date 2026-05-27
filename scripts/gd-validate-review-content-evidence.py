@@ -129,32 +129,40 @@ def _check_scope_coverage(
     target_sc_ids: set[str],
     verdict: str,
     errors: list[str],
-) -> None:
-    """If verdict is APPROVED AND target has SC-IDs, reviewer must declare scope_checked."""
+) -> set[str]:
+    """If verdict is APPROVED AND target has SC-IDs, reviewer must declare scope_checked.
+
+    Returns the set of target SC-IDs that are missing from the Scope Checked section.
+    Returns an empty set when the check is skipped or all SC-IDs are covered.
+    """
     if verdict != "APPROVED":
-        return  # REQUIRES_CHANGES / FAILED: findings carry the SC refs
+        return set()  # REQUIRES_CHANGES / FAILED: findings carry the SC refs
     if not target_sc_ids:
-        return  # target has no SC-IDs to verify; skip scope coverage check
+        return set()  # target has no SC-IDs to verify; skip scope coverage check
     scope_match = _SCOPE_CHECKED_RE.search(review_text)
     if not scope_match:
         errors.append(
             "FAKE_EVIDENCE_DETECTED: APPROVED verdict with no SCOPE_CHECKED section "
             "(reviewer must list which SC-IDs were verified)"
         )
-        return
+        # All target SC-IDs are missing because the section doesn't exist
+        return set(target_sc_ids)
     scope_text = scope_match.group(0)
     scope_sc_ids = _extract_sc_ids(scope_text)
     if not scope_sc_ids:
         errors.append(
             "FAKE_EVIDENCE_DETECTED: APPROVED verdict — SCOPE_CHECKED section has no SC-IDs"
         )
-        return
+        # All target SC-IDs are missing because the section has no SC-IDs
+        return set(target_sc_ids)
     bogus = scope_sc_ids - target_sc_ids
     if bogus:
         errors.append(
             f"FAKE_EVIDENCE_DETECTED: APPROVED scope_checked lists SC-IDs not in target: "
             f"{sorted(bogus)}"
         )
+    # Return target SC-IDs that do not appear in the Scope Checked section
+    return target_sc_ids - scope_sc_ids
 
 
 def _check_requires_changes_has_findings(
@@ -276,10 +284,13 @@ def validate(
     verdict = _extract_verdict(review_text) or "UNKNOWN"
 
     errors: list[str] = []
+    error_codes: list[str] = []
     skip_line_ref = getattr(args_ns, "skip_line_ref_check", False) if args_ns else False
     _check_sc_refs(review_text, target_sc_ids, errors, reference_sc_ids=reference_sc_ids)
     _check_line_refs(review_text, target_path, target_line_count, errors)
-    _check_scope_coverage(review_text, target_sc_ids, verdict, errors)
+    missing_scope_sc_ids = _check_scope_coverage(review_text, target_sc_ids, verdict, errors)
+    if missing_scope_sc_ids:
+        error_codes.append("missing_scope_sc_ids")
     _check_requires_changes_has_findings(review_text, verdict, errors)
     if not skip_line_ref:
         _check_finding_has_line_evidence(review_text, target_path, errors)
@@ -294,6 +305,8 @@ def validate(
         "target_line_count": target_line_count,
         "verdict": verdict,
         "errors": errors,
+        "error_codes": error_codes,
+        "missing_scope_sc_ids": sorted(missing_scope_sc_ids),
         "review_sc_id_count": len(_extract_sc_ids(review_text)),
     }
     return errors, report
