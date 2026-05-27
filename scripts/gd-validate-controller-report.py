@@ -2,7 +2,10 @@
 """
 gd-validate-controller-report.py
 
-Validator for the GD controller-report JSON format.
+Validator for the GD controller-report JSON format (schema_version 1.0 and 1.1).
+
+NOTE: This validator accepts run_mode='fixture' reports. Fixture-mode rejection
+is the responsibility of the parent close gate (Rule 1), not this validator.
 
 Usage:
     python3 gd-validate-controller-report.py <path-to-report.json>
@@ -10,17 +13,21 @@ Usage:
 
 Exit codes:
     0  — CONTROLLER_REPORT_VALID (or all self-tests passed)
-    1  — CONTROLLER_REPORT_INVALID: fixture_mode_rejected
-    2  — CONTROLLER_REPORT_INVALID: missing_required_field
+    1  — all self-tests: one or more tests failed
+    2  — CONTROLLER_REPORT_INVALID: missing_required_field or structural error
     3  — CONTROLLER_REPORT_INVALID: unreadable_or_malformed_json
+    4  — CONTROLLER_REPORT_INVALID: batch_ledger_hash_mismatch or file_not_found
+    5  — CONTROLLER_REPORT_INVALID: suite_target_closure_incomplete
 """
 
+import hashlib
 import json
-import sys
 import os
+import sys
+from pathlib import Path
 
 # ---------------------------------------------------------------------------
-# Required top-level fields (mirrors schema required[])
+# Required fields
 # ---------------------------------------------------------------------------
 REQUIRED_FIELDS = [
     "schema_version",
@@ -36,7 +43,6 @@ REQUIRED_FIELDS = [
     "jobs",
 ]
 
-# Required fields inside each job entry
 REQUIRED_JOB_FIELDS = [
     "queue_job_id",
     "target_role",
@@ -49,29 +55,17 @@ REQUIRED_JOB_FIELDS = [
     "aggregate_bucket",
 ]
 
-# Fixture-mode sentinel values that make a report closure-ineligible
-FIXTURE_BRIDGE_SUMMARY = "fixture_mode_no_real_bridge"
-FIXTURE_GIT_GATE_STATUS = "fixture_mode"
+VALID_EVIDENCE_KINDS = frozenset({"controller_approved", "mapped_status_approved", "n_a"})
 
 
-def is_fixture_report(report: dict) -> bool:
-    """Return True if this report should be rejected as fixture-mode."""
-    if report.get("run_mode") == "fixture":
-        return True
-    for job in report.get("jobs", []):
-        if job.get("bridge_stderr_summary") == FIXTURE_BRIDGE_SUMMARY:
-            return True
-        if job.get("git_gate_status") == FIXTURE_GIT_GATE_STATUS:
-            return True
-    return False
-
-
+# ---------------------------------------------------------------------------
+# Shared structural validation
+# ---------------------------------------------------------------------------
 def find_missing_required_field(report: dict):
-    """Return the name of the first missing required top-level field, or None."""
-    for field in REQUIRED_FIELDS:
-        if field not in report:
-            return field
-    # Validate sub-structure for primary_gate and secondary_gate
+    """Return name of first missing required field, or None."""
+    for f in REQUIRED_FIELDS:
+        if f not in report:
+            return f
     for gate_key in ("primary_gate", "secondary_gate"):
         gate = report.get(gate_key)
         if not isinstance(gate, dict):
@@ -79,7 +73,6 @@ def find_missing_required_field(report: dict):
         for sub in ("verdict", "blocking"):
             if sub not in gate:
                 return f"{gate_key}.{sub}"
-    # Validate jobs array entries
     for i, job in enumerate(report.get("jobs", [])):
         if not isinstance(job, dict):
             return f"jobs[{i}] (must be object)"
@@ -89,35 +82,105 @@ def find_missing_required_field(report: dict):
     return None
 
 
-def validate_report(report: dict):
-    """
-    Validate a parsed controller-report dict.
+# ---------------------------------------------------------------------------
+# v1.1-specific validation
+# ---------------------------------------------------------------------------
+def _validate_v11(report: dict, report_path: Path) -> tuple[int, str]:
+    """Validate v1.1-specific fields: batch_ledgers hashes + suite_target_closure closure."""
 
-    Returns (exit_code: int, message: str).
-    """
-    # 1. Check fixture-mode first (highest priority rejection)
-    if is_fixture_report(report):
-        return 1, "CONTROLLER_REPORT_INVALID: fixture_mode_rejected"
+    # batch_ledgers -----------------------------------------------------------
+    batch_ledgers = report.get("batch_ledgers")
+    if batch_ledgers is None:
+        return 2, "CONTROLLER_REPORT_INVALID: missing_required_field (batch_ledgers)"
+    if not isinstance(batch_ledgers, list):
+        return 2, "CONTROLLER_REPORT_INVALID: batch_ledgers must be array"
 
-    # 2. Check required fields
-    missing = find_missing_required_field(report)
-    if missing is not None:
-        return 2, f"CONTROLLER_REPORT_INVALID: missing_required_field ({missing})"
+    for i, entry in enumerate(batch_ledgers):
+        if not isinstance(entry, dict):
+            return 2, f"CONTROLLER_REPORT_INVALID: batch_ledgers[{i}] must be object"
+        path_str = entry.get("path")
+        expected_hash = entry.get("hash")
+        if not path_str:
+            return 2, f"CONTROLLER_REPORT_INVALID: batch_ledgers[{i}].path missing"
+        if not expected_hash:
+            return 2, f"CONTROLLER_REPORT_INVALID: batch_ledgers[{i}].hash missing"
+
+        p = Path(path_str)
+        if not p.is_absolute():
+            p = report_path.parent / p
+        if not p.is_file():
+            return 4, f"CONTROLLER_REPORT_INVALID: batch_ledger_file_not_found — {path_str!r}"
+        actual = hashlib.sha256(p.read_bytes()).hexdigest()
+        if actual != expected_hash:
+            return 4, (
+                f"CONTROLLER_REPORT_INVALID: batch_ledger_hash_mismatch — "
+                f"{path_str!r}: expected {expected_hash!r}, got {actual!r}"
+            )
+
+    # suite_target_closure ----------------------------------------------------
+    stc = report.get("suite_target_closure")
+    if stc is None:
+        return 2, "CONTROLLER_REPORT_INVALID: missing_required_field (suite_target_closure)"
+    if not isinstance(stc, list):
+        return 2, "CONTROLLER_REPORT_INVALID: suite_target_closure must be array"
+
+    job_ids = {
+        j.get("queue_job_id")
+        for j in report.get("jobs", [])
+        if isinstance(j, dict) and j.get("queue_job_id")
+    }
+    closure_ids = {
+        e.get("target_id")
+        for e in stc
+        if isinstance(e, dict) and e.get("target_id")
+    }
+    missing_ids = job_ids - closure_ids
+    if missing_ids:
+        return 5, (
+            f"CONTROLLER_REPORT_INVALID: suite_target_closure_incomplete — "
+            f"missing entries for: {sorted(missing_ids)}"
+        )
+
+    for i, entry in enumerate(stc):
+        if not isinstance(entry, dict):
+            continue
+        ek = entry.get("evidence_kind")
+        if ek not in VALID_EVIDENCE_KINDS:
+            return 2, (
+                f"CONTROLLER_REPORT_INVALID: suite_target_closure[{i}].evidence_kind="
+                f"{ek!r} not in {sorted(VALID_EVIDENCE_KINDS)}"
+            )
 
     return 0, "CONTROLLER_REPORT_VALID"
 
 
 # ---------------------------------------------------------------------------
+# Unified validate entry point
+# ---------------------------------------------------------------------------
+def validate_report(report: dict, report_path: Path = Path(".")) -> tuple[int, str]:
+    """Validate a parsed controller-report dict. Returns (exit_code, message)."""
+    missing = find_missing_required_field(report)
+    if missing is not None:
+        return 2, f"CONTROLLER_REPORT_INVALID: missing_required_field ({missing})"
+
+    version = report.get("schema_version", "")
+    if version == "1.1":
+        return _validate_v11(report, report_path)
+    elif version == "1.0":
+        return 0, "CONTROLLER_REPORT_VALID"
+    else:
+        return 2, f"CONTROLLER_REPORT_INVALID: unsupported schema_version={version!r}"
+
+
+# ---------------------------------------------------------------------------
 # Self-test harness
 # ---------------------------------------------------------------------------
-
-def _minimal_live_report():
-    """Return a minimal valid live controller-report dict."""
+def _minimal_live_report_v10() -> dict:
     return {
         "schema_version": "1.0",
         "run_mode": "live",
-        "started_at": "2026-05-17T10:00:00Z",
-        "finished_at": "2026-05-17T10:05:00Z",
+        "started_at": "2026-05-27T10:00:00Z",
+        "finished_at": "2026-05-27T10:05:00Z",
         "aggregate_path": "baselines/aggregate.json",
         "manifest_path": "manifest.json",
         "primary_gate": {"verdict": "APPROVED", "blocking": []},
@@ -140,27 +203,74 @@ def _minimal_live_report():
     }
 
 
+def _minimal_live_report_v11() -> dict:
+    base = _minimal_live_report_v10()
+    return {
+        **base,
+        "schema_version": "1.1",
+        "jobs": [],
+        "batch_ledgers": [],
+        "suite_target_closure": [],
+    }
+
+
 SELF_TESTS = [
     {
-        "name": "pass — live run with all required fields",
-        "report": _minimal_live_report(),
+        "name": "pass — v1.0 live report with all required fields",
+        "report": _minimal_live_report_v10(),
         "expected_exit": 0,
     },
     {
-        "name": "fail — run_mode=fixture → fixture_mode_rejected",
-        "report": {**_minimal_live_report(), "run_mode": "fixture"},
-        "expected_exit": 1,
+        "name": "pass — v1.1 live report (empty batch_ledgers and jobs)",
+        "report": _minimal_live_report_v11(),
+        "expected_exit": 0,
+    },
+    {
+        "name": "pass — v1.1 fixture report accepted (not rejected)",
+        "report": {**_minimal_live_report_v11(), "run_mode": "fixture"},
+        "expected_exit": 0,
     },
     {
         "name": "fail — missing required field 'jobs'",
-        "report": {k: v for k, v in _minimal_live_report().items() if k != "jobs"},
+        "report": {k: v for k, v in _minimal_live_report_v10().items() if k != "jobs"},
+        "expected_exit": 2,
+    },
+    {
+        "name": "fail — v1.1 missing batch_ledgers field",
+        "report": {k: v for k, v in _minimal_live_report_v11().items() if k != "batch_ledgers"},
+        "expected_exit": 2,
+    },
+    {
+        "name": "fail — v1.1 suite_target_closure incomplete (job has no closure entry)",
+        "report": {
+            **_minimal_live_report_v11(),
+            "jobs": [
+                {
+                    "queue_job_id": "job-orphan",
+                    "target_role": "plan",
+                    "primary_target": "plans/step.md",
+                    "bridge_exit": 0,
+                    "bridge_stderr_path": None,
+                    "bridge_stderr_summary": "none",
+                    "raw_verdict": "APPROVED",
+                    "mapped_status": "completed",
+                    "aggregate_bucket": "primary",
+                }
+            ],
+            "suite_target_closure": [],  # missing entry for job-orphan
+        },
+        "expected_exit": 5,
+    },
+    {
+        "name": "fail — unsupported schema_version",
+        "report": {**_minimal_live_report_v10(), "schema_version": "9.9"},
         "expected_exit": 2,
     },
 ]
 
 
 def run_self_tests() -> int:
-    """Run in-memory self tests. Returns 0 if all pass, 1 otherwise."""
+    """Run in-memory self-tests. Returns 0 if all pass, 1 otherwise."""
     all_passed = True
     for test in SELF_TESTS:
         exit_code, message = validate_report(test["report"])
@@ -176,7 +286,6 @@ def run_self_tests() -> int:
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
-
 def main() -> int:
     args = sys.argv[1:]
 
@@ -188,8 +297,8 @@ def main() -> int:
     if args[0] == "--self-test-minimal":
         return run_self_tests()
 
-    report_path = args[0]
-    if not os.path.isfile(report_path):
+    report_path = Path(args[0])
+    if not report_path.is_file():
         print(f"CONTROLLER_REPORT_INVALID: file not found: {report_path}", file=sys.stderr)
         return 3
 
@@ -204,7 +313,7 @@ def main() -> int:
         print("CONTROLLER_REPORT_INVALID: top-level value must be a JSON object", file=sys.stderr)
         return 3
 
-    exit_code, message = validate_report(report)
+    exit_code, message = validate_report(report, report_path)
     print(message)
     return exit_code
 

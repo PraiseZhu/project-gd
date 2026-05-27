@@ -806,31 +806,73 @@ def validate_closure_json(path: Path) -> int:
             "PARENT_CLOSE_GATE_INVALID: missing_stage_dispatch_ledger — stage dispatch ledger required for final closure"
         )
 
-    # Rule 2b/3b: Validate that referenced controller-report and ledger files
-    # physically exist and are valid JSON. A closure.json that merely lists a
-    # path (even a plausible-looking one) without the file on disk is fake evidence.
-    for _label, _key in [
-        ("controller_report", "controller_report_path"),
-        ("stage_dispatch_ledger", "stage_dispatch_ledger_path"),
-    ]:
-        _path_str = closure_ev.get(_key) or data.get(_key)
-        if not _path_str:
-            continue  # already handled: Rule 2/3 caught missing key
-        _ref = Path(_path_str)
-        if not _ref.is_absolute():
-            _ref = path.parent / _ref
-        if not _ref.is_file():
+    # Rule 2b: Validate controller report using gd-validate-controller-report.py,
+    # then check suite_target_closure for INELIGIBLE_STATUSES.
+    _ctrl_path_str = closure_ev.get("controller_report_path") or data.get("controller_report_path")
+    if _ctrl_path_str:
+        _ctrl_ref = Path(_ctrl_path_str)
+        if not _ctrl_ref.is_absolute():
+            _ctrl_ref = path.parent / _ctrl_ref
+        if not _ctrl_ref.is_file():
             failures.append(
-                f"PARENT_CLOSE_GATE_INVALID: {_label}_file_not_found — "
-                f"{_key}={_path_str!r} does not exist on disk"
+                f"PARENT_CLOSE_GATE_INVALID: controller_report_file_not_found — "
+                f"controller_report_path={_ctrl_path_str!r} does not exist on disk"
             )
-            continue
-        try:
-            json.loads(_ref.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as _e:
+        else:
+            import subprocess as _subprocess
+            _validator = Path(__file__).parent / "gd-validate-controller-report.py"
+            _proc = _subprocess.run(
+                [sys.executable, str(_validator), str(_ctrl_ref)],
+                capture_output=True, text=True,
+            )
+            if _proc.returncode != 0:
+                _msg = (_proc.stdout.strip() or _proc.stderr.strip() or
+                        f"exit={_proc.returncode}")
+                failures.append(
+                    f"PARENT_CLOSE_GATE_INVALID: controller_report_invalid — {_msg}"
+                )
+            else:
+                # Check suite_target_closure for INELIGIBLE_STATUSES
+                _INELIGIBLE = frozenset({
+                    "transport_failed", "failed_to_run", "timeout", "degraded",
+                    "wrapper_schema_fail", "local_only", "human_exec",
+                })
+                try:
+                    _ctrl_data = json.loads(_ctrl_ref.read_text(encoding="utf-8"))
+                    for _entry in _ctrl_data.get("suite_target_closure", []):
+                        if not isinstance(_entry, dict):
+                            continue
+                        _ms = _entry.get("mapped_status", "")
+                        _tid = _entry.get("target_id", "(unknown)")
+                        if _ms in _INELIGIBLE:
+                            failures.append(
+                                f"PARENT_CLOSE_GATE_INVALID: closure_ineligible: "
+                                f"{_ms} in suite_target_closure target {_tid}"
+                            )
+                except (OSError, json.JSONDecodeError) as _e:
+                    failures.append(
+                        f"PARENT_CLOSE_GATE_INVALID: controller_report_invalid_json — {_e}"
+                    )
+
+    # Rule 3b: Validate stage_dispatch_ledger exists and is valid JSON.
+    _ledger_path_str = closure_ev.get("stage_dispatch_ledger_path") or data.get("stage_dispatch_ledger_path")
+    if _ledger_path_str:
+        _ledger_ref = Path(_ledger_path_str)
+        if not _ledger_ref.is_absolute():
+            _ledger_ref = path.parent / _ledger_ref
+        if not _ledger_ref.is_file():
             failures.append(
-                f"PARENT_CLOSE_GATE_INVALID: {_label}_invalid_json — {_ref.name}: {_e}"
+                f"PARENT_CLOSE_GATE_INVALID: stage_dispatch_ledger_file_not_found — "
+                f"stage_dispatch_ledger_path={_ledger_path_str!r} does not exist on disk"
             )
+        else:
+            try:
+                json.loads(_ledger_ref.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as _e:
+                failures.append(
+                    f"PARENT_CLOSE_GATE_INVALID: stage_dispatch_ledger_invalid_json — "
+                    f"{_ledger_ref.name}: {_e}"
+                )
 
     # Rule 4: Reject non-approval mapped_status when verdict=APPROVED
     top_verdict = data.get("verdict") or data.get("decision") or ""
