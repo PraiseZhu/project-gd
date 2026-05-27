@@ -96,7 +96,7 @@ GOAL_SOURCE:    /Users/praise/AI-Agent/Claude/projects/Project GD/docs/gd-v7-pro
 | `/gd plan` | `local_only` | Claude 本地生成 plan suite + dispatch contract（lock_revision=21）；dispatch 结果写入 stage dispatch ledger + controller report（Rev21 合同；planning_dispatch_log.json + Plan 4 strict-live-proof 已 superseded） |
 | `/gd review` | `active` | Plan 3a (lock_revision=17)：router 5 target 全部有 live/fail-closed 行为；无 NOT_IMPLEMENTED；plan-only → skill_orchestrated Claude review + Codex bridge；execution-only → gd-validate-execution-outcome.py；code-only → LOCAL_STATIC_ONLY（skill_orchestrated）；execution-plus-code → outcome-first；no-artifact → REVIEW_TARGET_MISSING exit 2 |
 | `/gd review plan` | `active` | Plan 3a skill_orchestrated path：command orchestration 自产 Claude review JSON + 收集 Codex raw（gd-codex-bridge-review.py run-bridge --live-transport）→ router 作为 consumer（不 spawn Claude subprocess）；claude_review_origin=skill_orchestrated；transport 不可达时 fail-closed 降 `local_only`/`blocked_missing_artifact` |
-| `/gd execute` | `local_only` | Plan 5 v5 上线 human_exec；H3 (lock_revision=6) 引入 agent_exec contract — capability probe + child dispatch via execution_dispatch_ledger + child prompt builder + post-wave path audit；capability unavailable/unknown 时 fail-closed（不得 silent 降级 human_exec） |
+| `/gd execute` | `local_only` | Plan 5 v5 上线 human_exec（当前唯一支持模式）；agent_exec 和 dry_run 为 enum reserved，`pending_future_plan` — batch validator 直接拒绝此两种 mode；final closure eligibility 由 gd-validate-parent-close-gate.py 在下游执行 |
 | `/gd review code` | `local_only` | Plan 3a：code-only target handler = LOCAL_STATIC_ONLY（skill_orchestrated Claude static review）；Codex code sidecar cross-review 仍 pending Plan 6；不得声称 active/live Codex sidecar（3a-SC-9）|
 
 `CAPABILITY_STATUS` 完整枚举（schema）：
@@ -373,18 +373,14 @@ CAPABILITY_STATUS: <按映射表枚举值>
 **行为（Plan 5 v5 + Plan H lock_revision=6 H3 阶段）**：
 
 - `CAPABILITY_STATUS: local_only`
-- 支持两种 execution_mode：
-  - `human_exec` — 主 agent 手动执行（Plan 5 v5 上线；**`closure_ineligible` — `human_exec` 结果不得 full closure，只能作为显式用户授权的 emergency non-final mode**）
-  - **`agent_exec`** — child executor 子 agent 派发执行（lock_revision=21 mandatory；`local_only`/`manual_packet` 不得 full closure）
+- 支持的 execution_mode：
+  - `human_exec` — 主 agent 手动执行（Plan 5 v5 上线；当前唯一支持模式）
+  - **`agent_exec`** — `pending_future_plan`（enum reserved，batch validator 拒绝）
+  - **`dry_run`** — `pending_future_plan`（enum reserved，batch validator 拒绝）
 - 前置 artifact（任一缺失 → `blocked_missing_artifact`）：
   - `${GD_PROJECT_ROOT}/scripts/gd-validate-execution-batch.py`
   - `${GD_PROJECT_ROOT}/templates/gd-execution-batch-template.md`
   - `${GD_PROJECT_ROOT}/templates/gd-execution-closure-report-template.md`
-  - **`${GD_PROJECT_ROOT}/scripts/gd-build-child-prompt.py`** （agent_exec 模式必须）
-  - **`${GD_PROJECT_ROOT}/scripts/gd-detect-path-changes.py`** （agent_exec post-wave audit 必须）
-  - **`${GD_PROJECT_ROOT}/scripts/gd-validate-execution-dispatch-ledger.py`** （agent_exec dispatch 记录必须）
-  - **`${GD_PROJECT_ROOT}/templates/gd-child-execute-prompt-template.md`** （agent_exec child prompt 渲染必须）
-  - **`${GD_PROJECT_ROOT}/schema/gd-task-packet.schema.json`** （task packet 合法性必须，含 sc_acceptance + owned_paths + forbidden_paths + required_context + success_criteria 字段）
   - 对应已通过的 `dispatch_map.json`
 
 **human_exec 执行流**（不变）：
@@ -393,37 +389,17 @@ CAPABILITY_STATUS: <按映射表枚举值>
   2. 调用 `python3 scripts/gd-validate-execution-batch.py --closure <closure.json>` → 必须 exit 0
   3. validator 内置 v5 4 类语义校验：wave membership / deliverable truth / owned_paths containment / physical existence
 
-**agent_exec 执行流**（H3 lock_revision=6 + Plan 4 lock_revision=12 strict runtime binding）：
-
-<!-- gd-runtime-strict-required:start stage=execute-agent-exec -->
-
-  1. **Capability probe**：检测 child executor capability（tool_list_inspection 等方法），输出 `capability_status ∈ {available, unavailable, unknown}`；同步写 `probe.json`（schema 见 §Probe 合约），含 `proof_mode`（`live_child_dispatch | manual_packet_fallback | fail_closed_no_dispatch`）+ `source_dispatch_map_hash`
-  2. **Capability fail-closed**：若 `capability_status` 不是 `available`，**禁止**降级到 human_exec（必须由用户显式切换 mode），validator 直接 reject batch（exit 1 with `CAPABILITY_UNAVAILABLE_AGENT_EXEC`）；`proof_mode: fail_closed_no_dispatch`，`source_dispatch_map_hash: null`
-  3. **Build child prompt**：对 dispatch_map 中每个 child track，调用 `python3 scripts/gd-build-child-prompt.py --task-packet <packet.json> --template templates/gd-child-execute-prompt-template.md --output <prompt.md>`，渲染含 `OWNED_PATHS` / `FORBIDDEN_PATHS` / `SC_ACCEPTANCE` / `required_context` 的 prompt（task_packet schema 必须含 `sc_acceptance` 字段）
-  4. **Dispatch with concurrency cap**：单 wave 最多 2 child executor（与 H1 planning_dispatch / H4a execution_dispatch_ledger 同上限）；`proof_mode: live_child_dispatch`
-  5. **Record execution_dispatch_ledger**：每个 wave 后写一条 `execution_dispatch_ledger.json`（schema：H4a v1.6 owned `gd-validate-execution-dispatch-ledger.py` 接受），包含 `wave_id` / `track_ids` / `concurrency_count` / `capability_status` / `fallback_mode` / `result_path`
-  6. **Post-wave path audit**：每个 wave 完成后，调用 `python3 scripts/gd-detect-path-changes.py --before <pre-snap.json> --after <post-snap.json> --owned-paths <track-owned-paths.json>` → 任何 child writes 越界 → exit 1 with `OWNED_PATH_VIOLATION`，整批 batch fail
-  7. **Write stage dispatch ledger（Rev21 final-gate 证据，supersedes Plan 4 planning_dispatch_log v1.1）**：execute-agent-exec 完成后必须写 `schema/gd-stage-dispatch-ledger.schema.json` 格式的 ledger，`stage: "execute"`，含 `child_agent_count` / `max_parallel` / `capability_status` / `child_jobs[]`（result path + SHA-256 hash + status）/ `main_agent_merge`；用 `python3 scripts/gd-validate-stage-dispatch-ledger.py <ledger.json>` 校验，必须 exit 0。
-  8. **Cross-validate dispatch map**：`python3 scripts/gd-validate-dispatch.py <dispatch_map.json>` → 必须 exit 0。
-  9. **Write controller / merge report（Rev21 final-gate 证据，supersedes Plan 4 live dispatch smoke）**：必须写 schema-valid controller report（`schema/gd-controller-report.schema.json`），`run_mode=live`（`fixture` / `mock_only` 直接被 validator 拒），含 `jobs[]`（result path + hash + status）/ `final_decision` / `main_agent_merge.merge_report_path`；用 `python3 scripts/gd-validate-controller-report.py <controller-report.json>` 校验，必须 exit 0 后 execute batch 才算 closure-eligible。
-  10. **Validate batch + closure**：与 human_exec 流程相同（`gd-validate-execution-batch.py` 双跑 batch + closure，含 H3 引入的 capability check + sc_acceptance check）
-
-<!-- gd-runtime-strict-required:end stage=execute-agent-exec -->
+**agent_exec 执行流**：`pending_future_plan` — agent_exec 自动派发链路（capability probe + child dispatch + post-wave path audit + execution_dispatch_ledger）尚未实现；batch validator 对 `execution_mode: agent_exec` 直接返回 `EXECUTION_BATCH_PENDING_FUTURE_PLAN`。实现计划另案跟进。
 
 - **不得**声称 `/gd execute` 自身已接入 Codex cross-review sidecar（execute 阶段的 agent_exec Codex 双审属 Plan 6；execution result 的事后 review 由 `/gd review` execution-only 路径承担，已在 revision=20 接入）
-- child executor 不得递归调度其他 child agent（H3 §4 非目标）
 
-**Fail-closed（含 H3 lock_revision=6 新增项）**：
+**Fail-closed**：
 
 - 任一前置 artifact 缺失 → `CAPABILITY_STATUS: blocked_missing_artifact`，列出缺失文件，停止
 - batch validator exit ≠ 0 → 输出 validator stderr，停止；不得自行修补 batch JSON
 - closure validator exit ≠ 0 → 同上
-- **agent_exec 模式 + capability_status ∈ {unavailable, unknown}** → exit 1 with `CAPABILITY_UNAVAILABLE_AGENT_EXEC`，停止；**不得**silent 降级 human_exec
-- **agent_exec child result 缺 `sc_acceptance` 字段** → exit 1 with `SC_ACCEPTANCE_MISSING`，停止
-- **post-wave path audit 检测 child writes outside owned_paths** → exit 1 with `OWNED_PATH_VIOLATION`，整批 batch fail
-- **execution_dispatch_ledger 记录 wave concurrency_count > 2** → exit 1（由 H4a validator）
+- **batch `execution_mode` 为 `agent_exec` 或 `dry_run`** → batch validator 返回 `EXECUTION_BATCH_PENDING_FUTURE_PLAN`，停止（两种 mode 均为 pending_future_plan，enum reserved 未实现）
 - batch deliverables_produced 路径指向 `/Users/praise/.claude/**` → 拒绝执行（path-traversal 防护）
-- batch `execution_mode` 为 `dry_run` → 输出 `CAPABILITY_STATUS: pending_future_plan`，停止（H3 仅 unblock agent_exec；dry_run 仍 pending）
 
 ---
 

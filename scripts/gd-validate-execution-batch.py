@@ -612,11 +612,12 @@ def main(argv: list[str]) -> int:
         return 1
 
     _mode = _quick.get("execution_mode")
-    _CLOSURE_INELIGIBLE_MODES = {"human_exec", "dry_run", "local_only"}
+    _CLOSURE_INELIGIBLE_MODES = {"agent_exec", "dry_run"}
     if _mode in _CLOSURE_INELIGIBLE_MODES:
         print(
-            f"EXECUTION_BATCH_INVALID: closure_ineligible: "
-            f"{_mode} is not eligible for full closure"
+            f"EXECUTION_BATCH_PENDING_FUTURE_PLAN: "
+            f"{_mode} is pending_future_plan",
+            file=__import__("sys").stderr,
         )
         return 1
 
