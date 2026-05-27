@@ -839,6 +839,16 @@ def validate_closure_json(path: Path) -> int:
                 })
                 try:
                     _ctrl_data = json.loads(_ctrl_ref.read_text(encoding="utf-8"))
+                    # Rev21 contract: fixture/mock-mode controller reports are closure-ineligible.
+                    # The controller report validator accepts fixture mode (it's schema-only);
+                    # the gate must reject it here to enforce the closure-eligibility boundary.
+                    _ctrl_run_mode = _ctrl_data.get("run_mode")
+                    if _ctrl_run_mode in {"fixture", "mock_only"}:
+                        failures.append(
+                            f"PARENT_CLOSE_GATE_INVALID: fixture_mode_rejected — "
+                            f"controller_report {_ctrl_ref.name} has run_mode={_ctrl_run_mode!r}, "
+                            f"fixture/mock evidence cannot be final closure"
+                        )
                     for _entry in _ctrl_data.get("suite_target_closure", []):
                         if not isinstance(_entry, dict):
                             continue

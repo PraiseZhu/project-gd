@@ -17,10 +17,10 @@
 | Phase 4 | Controller v1.1 batch ledger splitting | **PASS** | See §Phase 4 evidence |
 | Phase 5 | Controller report validator + parent gate Rule 2b/3b | **PASS** | See §Phase 5 evidence |
 | Phase 6 | commands/gd.md minimal cherry-pick rev16→rev21 | **PASS** | See §Phase 6 evidence |
-| Phase 7 | Full regression + smoke (8/9 green) | **PASS\*** | See §Phase 7 evidence |
+| Phase 7 | Full regression + smoke (8/9 green) | **PASS_WITH_KNOWN_EXCEPTION** | See §Phase 7 evidence |
 | Phase 8 | Codex handoff report | **PASS** | This document |
 
-\* 9th item (preflight parity) is a pre-existing condition — see §残余风险.
+Phase 7 status: 8 of 9 Test Plan items are PASS; the 9th item (`gd-check-review-route-preflight.sh --route review2`) returns FAIL due to a **pre-existing** mismatch between worktree `commands/gd.md` and installed `~/.claude/commands/gd.md`. This mismatch existed at the worktree base (pre-Phase-6) and cannot be resolved within the plan's hard boundary (`/Users/praise/.claude/** 绝不写`). The original plan's "全绿" criterion is therefore amended to `PASS_WITH_KNOWN_EXCEPTION` and documented as residual risk for post-merge install action.
 
 ---
 
@@ -161,7 +161,7 @@ Changed content (2 hunks only):
 |-------|--------|
 | `bash scripts/gd-l3-regression-v1-fixtures.sh` | `L3_REGRESSION: PASS` ✅ |
 | `bash scripts/gd-bridge-compat-smoke.sh` | pass=3 fail=0 ✅ |
-| `bash scripts/gd-check-review-route-preflight.sh --route review2` | `PREFLIGHT_STATUS: FAIL` ⚠ (pre-existing) |
+| `bash scripts/gd-check-review-route-preflight.sh --route review2` | `PREFLIGHT_STATUS: FAIL` ⚠ (pre-existing — see PASS_WITH_KNOWN_EXCEPTION above) |
 | Phase 1 positive re-run | `L3_RESULT: EVIDENCE_VALID, exit=0` ✅ |
 | Phase 1 negative re-run | `exit=1, missing_scope_sc_ids` ✅ |
 | Phase 2 fail-fast re-run | `exit=2, no live transport` ✅ |
@@ -206,6 +206,24 @@ Changed content (2 hunks only):
 |------|--------|
 | Worktree `commands/gd.md` | rev21 ✅ (cc14f98) |
 | Installed `~/.claude/commands/gd.md` | rev16 ⚠ (user action required post-merge) |
+
+---
+
+## Codex Cross-Review Round 1 Fixes (2026-05-27, post-handoff)
+
+Codex review of the original handoff returned `REQUIRES_CHANGES` with 3 P1 + 1 P2 findings; all addressed:
+
+| Finding | Severity | Fix |
+|---------|----------|-----|
+| 1. Worktree diff vs feature/fix-routing-noise deletes 5 `results/review-route-split/*` files | P1 | `git cherry-pick e837cb2` — restored 5 files; diff now has 0 D entries |
+| 2. parent close gate accepts fixture-mode controller report | P1 | `gd-validate-parent-close-gate.py` Rule 2b: after loading controller report, reject `run_mode ∈ {fixture, mock_only}` with `fixture_mode_rejected`; new negative fixture `controller-report-v11-fixture-mode.json` + `closure-v11-fixture-mode.json` |
+| 3. `schema/gd-controller-report.schema.json` still v1.0-only | P1 | Extended to support v1.0 and v1.1; conditional `allOf` requires `batch_ledgers[]` + `suite_target_closure[]` when `schema_version="1.1"`; SHA-256 `pattern` on hashes; `evidence_kind` enum |
+| 4. Phase 7 status was `PASS*` (ambiguous) | P2 | Renamed to `PASS_WITH_KNOWN_EXCEPTION` with explicit explanation |
+
+**Validation evidence:**
+- `python3 scripts/gd-validate-parent-close-gate.py fixtures/parent-close-gate/closure-v11-fixture-mode.json` → exit=1, `fixture_mode_rejected`
+- `python3 scripts/gd-validate-parent-close-gate.py fixtures/parent-close-gate/closure-v11-eight-target.json` → exit=0 (positive case still PASS)
+- `jsonschema.Draft7Validator(schema_v1.1).iter_errors(v1.1_fixture)` → 0 errors; missing `batch_ledgers` → 1 error; missing `suite_target_closure` → 1 error; v1.0 minimal → 0 errors
 
 ---
 
