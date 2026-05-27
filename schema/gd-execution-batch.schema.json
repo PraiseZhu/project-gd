@@ -36,7 +36,7 @@
     "execution_mode": {
       "type": "string",
       "enum": ["dry_run", "human_exec", "agent_exec"],
-      "description": "agent_exec required for current full closure; human_exec and dry_run are closure_ineligible (explicit emergency override only). Note: validator enforces that human_exec/dry_run cannot produce APPROVED closure."
+      "description": "human_exec: currently supported (Plan 5 v5 batch+closure validator). agent_exec, dry_run: enum reserved, pending_future_plan — batch with these modes is rejected by this validator. Final closure eligibility is enforced downstream by gd-validate-parent-close-gate.py, not by this validator."
     },
     "task_results": {
       "type": "array",

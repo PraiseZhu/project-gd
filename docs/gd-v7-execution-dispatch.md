@@ -27,7 +27,7 @@ closure_report.json    ← 批次收口，CLOSURE_STATUS + 聚合统计
 
 | 模式 | 含义 | Plan 5 支持 |
 |------|------|------------|
-| `dry_run` | 生成 batch 结构，不写交付物 | ✓ |
+| `dry_run` | 生成 batch 结构，不写交付物 | `pending_future_plan` |
 | `human_exec` | 人工执行，主 agent 写结果 | ✓（Plan 5 scope） |
 | `agent_exec` | 启动 child agent 自动执行 | `pending_future_plan`（Plan 5 不实现） |
 
@@ -209,6 +209,7 @@ python3 scripts/gd-validate-dispatch.py <dispatch_map>
 
 ## 9. 当前限制（Plan 5 scope）
 
-- `execution_mode: agent_exec`（child agent 自动执行）→ `pending_future_plan`（Plan 5 不实现）
-- `execution_mode: human_exec`（主 agent + 人工写结果）→ ✓ Plan 5 实现范围
+- `execution_mode: human_exec`（主 agent + 人工写结果）→ ✓ 当前支持（`execution_modes_supported: ["human_exec"]`，见 manifest.gd-v7.json）
+- `execution_mode: agent_exec`（child agent 自动执行）→ `pending_future_plan`（`execution_modes_pending: ["agent_exec", "dry_run"]`，见 manifest.gd-v7.json）
+- `execution_mode: dry_run`（生成 batch 不写交付物）→ `pending_future_plan`（同上）
 - Batch validator 当前为静态结构 + 语义校验，不运行实际 verify cmd（dry-run 模式）

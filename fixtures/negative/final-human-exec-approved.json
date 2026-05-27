@@ -1,0 +1,30 @@
+{
+  "_fixture_meta": {
+    "purpose": "negative test for gd-validate-parent-close-gate.py: APPROVED verdict with human_exec mapped_status must be rejected at Rule 4 (closure_ineligible)",
+    "expected_exit_code_nonzero": true,
+    "expected_stderr_contains": [
+      "closure_ineligible",
+      "human_exec"
+    ],
+    "must_not_appear_in_stderr": [
+      "fixture_mode_rejected",
+      "stale_aggregate_rejected",
+      "claude_review_missing",
+      "missing_controller_report",
+      "missing_stage_dispatch_ledger"
+    ]
+  },
+  "aggregate_source": "aggregate-final.json",
+  "verdict": "APPROVED",
+  "closure_evidence": {
+    "controller_report_path": "final-human-exec-approved-controller.json",
+    "stage_dispatch_ledger_path": "final-human-exec-approved-ledger.json"
+  },
+  "jobs": [
+    {
+      "job_id": "job-human-exec-test-1",
+      "mapped_status": "human_exec",
+      "exec_status": "completed"
+    }
+  ]
+}
