@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GD Anti-Fill Banned Generic Tokens",
+  "description": "anti-fill 规则 B：plan 中不得出现的 generic 改进类 token。由 /gd plan fail-closed 规则读取（commands/gd.md L217）。本文件作为合约外部化 token 列表，commands/gd.md 自身受 exempt_paths 保护不内联 literal token。",
+  "tokens": [
+    "优化",
+    "完善",
+    "改进",
+    "提升",
+    "增强",
+    "重构",
+    "梳理",
+    "调整",
+    "补充",
+    "扩展",
+    "丰富",
+    "细化",
+    "深化",
+    "强化",
+    "健全",
+    "规范",
+    "标准化",
+    "自动化",
+    "智能化",
+    "模块化",
+    "抽象化",
+    "参数化",
+    "可配置化",
+    "全面优化",
+    "系统性优化",
+    "深度优化",
+    "进一步优化",
+    "持续优化",
+    "逐步完善",
+    "全面提升",
+    "整体增强"
+  ],
+  "token_matching_rules": {
+    "mode": "exact_substring",
+    "case_sensitive": false,
+    "note": "token 在 plan 的 SC-* 或 implement 步骤中出现时必须伴随可验证的具体指标（如文件路径、行数、命令输出），否则视为 anti-fill 违规"
+  },
+  "exempt_contexts": [
+    "plan 中 PROJECT_GOAL / CHAIN_GOAL 层（目标层允许方向性描述）",
+    "plan 中 NON_GOALS 节（明确排除的内容）"
+  ]
+}

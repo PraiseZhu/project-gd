@@ -1,0 +1,208 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://project-gd.local/schemas/gd-codex-cross-review-aggregate.schema.json",
+  "title": "GD Codex Cross-Review Aggregate",
+  "description": "Schema for v2 aggregate JSON produced by gd-aggregate-codex-cross-review.py. Covers 10 required roles: master_plan / up to 7 subplans / parent_close / release_evidence. Consumed by gd-validate-parent-close-gate.py --aggregate-json.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "aggregate_version",
+    "target_set_id",
+    "generated_at",
+    "manifest_path",
+    "manifest_hash",
+    "review_contract_hash",
+    "jobs",
+    "aggregate_summary"
+  ],
+  "properties": {
+    "aggregate_version": {
+      "type": "string",
+      "const": "2.0",
+      "description": "Aggregate schema version. Must be '2.0' for v2 format."
+    },
+    "target_set_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]{0,63}$",
+      "description": "Matches manifest target_set_id."
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of aggregate generation."
+    },
+    "manifest_path": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Absolute or repo-relative path to the input manifest JSON."
+    },
+    "manifest_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "SHA-256 of the input manifest file at aggregation time."
+    },
+    "review_contract_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "SHA-256 of the combined review contract sources (commands/gd.md + prompts/gd-review-standard.md + gd-plan-review-template.md + gd-plan-review-loop-report-template.md)."
+    },
+    "stale_review_contract": {
+      "type": "boolean",
+      "description": "True if review_contract_hash does not match current contract sources. Aggregate is stale — parent close gate must block APPROVED."
+    },
+    "ambiguous_raw_result": {
+      "type": "boolean",
+      "description": "True if any job has ambiguous raw result parsing (e.g. multiple JSON blocks, bare VERDICT). Parent close gate must block APPROVED."
+    },
+    "jobs": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 50,
+      "items": { "$ref": "#/$defs/aggregate_job" },
+      "description": "One entry per manifest required_job, plus optional parent_close and release_evidence entries."
+    },
+    "aggregate_summary": {
+      "$ref": "#/$defs/aggregate_summary"
+    }
+  },
+  "$defs": {
+    "aggregate_job": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "queue_job_id",
+        "target_role",
+        "transport_status",
+        "raw_result_path",
+        "raw_result_hash"
+      ],
+      "properties": {
+        "queue_job_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+        },
+        "target_role": {
+          "type": "string",
+          "description": "Semantic role: master_plan, step_N, parent_close, release_evidence."
+        },
+        "primary_target": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Path to the reviewed file."
+        },
+        "review_kind": {
+          "type": "string",
+          "enum": ["plan", "code", "code_diff", "execution_outcome", "combined"]
+        },
+        "transport_status": {
+          "type": "string",
+          "enum": ["transport_ok", "transport_failed", "wrapper_schema_fail"],
+          "description": "transport_ok: Codex returned real .result file. transport_failed: daemon did not return .result. wrapper_schema_fail: .result exists but bridge wrapper rejected it."
+        },
+        "raw_result_path": {
+          "type": ["string", "null"],
+          "description": "Path to the Codex raw .result file. Null if transport_failed."
+        },
+        "raw_result_hash": {
+          "type": ["string", "null"],
+          "pattern": "^(|[0-9a-f]{64})$",
+          "description": "SHA-256 of raw_result_path content. Empty string if transport_failed."
+        },
+        "mapped_result_path": {
+          "type": ["string", "null"],
+          "description": "Path to bridge-mapped result JSON. Null if transport_failed or wrapper_schema_fail."
+        },
+        "mapped_result_hash": {
+          "type": ["string", "null"],
+          "pattern": "^(|[0-9a-f]{64})$"
+        },
+        "codex_review_status": {
+          "type": "string",
+          "enum": ["completed", "transport_failed", "wrapper_schema_fail"],
+          "description": "High-level Codex review outcome for this job."
+        },
+        "codex_review_kind": {
+          "type": "string",
+          "enum": ["plan", "code", "code_diff", "execution_outcome", "combined", "none"]
+        },
+        "gd_review_decision": {
+          "type": "string",
+          "enum": ["APPROVED", "REQUIRES_CHANGES", "FAILED", "none"],
+          "description": "Codex verdict extracted from raw result. 'none' if transport_failed."
+        },
+        "codex_requires_changes": {
+          "type": "boolean",
+          "description": "True if gd_review_decision is REQUIRES_CHANGES or FAILED."
+        },
+        "missing_primary_target": {
+          "type": "boolean",
+          "description": "True if primary_target file was missing at review time."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "transport_status": { "const": "transport_ok" } }
+          },
+          "then": {
+            "required": ["raw_result_path", "raw_result_hash"],
+            "properties": {
+              "raw_result_path": { "type": "string", "minLength": 1 },
+              "raw_result_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "transport_status": { "const": "transport_failed" } }
+          },
+          "then": {
+            "properties": {
+              "raw_result_path": { "type": "null" },
+              "raw_result_hash": { "const": "" },
+              "codex_review_status": { "const": "transport_failed" },
+              "gd_review_decision": { "const": "none" }
+            }
+          }
+        }
+      ]
+    },
+    "aggregate_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total_jobs",
+        "transport_ok",
+        "transport_failed",
+        "wrapper_schema_fail",
+        "approved",
+        "requires_changes",
+        "failed",
+        "missing_primary_target_count",
+        "codex_requires_changes_count",
+        "closure_eligible",
+        "closure_blockers"
+      ],
+      "properties": {
+        "total_jobs": { "type": "integer", "minimum": 1 },
+        "transport_ok": { "type": "integer", "minimum": 0 },
+        "transport_failed": { "type": "integer", "minimum": 0 },
+        "wrapper_schema_fail": { "type": "integer", "minimum": 0 },
+        "approved": { "type": "integer", "minimum": 0 },
+        "requires_changes": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 },
+        "missing_primary_target_count": { "type": "integer", "minimum": 0 },
+        "codex_requires_changes_count": { "type": "integer", "minimum": 0 },
+        "closure_eligible": {
+          "type": "boolean",
+          "description": "True only if zero transport_failed, zero wrapper_schema_fail, zero missing_primary_target, zero codex_requires_changes, and review_contract not stale."
+        },
+        "closure_blockers": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Human-readable list of reasons why closure_eligible is false. Empty if closure_eligible is true."
+        }
+      }
+    }
+  }
+}
