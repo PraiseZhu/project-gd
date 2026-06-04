@@ -34,6 +34,10 @@ daemon 是 L3 多 agent 并发架构的承重墙：worker pool(max_parallel=2)+ 
 | ⑤ 辅助 | `handoff/bin/{codex-status,codex-watch-healthcheck,watcher-alive}` | 同上 |
 | 依赖库 | `handoff/lib/{state-paths.sh,watch-state.sh}` | `~/.claude/handoff/lib/` |
 | daemon 常驻 | `launchagents/com.praise.codex-watch{,-healthcheck}.plist` | `~/Library/LaunchAgents/` |
+| skill 入口壳 | `skills/goal-gd/SKILL.md`、`skills/gd-review/SKILL.md` | `~/.claude/skills/` |
+
+> skill 壳是 `/gd` 的 skill 注册入口(薄壳,各单个 SKILL.md),非链路运行代码;
+> 封装时进插件 `skills/`。gd.md/review2.md 不引用它们。
 
 ## 未拷入(运行时产生,非代码)
 
