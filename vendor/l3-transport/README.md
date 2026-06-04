@@ -4,6 +4,7 @@
 > 来源：从 `~/.claude/` 拷入的 L3 review→codex 通信链路 ②-⑤ 环节
 > 性质：**收编暂存,尚未解耦**。脚本内路径仍指向 `~/.claude`/`$HOME`，封装时需改造。
 > 区别于：`archive/`(死代码) / `mirrors/`(只读快照)。这里是**要实际运行**的传输层。
+> ⑥⑦(codex CLI / provider / key)的封装边界决策见 [`../../docs/2026-06-04-plugin-packaging-decisions.md`](../../docs/2026-06-04-plugin-packaging-decisions.md)(不打包,声明依赖+引导)。
 
 ## 为什么收编这些
 
