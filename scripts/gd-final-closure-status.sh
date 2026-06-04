@@ -57,12 +57,13 @@ check "backup manifest valid JSON" \
   bash -c "python3 -m json.tool '$MANIFEST' >/dev/null"
 
 # 7. Product scripts present and executable
+# Note: gd-install-rev21-for-handtest.sh moved to archive/ (one-time task complete)
+#       gd-bridge-compat-smoke.sh moved to tests/ (smoke/regression isolation)
 for s in \
   scripts/gd-root-parity-status.sh \
-  scripts/gd-install-rev21-for-handtest.sh \
-  scripts/gd-bridge-compat-smoke.sh \
   scripts/gd-parity-verify.sh \
-  scripts/gd-final-closure-status.sh; do
+  scripts/gd-final-closure-status.sh \
+  tests/gd-bridge-compat-smoke.sh; do
   check "script executable: $s" test -x "$s"
 done
 
