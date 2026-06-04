@@ -1,0 +1,661 @@
+#!/usr/bin/env bash
+# Codex watch daemon: monitors active/ for capsule files, sends to Codex for review,
+# writes results back.
+#
+# Modes:
+#   run     — foreground loop (for launchd). Acquires lock, writes pidfile, loops.
+#   start   — background daemon (legacy). Forks run via nohup.
+#   stop    — stop running instance.
+#   restart — stop + start.
+#
+# Single-instance: shlock on HANDOFF_LOCK (checks PID liveness).
+# Task claim: atomic queued→running via mv-based rename.
+#
+# Env overrides (for testing):
+#   CODEX_EXEC_TIMEOUT  — per-attempt timeout in seconds (default: 240)
+set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/state-paths.sh"
+
+POLL_INTERVAL=3
+HANDOFF_LOCK="${HANDOFF_STATE}/codex-watch.lock"
+HANDOFF_HEARTBEAT="${HANDOFF_STATE}/heartbeat"
+CODEX_EXEC_TIMEOUT="${CODEX_EXEC_TIMEOUT:-240}"
+
+# Plan 9 Phase B: worker pool max parallelism (legal 1..4, default 2).
+# Validates range; clamps illegal values to default with a log.
+CODEX_WATCH_MAX_PARALLEL_RAW="${CODEX_WATCH_MAX_PARALLEL:-2}"
+case "$CODEX_WATCH_MAX_PARALLEL_RAW" in
+  1|2|3|4) CODEX_WATCH_MAX_PARALLEL="$CODEX_WATCH_MAX_PARALLEL_RAW" ;;
+  *)       CODEX_WATCH_MAX_PARALLEL=2 ;;
+esac
+CODEX_WATCH_CONFIG_SOURCE="default"
+if [[ -n "${CODEX_WATCH_MAX_PARALLEL_ENV_SET:-${CODEX_WATCH_MAX_PARALLEL+set}}" ]]; then
+  CODEX_WATCH_CONFIG_SOURCE="snapshot"
+fi
+CODEX_WATCH_CONFIG_SNAPSHOT="${HANDOFF_STATE}/codex-watch-config.json"
+
+log() { echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*" >> "$HANDOFF_LOG"; }
+
+# --- Plan 9 Phase B helpers (additive; no legacy behavior change) -----------
+
+# write_config_snapshot: called once at daemon start. Writes daemon effective
+# config to LIVE_ROOT/state/codex-watch-config.json so probe can discover.
+write_config_snapshot() {
+  local now
+  now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  python3 - "$CODEX_WATCH_CONFIG_SNAPSHOT" "$CODEX_WATCH_MAX_PARALLEL" "$CODEX_WATCH_CONFIG_SOURCE" "$now" <<'PYEOF'
+import json, sys
+path, mp, src, now = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4]
+data = {
+    "daemon_max_parallel": mp,
+    "effective_max_inflight": mp,
+    "source": src,
+    "recorded_at": now,
+    "watcher_status": "running",
+    "schema_origin": "plan9-phase-b-v5.1",
+}
+with open(path, "w") as f:
+    json.dump(data, f, indent=2)
+PYEOF
+}
+
+# emit_event: append a JSON line to <batch_run_id>.events.jsonl when batch mode.
+# Args: <batch_run_id> <queue_job_id> <event_type> <status> <running_count> <trusted_json> [extra_kv...]
+# trusted_json is "null" / "true" / "false".
+emit_event() {
+  local batch_id="$1" job_id="$2" event_type="$3" status="$4"
+  local running_count="$5" trusted="$6"
+  shift 6
+  local now
+  now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  local events_file="${HANDOFF_STATE}/${batch_id}.events.jsonl"
+  python3 - "$events_file" "$batch_id" "$job_id" "$event_type" "$status" "$running_count" "$trusted" "$now" "$@" <<'PYEOF'
+import json, sys
+path, batch_id, job_id, ev, status, rc, trusted_str, now = sys.argv[1:9]
+extra = sys.argv[9:]
+trusted = {"null": None, "true": True, "false": False}[trusted_str]
+record = {
+    "batch_run_id": batch_id,
+    "queue_job_id": job_id,
+    "event_type": ev,
+    "status": status,
+    "running_count_after_event": int(rc),
+    "trusted": trusted,
+    "recorded_at": now,
+}
+i = 0
+while i < len(extra) - 1:
+    k, v = extra[i], extra[i + 1]
+    # int parse for known numeric fields; else string
+    if k in ("worker_pid", "exit_code"):
+        try:
+            record[k] = int(v)
+        except ValueError:
+            record[k] = None
+    elif v == "":
+        record[k] = None
+    else:
+        record[k] = v
+    i += 2
+with open(path, "a") as f:
+    f.write(json.dumps(record) + "\n")
+PYEOF
+}
+
+# Plan 9 Phase B v5.1 — atomic finalization via Python helper.
+# Codex Round 1 P1-1 found the previous shell-only flock attempt did NOT
+# hold the lock across the critical section (lock fd was released when the
+# brief Python lock-acquisition subprocess exited). The finalization is now
+# fully delegated to scripts/gd-finalize-codex-watch-job.py which keeps the
+# fcntl.flock held for the entire critical section (cancel-check + mv +
+# status write + event emit), then releases atomically on exit.
+PHASE_B_FINALIZE_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/../bin/gd-finalize-codex-watch-job.py"
+# Fall back to project script path if helper not under handoff/
+if [[ ! -f "$PHASE_B_FINALIZE_HELPER" ]]; then
+  PHASE_B_FINALIZE_HELPER="/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/scripts/gd-finalize-codex-watch-job.py"
+fi
+
+finalize_batch_job() {
+  # Args: <base> <batch_id> <queue_job_id> <raw_status: done|failed> <result_tmp_or_empty>
+  local base="$1" batch_id="$2" queue_job_id="$3" raw_status="$4" result_tmp="$5"
+  python3 "$PHASE_B_FINALIZE_HELPER" \
+    --base "$base" \
+    --batch-run-id "$batch_id" \
+    --queue-job-id "$queue_job_id" \
+    --raw-status "$raw_status" \
+    --result-tmp "$result_tmp" \
+    --state-dir "$HANDOFF_STATE" \
+    --worker-pid "$$"
+}
+
+# read_meta_field: extract a KEY=VALUE field from meta file.
+read_meta_field() {
+  local meta="$1" key="$2"
+  grep "^${key}=" "$meta" 2>/dev/null | head -n1 | cut -d= -f2- || true
+}
+
+# count_running_workers: counts <job>.worker.running marker files in HANDOFF_ACTIVE.
+count_running_workers() {
+  local n=0
+  shopt -s nullglob
+  local f
+  for f in "${HANDOFF_ACTIVE}"/*.worker.running; do
+    n=$((n + 1))
+  done
+  shopt -u nullglob
+  echo "$n"
+}
+
+set_status() {
+  local base="$1" st="$2"
+  echo "$st" > "${base}.status"
+}
+
+try_claim() {
+  local base="$1"
+  local status_file="${base}.status"
+  local claim_file="${base}.status.claim"
+  if mv "${status_file}" "${claim_file}" 2>/dev/null; then
+    local st
+    st=$(cat "$claim_file")
+    if [[ "$st" == "queued" ]]; then
+      echo "running" > "${status_file}"
+      rm -f "${claim_file}"
+      return 0
+    else
+      mv "${claim_file}" "${status_file}" 2>/dev/null || true
+      return 1
+    fi
+  fi
+  return 1
+}
+
+mode_to_sandbox() {
+  case "${1:-review-only}" in
+    review-only)      echo "read-only" ;;
+    workspace-write)  echo "workspace-write" ;;
+    *)                echo "read-only" ;;
+  esac
+}
+
+build_review_prompt() {
+  local capsule_content="$1"
+
+  local review_kind review_domain review_delta_scope review_focus review_focus_source plan_alignment_present
+  review_kind=$(grep -m1 '^REVIEW_KIND:' <<< "$capsule_content" | sed 's/^REVIEW_KIND:[[:space:]]*//' || echo "code")
+  review_domain=$(grep -m1 '^REVIEW_DOMAIN:' <<< "$capsule_content" | sed 's/^REVIEW_DOMAIN:[[:space:]]*//' || echo "app_code")
+  review_delta_scope=$(grep -m1 '^REVIEW_DELTA_SCOPE:' <<< "$capsule_content" | sed 's/^REVIEW_DELTA_SCOPE:[[:space:]]*//' || echo "full_matrix")
+  review_focus=$(grep -m1 '^REVIEW_FOCUS:' <<< "$capsule_content" | sed 's/^REVIEW_FOCUS:[[:space:]]*//' || echo "")
+  review_focus_source=$(grep -m1 '^REVIEW_FOCUS_SOURCE:' <<< "$capsule_content" | sed 's/^REVIEW_FOCUS_SOURCE:[[:space:]]*//' || echo "")
+  plan_alignment_present=$(grep -m1 '^PLAN_ALIGNMENT_PRESENT:' <<< "$capsule_content" | sed 's/^PLAN_ALIGNMENT_PRESENT:[[:space:]]*//' || echo "false")
+
+  local focus_instruction=""
+  if [[ -n "$review_focus" && "$review_focus" != "N/A" ]]; then
+    focus_instruction="
+REVIEW_FOCUS (source: ${review_focus_source:-unknown}): ${review_focus}
+The '## Scope Checked' table MUST use these focus items as the check rows. Do NOT substitute your own matrix."
+  fi
+
+  local template_instruction
+  if [[ "$review_kind" == "plan" ]]; then
+    template_instruction="OUTPUT FORMAT: Use the Plan Review template.
+Your response MUST start with '# Plan Review Result' then VERDICT, REVIEW_DOMAIN, REVIEW_MODE, REVIEW_DELTA_SCOPE lines.
+Then a '## Scope Checked' table (max 3-5 rows): | 检查面 | 结论 | 证据（≤30字） |${focus_instruction}
+Then '## Findings' — ONLY P1/P2 blockers. Each finding:
+### Finding N [P1|P2] <title>
+问题: <plan gap that would cause goal failure>
+证据: <plan paragraph/path/command>
+影响: <what goes wrong if plan executes as-is>
+最小修复: <what to add, not scope expansion>
+验收: <how to confirm the fix>
+Then '## Residual Risk' for P3/non-blocking items (or 'none')."
+  else
+    template_instruction="OUTPUT FORMAT: Use the Code Review template.
+Your response MUST start with '# Code Review Result' then VERDICT, REVIEW_DOMAIN, REVIEW_MODE, REVIEW_DELTA_SCOPE lines.
+Then a '## Scope Checked' table (max 3-5 rows): | 检查面 | 结论 | 证据（≤30字） |${focus_instruction}
+Then '## Findings' — ONLY P1/P2 blockers. Each finding:
+### Finding N [P1|P2] <short title, no paths>
+问题: <obvious bug in current code>
+证据: <file:line/command output/isolated repro>
+影响: <which active path fails or makes validation unreliable>
+最小修复: <which files/functions/configs to change>
+验收: <executable command or isolated test case>
+Then '## Residual Risk' for P3/non-blocking items (or 'none')."
+  fi
+
+  local convergence_instruction=""
+  if [[ "$review_delta_scope" == "prior_findings_only" || "$review_delta_scope" == "direct_downstream" ]]; then
+    convergence_instruction="
+CONVERGENCE (follow-up review, DELTA_SCOPE=${review_delta_scope}):
+- Default scope: ONLY check prior round blockers + their direct downstream.
+- Narrow escape hatch: you MAY add a NEW finding ONLY if ALL conditions hold:
+  (1) It is a P1/P2 blocker from the Blocker threshold list.
+  (2) It was introduced in THIS round's diff (not a pre-existing issue).
+  (3) The finding includes: changed_in_this_round: <diff/file/line> and why_not_scope_creep: <explanation>.
+- Same root cause blocks at most 2 rounds. After round 2, only P1/P2 meeting blocker threshold may continue.
+- Old findings not repeated; if superseded, one line in Residual Risk.
+- Forbidden: unrelated historical issues, new global matrix scans, P3 cleanup, style/architecture preferences."
+  fi
+
+  cat <<PROMPT_EOF
+You are a single-pass code review assistant. Read the Review Capsule and produce a lightweight structured review.
+
+IMPORTANT: Your response MUST contain exactly one of these lines:
+  VERDICT: APPROVED
+  VERDICT: REQUIRES_CHANGES
+
+REVIEW_MODE: single_pass — one pass, catch obvious bugs, minimal tokens, no multi-round.
+
+${template_instruction}
+
+DOMAIN: ${review_domain}
+DELTA_SCOPE: ${review_delta_scope}
+${convergence_instruction}
+
+BLOCKER THRESHOLD (REQUIRES_CHANGES only for these):
+- Active path will fail
+- User goal not met
+- Baseline/state/mirror affects subsequent runs
+- Generation pipeline continues producing wrong output
+- Security, data, irrecoverable risk
+- Core validation missing to the point success cannot be judged
+
+DO NOT BLOCK for:
+- Style preferences, architecture aesthetics
+- Dormant code
+- Stale docs that don't affect runtime
+- Non-active-path cleanup
+- Potential optimizations without failure evidence
+- Items listed in OUT_OF_SCOPE, USER_ACCEPTED_DECISIONS, or KNOWN_LIMITATIONS
+
+QUALITY RULES:
+- Each finding needs concrete evidence (file paths, line numbers, command output).
+- Each finding needs 最小修复 (what exactly to fix) and 验收 (how to verify).
+- No vague suggestions ('consider...', 'might want to...'). Non-blocking items go in Residual Risk only.
+- P3 items MUST go in Residual Risk, never as findings.
+
+Follow the REVIEW_RULES specified in the capsule.
+
+--- BEGIN CAPSULE ---
+${capsule_content}
+--- END CAPSULE ---
+PROMPT_EOF
+}
+
+# Run codex with a hard timeout. Captures stdout/stderr to files.
+# Usage: run_codex_with_timeout <timeout_sec> <stdin_file> <stdout_file> <stderr_file> [codex args...]
+# Returns: codex exit code, or 124 on timeout.
+run_codex_with_timeout() {
+  local timeout_sec="$1" stdin_file="$2" stdout_file="$3" stderr_file="$4"
+  shift 4
+  python3 - "$timeout_sec" "$stdin_file" "$stdout_file" "$stderr_file" "$@" <<'PYEOF'
+import subprocess, sys, signal, os, time
+
+timeout = int(sys.argv[1])
+stdin_file  = sys.argv[2]
+stdout_file = sys.argv[3]
+stderr_file = sys.argv[4]
+cmd = sys.argv[5:]
+
+try:
+    with open(stdin_file, 'rb') as fin, \
+         open(stdout_file, 'wb') as fout, \
+         open(stderr_file, 'wb') as ferr:
+        proc = subprocess.Popen(cmd, stdin=fin, stdout=fout, stderr=ferr,
+                                start_new_session=True)
+        proc.wait(timeout=timeout)
+        sys.exit(proc.returncode)
+except subprocess.TimeoutExpired:
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+    except (ProcessLookupError, OSError):
+        pass
+    time.sleep(2)
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+    except (ProcessLookupError, OSError):
+        pass
+    with open(stderr_file, 'ab') as ferr:
+        ferr.write(b'\nWATCH_TIMEOUT: codex exec exceeded timeout\n')
+    sys.exit(124)
+except Exception as e:
+    with open(stderr_file, 'ab') as ferr:
+        ferr.write(('\nrun_codex_with_timeout error: ' + str(e) + '\n').encode())
+    sys.exit(1)
+PYEOF
+}
+
+process_capsule() {
+  local capsule="$1"
+  local base="${capsule%.capsule}"
+  local job_id
+  job_id=$(basename "$base")
+  local meta="${base}.meta"
+  local result="${base}.result"
+  local stderr_file="${base}.stderr"
+  local exit_file="${base}.exit"
+  local attempts_file="${base}.attempts"
+  local worker_running_marker="${base}.worker.running"
+  local worker_finished_marker="${base}.worker.finished"
+
+  if [[ ! -f "$meta" ]]; then
+    log "Skipped: $job_id (meta missing)"
+    return 0
+  fi
+
+  if ! try_claim "$base"; then
+    return 0
+  fi
+
+  # Plan 9 Phase B: batch mode detection (additive).
+  # Legacy capsules (no BATCH_RUN_ID in meta) skip events/flock entirely
+  # to preserve byte-exact result file output (SC-B10 regression).
+  local batch_id queue_job_id
+  batch_id=$(read_meta_field "$meta" "BATCH_RUN_ID")
+  queue_job_id=$(read_meta_field "$meta" "QUEUE_JOB_ID")
+  [[ -z "$queue_job_id" ]] && queue_job_id="$job_id"
+
+  # Worker running marker (used by main loop for capacity counting)
+  : > "$worker_running_marker"
+
+  if [[ -n "$batch_id" ]]; then
+    # Batch mode: emit started event with running_count = current + 1
+    local rc_started
+    rc_started=$(count_running_workers)
+    emit_event "$batch_id" "$queue_job_id" "started" "running" "$rc_started" "null" \
+      "worker_pid" "$$"
+  fi
+
+  log "Processing: $job_id (batch=${batch_id:-legacy})"
+
+  local cwd="" mode=""
+  cwd=$(grep '^CWD=' "$meta" | cut -d= -f2- || true)
+  mode=$(grep '^MODE=' "$meta" | cut -d= -f2- || true)
+
+  if [[ -z "$cwd" ]]; then
+    echo "WATCH_INVALID_CWD: CWD is empty in meta for job $job_id" > "$result"
+    set_status "$base" "failed"
+    log "Failed: $job_id (CWD empty)"
+    mv "$capsule" "$HANDOFF_ARCHIVE/" 2>/dev/null || true
+    mv "$meta" "$HANDOFF_ARCHIVE/" 2>/dev/null || true
+    return 0
+  fi
+  if [[ ! -d "$cwd" ]]; then
+    echo "WATCH_INVALID_CWD: CWD does not exist: $cwd" > "$result"
+    set_status "$base" "failed"
+    log "Failed: $job_id (CWD not found: $cwd)"
+    mv "$capsule" "$HANDOFF_ARCHIVE/" 2>/dev/null || true
+    mv "$meta" "$HANDOFF_ARCHIVE/" 2>/dev/null || true
+    return 0
+  fi
+
+  if ! command -v codex >/dev/null 2>&1; then
+    echo "WATCH_NO_BACKEND: codex CLI not found" > "$result"
+    set_status "$base" "failed"
+    log "Failed: $job_id (codex CLI not available)"
+    mv "$capsule" "$HANDOFF_ARCHIVE/" 2>/dev/null || true
+    [[ -f "$meta" ]] && mv "$meta" "$HANDOFF_ARCHIVE/" 2>/dev/null || true
+    return 0
+  fi
+
+  local sandbox
+  sandbox=$(mode_to_sandbox "$mode")
+  local codex_args=("exec" "--sandbox" "$sandbox" "--skip-git-repo-check" "--ephemeral" "--cd" "$cwd")
+  local capsule_content
+  capsule_content=$(cat "$capsule")
+  local prompt
+  prompt=$(build_review_prompt "$capsule_content")
+
+  # Temp files for this job's I/O — use deterministic paths in HANDOFF_ACTIVE
+  # to avoid relying on mktemp (which requires TMPDIR write access).
+  local tmp_stdout="${HANDOFF_ACTIVE}/${job_id}.tmp_stdout"
+  local tmp_stderr="${HANDOFF_ACTIVE}/${job_id}.tmp_stderr"
+  local tmp_prompt="${HANDOFF_ACTIVE}/${job_id}.tmp_prompt"
+  echo "$prompt" > "$tmp_prompt"
+
+  local max_attempts=2
+  local attempt=0
+  local final_status="failed"
+
+  while [[ $attempt -lt $max_attempts ]]; do
+    attempt=$((attempt + 1))
+    # Refresh heartbeat before each attempt so healthcheck doesn't falsely kickstart
+    date +%s > "$HANDOFF_HEARTBEAT"
+    log "Attempt ${attempt}/${max_attempts}: $job_id"
+
+    # Clear per-attempt output
+    > "$tmp_stdout"
+    > "$tmp_stderr"
+
+    local exec_exit=0
+    run_codex_with_timeout "$CODEX_EXEC_TIMEOUT" \
+      "$tmp_prompt" "$tmp_stdout" "$tmp_stderr" \
+      codex "${codex_args[@]}" || exec_exit=$?
+
+    echo "attempt=${attempt} exit=${exec_exit}" >> "$attempts_file"
+
+    if [[ $exec_exit -eq 0 ]]; then
+      if grep -qE '^VERDICT: (APPROVED|REQUIRES_CHANGES)' "$tmp_stdout"; then
+        # Success — write result, mark done, do NOT save stderr/exit as artifacts
+        cat "$tmp_stdout" > "$result"
+        final_status="done"
+        log "Completed: $job_id (attempt=${attempt}, sandbox=${sandbox}, cwd=${cwd})"
+        break
+      else
+        # Exit 0 but no valid VERDICT — save artifacts, do NOT retry (output is likely wrong model)
+        cat "$tmp_stdout" > "$result"
+        echo "WATCH_NO_VERDICT: codex returned exit 0 but no VERDICT in output (attempt=${attempt})" >> "$result"
+        cp "$tmp_stderr" "$stderr_file"
+        echo "$exec_exit" > "$exit_file"
+        log "Failed: $job_id (no valid VERDICT, attempt=${attempt})"
+        final_status="failed"
+        break
+      fi
+    elif [[ $exec_exit -eq 124 ]]; then
+      # Timeout
+      cp "$tmp_stderr" "$stderr_file"
+      echo "$exec_exit" > "$exit_file"
+      if [[ $attempt -lt $max_attempts ]]; then
+        log "Timeout: $job_id (attempt=${attempt}, retrying)"
+        continue
+      fi
+      echo "WATCH_REVIEW_FAILED: codex exec timeout (exit=124) for job $job_id (attempt=${attempt})" > "$result"
+      log "Failed: $job_id (codex exec timeout after ${attempt} attempts)"
+      final_status="failed"
+    else
+      # Non-zero exit — save artifacts and retry once
+      cp "$tmp_stderr" "$stderr_file"
+      echo "$exec_exit" > "$exit_file"
+      if [[ $attempt -lt $max_attempts ]]; then
+        log "Failed attempt: $job_id (exit=${exec_exit}, attempt=${attempt}, retrying)"
+        continue
+      fi
+      echo "WATCH_REVIEW_FAILED: codex exec failed (exit=${exec_exit}) for job $job_id (attempt=${attempt})" > "$result"
+      log "Failed: $job_id (codex exec exit=${exec_exit} after ${attempt} attempts)"
+      final_status="failed"
+    fi
+  done
+
+  rm -f "$tmp_stdout" "$tmp_stderr" "$tmp_prompt"
+
+  # Plan 9 Phase B: finalize.
+  # - Batch mode (BATCH_RUN_ID present): delegate to gd-finalize-codex-watch-job.py
+  #   which holds fcntl.flock for the entire critical section (P1-1 fix).
+  # - Legacy mode: byte-exact original behavior (status file = done/failed).
+  if [[ -n "$batch_id" ]]; then
+    # Helper performs: flock acquire → cancel-marker stat → mv result/stale →
+    # status file write (legacy enum: done|failed|stale_completed) →
+    # event log append (new enum: finished|failed|stale_completed) → flock release.
+    # Helper writes status file itself, so we don't call set_status here.
+    finalize_batch_job "$base" "$batch_id" "$queue_job_id" "$final_status" ""
+  else
+    # Legacy: byte-exact pre-Phase B
+    set_status "$base" "$final_status"
+    rm -f "$worker_running_marker"
+  fi
+
+  mv "$capsule" "$HANDOFF_ARCHIVE/" 2>/dev/null || true
+  [[ -f "$meta" ]] && mv "$meta" "$HANDOFF_ARCHIVE/" 2>/dev/null || true
+}
+
+# Plan 9 Phase B: dispatch_capsules — process up to MAX_PARALLEL capsules
+# concurrently. Each capsule runs in a backgrounded subshell. Capacity is
+# bounded by counting <job>.worker.running marker files (file-based, not PID).
+# Reaping happens implicitly: marker is removed by process_capsule on completion.
+dispatch_capsules() {
+  shopt -s nullglob
+  local capsule
+  for capsule in "$HANDOFF_ACTIVE"/*.capsule; do
+    [[ -f "$capsule" ]] || continue
+    local current
+    current=$(count_running_workers)
+    if (( current >= CODEX_WATCH_MAX_PARALLEL )); then
+      break
+    fi
+    # Fork into background subshell; subshell inherits env including HANDOFF_*
+    (
+      process_capsule "$capsule"
+    ) &
+    # Brief pause to allow worker_running marker to materialize before counting
+    sleep 0.1
+  done
+  shopt -u nullglob
+}
+
+kill_orphans() {
+  local my_pid="${1:-}"
+  local launchd_pid=""
+  launchd_pid=$(pgrep -x launchd 2>/dev/null | head -n1 || true)
+
+  local pids
+  pids=$(pgrep -f 'codex-watch' 2>/dev/null || true)
+  for p in $pids; do
+    if [[ "$p" == "$$" || "$p" == "$my_pid" ]]; then
+      continue
+    fi
+    if [[ -n "$launchd_pid" && "$p" == "$launchd_pid" ]]; then
+      continue
+    fi
+    local ppid=""
+    ppid=$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' ' || true)
+    if [[ "$ppid" == "1" || "$ppid" == "$launchd_pid" ]]; then
+      continue
+    fi
+    kill "$p" 2>/dev/null || true
+  done
+}
+
+# --- run: foreground mode for launchd ---
+run_foreground() {
+  mkdir -p "$HANDOFF_ACTIVE" "$HANDOFF_ARCHIVE" "$HANDOFF_STATE"
+
+  if ! shlock -f "$HANDOFF_LOCK" -p $$; then
+    echo "codex-watch: another instance holds the lock" >&2
+    exit 1
+  fi
+
+  kill_orphans "$$"
+
+  echo "$$" > "$HANDOFF_PID"
+  log "Started foreground (pid $$, max_parallel=$CODEX_WATCH_MAX_PARALLEL)"
+
+  # Plan 9 Phase B: write daemon config snapshot for runner probe
+  write_config_snapshot
+
+  cleanup() {
+    local current_pid="$$"
+    if [[ -f "$HANDOFF_PID" ]]; then
+      local pidfile_pid
+      pidfile_pid=$(cat "$HANDOFF_PID" 2>/dev/null || true)
+      if [[ "$pidfile_pid" == "$current_pid" ]]; then
+        rm -f "$HANDOFF_PID"
+      fi
+    fi
+    if [[ -f "$HANDOFF_LOCK" ]]; then
+      local lock_pid
+      lock_pid=$(cat "$HANDOFF_LOCK" 2>/dev/null || true)
+      if [[ "$lock_pid" == "$current_pid" ]]; then
+        rm -f "$HANDOFF_LOCK"
+      fi
+    fi
+    log "Stopped (pid $$)"
+    exit 0
+  }
+  trap cleanup TERM INT HUP
+
+  while true; do
+    date +%s > "$HANDOFF_HEARTBEAT"
+    # Plan 9 Phase B: bounded-concurrency dispatcher (replaces serial loop).
+    # Backward compat: with CODEX_WATCH_MAX_PARALLEL=1 this is identical to the
+    # old serial behavior except worker is forked into a subshell that joins
+    # before the next dispatch cycle.
+    dispatch_capsules
+    # Wait for in-flight workers to settle before next poll
+    wait
+    sleep "$POLL_INTERVAL"
+  done
+}
+
+# --- start: background daemon (legacy, for manual use) ---
+start_daemon() {
+  mkdir -p "$HANDOFF_ACTIVE" "$HANDOFF_ARCHIVE" "$HANDOFF_STATE"
+
+  if ! shlock -f "$HANDOFF_LOCK" -p $$; then
+    echo "codex-watch: already running (pid $(cat "$HANDOFF_LOCK"))"
+    exit 0
+  fi
+
+  kill_orphans ""
+  log "Starting codex-watch daemon (max_parallel=$CODEX_WATCH_MAX_PARALLEL)"
+
+  # Plan 9 Phase B: write daemon config snapshot for runner probe
+  write_config_snapshot
+
+  nohup "$0" _loop </dev/null >> "$HANDOFF_LOG" 2>&1 &
+  local daemon_pid=$!
+  echo "$daemon_pid" > "$HANDOFF_LOCK"
+  echo "$daemon_pid" > "$HANDOFF_PID"
+  disown "$daemon_pid"
+  echo "codex-watch started (pid $daemon_pid)"
+  log "Started (pid $daemon_pid)"
+}
+
+_run_loop() {
+  trap 'rm -f "$HANDOFF_PID" "$HANDOFF_LOCK" "$HANDOFF_HEARTBEAT"; log "Stopped"; exit 0' TERM INT
+  while true; do
+    date +%s > "$HANDOFF_HEARTBEAT"
+    # Plan 9 Phase B: bounded-concurrency dispatcher
+    dispatch_capsules
+    wait
+    sleep "$POLL_INTERVAL"
+  done
+}
+
+stop_daemon() {
+  if [[ -f "$HANDOFF_PID" ]]; then
+    local pid
+    pid=$(cat "$HANDOFF_PID")
+    kill "$pid" 2>/dev/null || true
+    rm -f "$HANDOFF_PID"
+    echo "codex-watch stopped (pid $pid)"
+    log "Stopped by user (pid $pid)"
+  else
+    echo "codex-watch: stopped (no pidfile)"
+  fi
+  rm -f "$HANDOFF_LOCK" "$HANDOFF_HEARTBEAT"
+  kill_orphans ""
+}
+
+# Only run main case when executed directly, not when sourced.
+# Sourcing is used by tests (e.g. review-chain-verify.js) to call build_review_prompt
+# without spinning up the daemon.
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  case "${1:-start}" in
+    run)     run_foreground ;;
+    start)   start_daemon ;;
+    stop)    stop_daemon ;;
+    restart) stop_daemon; sleep 1; start_daemon ;;
+    _loop)   _run_loop ;;
+    *)       echo "Usage: codex-watch {run|start|stop|restart}"; exit 1 ;;
+  esac
+fi

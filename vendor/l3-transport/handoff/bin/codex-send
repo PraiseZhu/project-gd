@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Fire-and-forget: place a capsule in the active queue for codex-watch to process.
+# Atomic publish: tmp files first, .capsule last (watcher scans *.capsule to discover jobs).
+set -euo pipefail
+source "$(dirname "$0")/../lib/state-paths.sh"
+
+usage() {
+  echo "Usage: codex-send --cwd <dir> --mode <mode> --payload-file <file>"
+  exit 1
+}
+
+cwd="" mode="" payload_file=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --cwd)        cwd="$2"; shift 2 ;;
+    --mode)       mode="$2"; shift 2 ;;
+    --payload-file) payload_file="$2"; shift 2 ;;
+    *) usage ;;
+  esac
+done
+
+[[ -z "$cwd" || -z "$mode" || -z "$payload_file" ]] && usage
+[[ ! -f "$payload_file" ]] && { echo "Error: payload file not found: $payload_file" >&2; exit 1; }
+
+# Resolve to absolute path (cwd non-empty guaranteed by usage check above)
+local_cwd="$(cd "$cwd" 2>/dev/null && pwd -P)" || { echo "Error: --cwd does not exist or is not accessible: $cwd" >&2; exit 1; }
+cwd="$local_cwd"
+
+ts=$(date -u +%Y%m%dT%H%M%SZ)
+job_id="${ts}-$$"
+base="${HANDOFF_ACTIVE}/${job_id}"
+
+# Step 1: write payload to tmp
+cp "$payload_file" "${base}.capsule.tmp"
+
+# Step 2: write meta to tmp
+cat > "${base}.meta.tmp" <<EOF
+JOB_ID=${job_id}
+CWD=${cwd}
+MODE=${mode}
+SUBMITTED=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+EOF
+
+# Step 3: write status=queued to tmp
+echo "queued" > "${base}.status.tmp"
+
+# Step 4-6: atomic publish (order matters — capsule last, watcher scans *.capsule)
+mv "${base}.meta.tmp" "${base}.meta"
+mv "${base}.status.tmp" "${base}.status"
+mv "${base}.capsule.tmp" "${base}.capsule"
+
+echo "$job_id"

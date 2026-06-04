@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+# Send a capsule and wait for the result from codex-watch.
+# Exit codes:
+#   0 — review complete, result contains valid VERDICT
+#   1 — usage error
+#   2 — watcher stopped (WATCH_UNAVAILABLE)
+#   3 — timeout
+#   4 — review failed (status=failed or no valid VERDICT)
+#   5 — batch cancelled before this job ran (Plan 9 Phase B)
+#   6 — batch cancelled while this job was running; result preserved as
+#       <job>.stale_completed.json but NOT trusted (Plan 9 Phase B)
+set -euo pipefail
+source "$(dirname "$0")/../lib/state-paths.sh"
+source "$(dirname "$0")/../lib/watch-state.sh"
+
+TIMEOUT=300
+POLL_INTERVAL=2
+
+usage() {
+  echo "Usage: codex-send-wait --cwd <dir> --mode <mode> --payload-file <file> [--timeout <sec>]"
+  exit 1
+}
+
+cwd="" mode="" payload_file=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --cwd)          cwd="$2"; shift 2 ;;
+    --mode)         mode="$2"; shift 2 ;;
+    --payload-file) payload_file="$2"; shift 2 ;;
+    --timeout)      TIMEOUT="$2"; shift 2 ;;
+    *) usage ;;
+  esac
+done
+
+[[ -z "$cwd" || -z "$mode" || -z "$payload_file" ]] && usage
+[[ ! -f "$payload_file" ]] && { echo "Error: payload file not found: $payload_file" >&2; exit 1; }
+
+# Check watcher state via shared watch_state()
+watcher_status=$(watch_state)
+watcher_rc=$?
+
+case $watcher_rc in
+  0)
+    # RUNNING — proceed normally
+    ;;
+  2)
+    # DEGRADED_HEARTBEAT_ONLY — warn but continue; heartbeat fresh so watcher likely still alive
+    echo "[WARN] codex-watch is DEGRADED (${watcher_status}); proceeding anyway" >&2
+    ;;
+  *)
+    # STOPPED — cannot submit
+    echo "WATCH_UNAVAILABLE: ${watcher_status}" >&2
+    exit 2
+    ;;
+esac
+
+# Submit via codex-send
+job_id=$("$HANDOFF_BIN/codex-send" --cwd "$cwd" --mode "$mode" --payload-file "$payload_file")
+status_file="${HANDOFF_ACTIVE}/${job_id}.status"
+result_file="${HANDOFF_ACTIVE}/${job_id}.result"
+stderr_file="${HANDOFF_ACTIVE}/${job_id}.stderr"
+
+# Poll for terminal status (done or failed)
+elapsed=0
+while [[ $elapsed -lt $TIMEOUT ]]; do
+  if [[ -f "$status_file" ]]; then
+    current_status=$(cat "$status_file")
+    case "$current_status" in
+      done)
+        if [[ -f "$result_file" ]]; then
+          if grep -qE '^VERDICT: (APPROVED|REQUIRES_CHANGES)' "$result_file"; then
+            cat "$result_file"
+            exit 0
+          else
+            echo "Error: review completed but result contains no valid VERDICT" >&2
+            cat "$result_file" >&2
+            exit 4
+          fi
+        else
+          echo "Error: status=done but no result file for job $job_id" >&2
+          exit 4
+        fi
+        ;;
+      failed)
+        echo "Error: review failed for job $job_id" >&2
+        if [[ -f "$result_file" ]]; then
+          cat "$result_file" >&2
+        fi
+        if [[ -f "$stderr_file" ]]; then
+          echo "--- stderr (first 10 lines) ---" >&2
+          head -10 "$stderr_file" >&2
+        fi
+        exit 4
+        ;;
+      cancelled)
+        # Plan 9 Phase B: batch was cancelled before this job ran.
+        echo "CANCELLED: job $job_id was cancelled before execution" >&2
+        exit 5
+        ;;
+      stale_completed)
+        # Plan 9 Phase B: batch was cancelled while job was running.
+        # Raw evidence preserved but result is NOT trusted.
+        echo "STALE_COMPLETED: job $job_id finished after batch cancel; result not trusted" >&2
+        local stale_path="${HANDOFF_ACTIVE}/${job_id}.stale_completed.json"
+        if [[ -f "$stale_path" ]]; then
+          echo "Raw evidence preserved at: $stale_path" >&2
+        fi
+        exit 6
+        ;;
+      queued|running)
+        # Still in progress, keep polling
+        ;;
+      *)
+        echo "Error: unknown status '$current_status' for job $job_id" >&2
+        exit 4
+        ;;
+    esac
+  fi
+  sleep "$POLL_INTERVAL"
+  elapsed=$((elapsed + POLL_INTERVAL))
+done
+
+echo "TIMEOUT: no terminal status after ${TIMEOUT}s for job ${job_id}" >&2
+exit 3

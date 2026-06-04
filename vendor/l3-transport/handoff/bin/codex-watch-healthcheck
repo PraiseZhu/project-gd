@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+# Healthcheck for codex-watch. Run periodically by launchd.
+# Uses shared watch-state.sh for consistent runtime judgment.
+# Kickstart only when heartbeat is genuinely stale; pid-stale-but-heartbeat-fresh
+# is marked DEGRADED and triggers rebuild, not kickstart.
+set -euo pipefail
+source "$(dirname "$0")/../lib/state-paths.sh"
+source "$(dirname "$0")/../lib/watch-state.sh"
+
+HANDOFF_LOCK="${HANDOFF_STATE}/codex-watch.lock"
+HANDOFF_HEARTBEAT="${HANDOFF_STATE}/heartbeat"
+HEARTBEAT_MAX_AGE=120
+STUCK_TASK_MAX_AGE=300
+LAUNCHD_LABEL="com.praise.codex-watch"
+GUI_UID=$(id -u)
+
+log() { echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] healthcheck: $*" >> "$HANDOFF_LOG"; }
+
+count_watch_procs() {
+  pgrep -f 'codex-watch run' 2>/dev/null | wc -l | tr -d ' '
+}
+
+find_watch_pid() {
+  pgrep -f 'codex-watch run' 2>/dev/null | head -n1
+}
+
+kickstart() {
+  log "UNHEALTHY: $1 — kickstarting watcher"
+  rm -f "$HANDOFF_PID" "$HANDOFF_LOCK" "$HANDOFF_HEARTBEAT"
+  launchctl kickstart -k "gui/${GUI_UID}/${LAUNCHD_LABEL}" 2>/dev/null || true
+}
+
+rebuild_state() {
+  local new_pid="$1"
+  log "RECOVER: pidfile/lock missing but heartbeat fresh and single watcher running (pid $new_pid) — rebuilding state"
+  echo "$new_pid" > "$HANDOFF_PID"
+  echo "$new_pid" > "$HANDOFF_LOCK"
+}
+
+# 1. Get unified watch state
+watcher_status=$(watch_state) || true
+watcher_kind="${watcher_status%% *}"
+
+case "$watcher_kind" in
+  RUNNING)
+    # Healthy — check stuck tasks and exit
+    ;;
+  DEGRADED_HEARTBEAT_ONLY)
+    # pid dead but heartbeat fresh — try to rebuild from live procs
+    watch_procs=$(count_watch_procs)
+    if [[ "$watch_procs" -eq 1 ]]; then
+      live_pid=$(find_watch_pid)
+      if [[ -n "$live_pid" ]]; then
+        rebuild_state "$live_pid"
+        log "DEGRADED: rebuilt state from live process pid=$live_pid"
+        exit 0
+      fi
+    fi
+    # More than one or zero live procs with fresh heartbeat — unusual; log but don't kickstart
+    log "DEGRADED: heartbeat fresh but cannot rebuild state (live_procs=${watch_procs})"
+    exit 0
+    ;;
+  STOPPED)
+    # Heartbeat stale + pid dead — check if a task is actively running before kickstarting
+    has_running_task=false
+    for sf in "$HANDOFF_ACTIVE"/*.status; do
+      [[ -f "$sf" ]] || continue
+      if [[ "$(cat "$sf")" == "running" ]]; then
+        has_running_task=true
+        break
+      fi
+    done
+
+    hb_age=$(heartbeat_age)
+    effective_max="${HEARTBEAT_MAX_AGE}"
+    if $has_running_task; then
+      effective_max="${STUCK_TASK_MAX_AGE}"
+    fi
+
+    if [[ "$hb_age" == "none" ]]; then
+      kickstart "no heartbeat file"
+    elif [[ "$hb_age" -gt "$effective_max" ]]; then
+      kickstart "heartbeat stale (${hb_age}s old, max ${effective_max}s, running_task=${has_running_task})"
+    else
+      log "STOPPED but heartbeat age ${hb_age}s within effective_max ${effective_max}s — skipping kickstart"
+    fi
+    exit 0
+    ;;
+esac
+
+# RUNNING path: check stuck tasks
+now=$(date +%s)
+for status_file in "$HANDOFF_ACTIVE"/*.status; do
+  [[ -f "$status_file" ]] || continue
+  st=$(cat "$status_file")
+  if [[ "$st" == "running" ]]; then
+    file_mtime=$(stat -f %m "$status_file" 2>/dev/null || echo "$now")
+    stuck_age=$((now - file_mtime))
+    if [[ $stuck_age -gt $STUCK_TASK_MAX_AGE ]]; then
+      job_id=$(basename "${status_file%.status}")
+      log "WARNING: task $job_id stuck in running for ${stuck_age}s — resetting to failed"
+      echo "WATCH_STUCK: task stuck in running for ${stuck_age}s" > "${HANDOFF_ACTIVE}/${job_id}.result"
+      echo "failed" > "$status_file"
+    fi
+  fi
+done
+
+exit 0

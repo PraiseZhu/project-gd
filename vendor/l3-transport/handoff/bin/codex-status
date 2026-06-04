@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+# Show handoff system status
+set -euo pipefail
+source "$(dirname "$0")/../lib/state-paths.sh"
+source "$(dirname "$0")/../lib/watch-state.sh"
+
+HANDOFF_HEARTBEAT="${HANDOFF_STATE}/heartbeat"
+
+echo "=== Codex Handoff Status ==="
+echo ""
+
+# Watcher status via shared watch_state()
+watcher_status=$(watch_state) || true
+case "${watcher_status%% *}" in
+  RUNNING)
+    pid=$(cat "$HANDOFF_PID" 2>/dev/null || echo "?")
+    echo "Watcher:    RUNNING (pid ${pid})"
+    ;;
+  DEGRADED_HEARTBEAT_ONLY)
+    echo "Watcher:    DEGRADED_HEARTBEAT_ONLY"
+    echo "            (${watcher_status#* })"
+    ;;
+  *)
+    echo "Watcher:    STOPPED"
+    echo "            (${watcher_status#* })"
+    ;;
+esac
+
+# Heartbeat
+hb_age=$(heartbeat_age)
+if [[ "$hb_age" == "none" ]]; then
+  echo "Heartbeat:  none"
+elif [[ "$hb_age" -le 120 ]]; then
+  echo "Heartbeat:  fresh (${hb_age}s ago)"
+else
+  echo "Heartbeat:  STALE (${hb_age}s ago)"
+fi
+
+# Queue counts via shared queue_counts()
+counts=$(queue_counts)
+echo "Queue:      ${counts}"
+
+# Stuck tasks
+stuck=0
+for sf in "$HANDOFF_ACTIVE"/*.status; do
+  [[ -f "$sf" ]] || continue
+  st=$(cat "$sf")
+  if [[ "$st" == "running" ]]; then
+    mtime=$(stat -f %m "$sf" 2>/dev/null || echo "0")
+    now=$(date +%s)
+    age=$((now - mtime))
+    if [[ $age -gt 300 ]]; then
+      stuck=$((stuck + 1))
+    fi
+  fi
+done
+if [[ $stuck -gt 0 ]]; then
+  echo "Stuck:      ${stuck} task(s) in running >5min"
+fi
+
+# Recent failed jobs with stderr summary
+echo ""
+failed_jobs=()
+while IFS= read -r job_id; do
+  failed_jobs+=("$job_id")
+done < <(recent_failed_jobs 3)
+
+if [[ ${#failed_jobs[@]} -gt 0 ]]; then
+  echo "--- Recent Failed Jobs ---"
+  for job_id in "${failed_jobs[@]}"; do
+    echo "  [FAILED] ${job_id}"
+    result_file="${HANDOFF_ACTIVE}/${job_id}.result"
+    stderr_file="${HANDOFF_ACTIVE}/${job_id}.stderr"
+    exit_file="${HANDOFF_ACTIVE}/${job_id}.exit"
+    attempts_file="${HANDOFF_ACTIVE}/${job_id}.attempts"
+
+    if [[ -f "$result_file" ]]; then
+      result_summary=$(head -1 "$result_file" | cut -c1-80)
+      echo "    result: ${result_summary}"
+    fi
+    if [[ -f "$exit_file" ]]; then
+      echo "    exit:   $(cat "$exit_file")"
+    fi
+    if [[ -f "$attempts_file" ]]; then
+      attempt_count=$(grep -c 'attempt=' "$attempts_file" 2>/dev/null || echo "?")
+      echo "    attempts: ${attempt_count}"
+    fi
+    if [[ -f "$stderr_file" ]]; then
+      echo "    stderr: $(head -3 "$stderr_file" | tr '\n' ' ' | cut -c1-120)"
+    else
+      echo "    stderr: unavailable (legacy failure)"
+    fi
+  done
+fi
+
+# Log tail
+if [[ -f "$HANDOFF_LOG" ]]; then
+  echo ""
+  echo "--- Last 5 log lines ---"
+  tail -5 "$HANDOFF_LOG"
+fi
