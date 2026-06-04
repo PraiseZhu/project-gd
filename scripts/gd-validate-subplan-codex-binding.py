@@ -4,6 +4,10 @@
 Validates that the Codex cross-review aggregate JSON records proper bindings for
 all subplan review jobs in a parent close gate context.
 
+Schema validation is delegated to gd-validate-codex-cross-review-aggregate.py
+(which loads the canonical schema/gd-codex-cross-review-aggregate.schema.json).
+This script adds binding-completeness checks on top.
+
 Called via subprocess from gd-validate-parent-close-gate.py.
 
 Usage:
@@ -19,13 +23,20 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import sys
 from pathlib import Path
 
-REQUIRED_AGG_FIELDS = frozenset({"schema_version", "jobs", "summary"})
-VALID_TRANSPORT = frozenset({"transport_ok", "transport_failed", "missing_primary_target"})
-VALID_DECISIONS = frozenset({"APPROVED", "REQUIRES_CHANGES", "FAILED", "MISSING"})
+GD_ROOT = Path(__file__).resolve().parent.parent
+_agg_val_path = GD_ROOT / "scripts" / "gd-validate-codex-cross-review-aggregate.py"
+
+# Delegate schema validation to the canonical aggregate validator.
+def _schema_errors(aggregate_path: Path) -> list[str]:
+    spec = importlib.util.spec_from_file_location("agg_val", _agg_val_path)
+    mod = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    return mod.validate(str(aggregate_path))
 
 
 def validate(reports_dir: Path, aggregate_path: Path) -> list[str]:
@@ -37,59 +48,28 @@ def validate(reports_dir: Path, aggregate_path: Path) -> list[str]:
     if not aggregate_path.exists():
         return [f"AGGREGATE_NOT_FOUND: {aggregate_path}"]
 
+    # 1. Schema validation via canonical aggregate validator.
+    schema_errs = _schema_errors(aggregate_path)
+    if schema_errs:
+        return [f"AGGREGATE_SCHEMA_INVALID: {e}" for e in schema_errs]
+
     try:
         agg = json.loads(aggregate_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as e:
         return [f"AGGREGATE_JSON_PARSE_ERROR: {e}"]
 
-    if not isinstance(agg, dict):
-        return ["AGGREGATE_ROOT_NOT_OBJECT"]
-
-    for f in REQUIRED_AGG_FIELDS:
-        if f not in agg:
-            errors.append(f"AGGREGATE_MISSING_FIELD: {f!r}")
-
-    if errors:
-        return errors
-
-    if agg.get("schema_version") != "2.0":
-        errors.append(
-            f"AGGREGATE_WRONG_SCHEMA_VERSION: expected '2.0', "
-            f"got {agg.get('schema_version')!r}"
-        )
-
+    # 2. Binding-completeness checks (jobs must reference valid roles/kinds).
     jobs = agg.get("jobs", [])
-    if not isinstance(jobs, list):
-        return ["AGGREGATE_JOBS_NOT_ARRAY"]
-
     for i, job in enumerate(jobs):
         if not isinstance(job, dict):
             errors.append(f"JOB[{i}]: not an object")
             continue
-
-        job_id = job.get("queue_job_id", f"<job-{i}>")
+        job_id = job.get("queue_job_id", job.get("target_role", f"<job-{i}>"))
         prefix = f"JOB[{job_id}]"
-
-        # transport_status must be present and valid
-        ts = job.get("transport_status")
-        if ts not in VALID_TRANSPORT:
-            errors.append(f"{prefix}: invalid transport_status {ts!r}")
-
-        # codex_verdict must be present for transport_ok jobs
-        if ts == "transport_ok":
-            cv = job.get("codex_verdict")
-            if cv not in VALID_DECISIONS:
-                errors.append(f"{prefix}: invalid codex_verdict {cv!r} for transport_ok job")
-
-        # target_role must be present
         if not job.get("target_role"):
             errors.append(f"{prefix}: missing target_role")
-
-        # primary_target must be non-empty
         if not job.get("primary_target"):
             errors.append(f"{prefix}: missing primary_target")
-
-        # review_kind must be non-empty
         if not job.get("review_kind"):
             errors.append(f"{prefix}: missing review_kind")
 
