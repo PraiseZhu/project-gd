@@ -1,4 +1,4 @@
-# Code Diff Review Result
+# Code Diff Review Result (v2)
 
 GD_STANDARD: Project GD/prompts/gd-review-standard.md
 GOAL_SOURCE: Project GD/docs/gd-v7-project-goal.md
@@ -64,3 +64,33 @@ MERGE_NOTES:
 ---
 
 ## 5. Residual Risk（P3 或非阻塞项）
+
+---
+
+## 6. Machine-Readable Result（REQUIRED — bridge v2 parser 提取此 block）
+
+> 必须是**唯一**一个 `gd-review-result-json` block，结构符合 `schema/gd-review-result-v2.schema.json`。
+
+<!-- gd-review-result-json:start -->
+```json
+{
+  "schema_version": "2.0",
+  "template_kind": "gd-code-diff-review",
+  "review_kind": "code_diff",
+  "review_target_kind": "code_only",
+  "target_role": "code_diff",
+  "reviewer": "<claude_main | claude_subagent_<role> | codex>",
+  "review_target": "<diff 文件或 git range>",
+  "review_run_status": "completed",
+  "gd_review_decision": "APPROVED",
+  "source_of_truth_decision": { "location": "top_level_machine_header", "value": "APPROVED" },
+  "scope_checked": [
+    { "area": "<检查面>", "result": "pass", "evidence": "<≤30字证据>" }
+  ],
+  "findings": [],
+  "merge_notes": { "conflict_with_other_reviewer": false },
+  "residual_risk": "",
+  "timestamp": "2026-01-01T00:00:00Z"
+}
+```
+<!-- gd-review-result-json:end -->
