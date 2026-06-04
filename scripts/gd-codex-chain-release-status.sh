@@ -21,7 +21,14 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 MANIFEST="$ROOT/config/gd-runtime-parity-manifest.json"
 SECRET_SSOT="$ROOT/config/secret-scan-regexes.json"
 L1_MR="$ROOT/mirrors/codex-chain/l1-binary"
-L1_RT="$HOME/.npm-global/lib/node_modules/@openai/codex"
+# Codex migrated from npm (@openai/codex v0.130) to standalone binary (v0.136+).
+# Detect the newest standalone release directory.
+L1_RT_BASE="$HOME/.codex/packages/standalone/releases"
+if [ -d "$L1_RT_BASE" ]; then
+  L1_RT=$(ls -1td "$L1_RT_BASE"/*/  2>/dev/null | head -1 | sed 's|/$||')
+else
+  L1_RT="$HOME/.npm-global/lib/node_modules/@openai/codex"  # legacy fallback
+fi
 L2_RT="$HOME/.codex"
 
 _sha256() { shasum -a 256 "$1" 2>/dev/null | awk '{print $1}' || true; }
@@ -71,11 +78,10 @@ echo ""
 
 # ── L1: release mirror completeness ───────────────────────────────────────
 echo "--- L1: Codex binary release mirror ---"
+# Standalone binary layout: codex-package.json is the version lock file.
+# bin/codex.js and bin/rg were npm artifacts — not present in standalone form.
 L1_MUST=(
-  "bin/codex.js:codex.js"
-  "bin/rg:rg"
-  "package.json:package.json"
-  "README.md:README.md"
+  "codex-package.json:codex-package.json"
 )
 L1_FAIL=0
 for pair in "${L1_MUST[@]}"; do
@@ -142,6 +148,10 @@ L2_KNOWN_ENTRIES=(
   "sessions" "shell_snapshots" "skills" "sqlite" "tmp" ".tmp" "vendor_imports"
   ".stignore" "browser" "goals_1.sqlite" "goals_1.sqlite-shm"
   "goals_1.sqlite-wal" "node_repl"
+  # Added 2026-06-04: new runtime ephemera (standalone binary migration + codex updates)
+  "packages" "process_manager"
+  "chrome-native-hosts-v2.json" "chrome-native-hosts.json"
+  "memories_1.sqlite" "memories_1.sqlite-shm" "memories_1.sqlite-wal"
 )
 L2_UNCLASSIFIED=()
 while IFS= read -r entry; do
@@ -150,6 +160,13 @@ while IFS= read -r entry; do
   for known in "${L2_KNOWN_ENTRIES[@]}"; do
     [ "$known" = "$name" ] && { found=1; break; }
   done
+  # Also match known prefix patterns for ephemeral files with UUID suffixes
+  if [ $found -eq 0 ]; then
+    case "$name" in
+      .codex-global-state.json.tmp-*)  found=1 ;;  # transient state write (single dot prefix)
+      ..codex-global-state.json.tmp-*) found=1 ;;  # transient state write (double dot prefix variant)
+    esac
+  fi
   [ $found -eq 0 ] && L2_UNCLASSIFIED+=("$name")
 done < <(find "$L2_RT" -maxdepth 1 -mindepth 1 2>/dev/null | sort)
 
