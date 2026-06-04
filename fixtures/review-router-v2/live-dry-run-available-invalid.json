@@ -1,0 +1,27 @@
+{
+  "_fixture_meta": {
+    "fixture_version": "2.0",
+    "schema_version": "2.0",
+    "_test_expect": "FAIL",
+    "description": "live_dry_run mode — codex_transport_status=available is forbidden (bridge was not called); must fail"
+  },
+  "schema_version": "2.0",
+  "router_invocation_id": "fixture-ldr-avail-001",
+  "mode": "live_dry_run",
+  "review_target_kind": "plan_only",
+  "decision": "APPROVED",
+  "validator_signature": {
+    "validator": "gd-validate-route-report.py",
+    "schema_version": "2.0"
+  },
+  "recorded_at": "2026-05-14T10:00:00Z",
+  "findings": [
+    {
+      "reviewer": "router_mock",
+      "severity": "info",
+      "description": "mock review"
+    }
+  ],
+  "notes": "live_dry_run: Codex bridge was MOCKED",
+  "codex_transport_status": "available"
+}

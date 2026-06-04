@@ -1,0 +1,19 @@
+{
+  "_fixture_meta": {
+    "fixture_version": "2.0",
+    "schema_version": "2.0",
+    "_test_expect": "FAIL",
+    "description": "Q2/SC-Ax: validator_signature.validator pointing to wrong script must fail — prevents consumers from trusting rogue validators"
+  },
+  "schema_version": "2.0",
+  "router_invocation_id": "fixture-wrong-sig-001",
+  "mode": "fixture",
+  "review_target_kind": "plan_only",
+  "decision": "APPROVED",
+  "validator_signature": {
+    "validator": "gd-validate-probe.py",
+    "schema_version": "2.0"
+  },
+  "recorded_at": "2026-05-14T10:40:00Z",
+  "findings": []
+}

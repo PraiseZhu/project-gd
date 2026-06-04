@@ -1,0 +1,217 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://praise.local/gd-v7/gd-review-result-v2.schema.json",
+  "title": "GD Review Result v2",
+  "description": "Schema for GD review artifacts (v2). Adds schema_version, review_target_kind, target_role to v1 base. 13 allOf: 5 base + 4 review_kind→target_kind + 4 review_kind→template_kind. Enums sourced from gd_review_contract.py SSOT.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "template_kind",
+    "reviewer",
+    "review_target",
+    "review_kind",
+    "review_target_kind",
+    "target_role",
+    "review_run_status",
+    "gd_review_decision",
+    "scope_checked",
+    "findings",
+    "merge_notes",
+    "timestamp"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "2.0"
+    },
+    "template_kind": {
+      "type": "string",
+      "enum": [
+        "gd-plan-review",
+        "gd-execution-outcome-review",
+        "gd-code-diff-review",
+        "gd-combined-review"
+      ]
+    },
+    "reviewer": {
+      "type": "string",
+      "pattern": "^(claude_main|claude_subagent_[a-z0-9_]+|codex)$"
+    },
+    "review_target": {
+      "type": "string",
+      "minLength": 1
+    },
+    "review_kind": {
+      "type": "string",
+      "enum": ["plan", "execution_outcome", "code_diff", "combined"]
+    },
+    "review_target_kind": {
+      "type": "string",
+      "enum": [
+        "plan_only",
+        "execution_only_no_code",
+        "code_only",
+        "execution_plus_code",
+        "no_artifact",
+        "ambiguous_mixed_artifacts"
+      ]
+    },
+    "target_role": {
+      "type": "string",
+      "enum": ["plan_artifact", "execution_artifact", "code_diff", "combined_bundle"]
+    },
+    "review_run_status": {
+      "type": "string",
+      "enum": [
+        "completed",
+        "completed_with_constraint",
+        "degraded",
+        "failed_to_run",
+        "transport_failed",
+        "wrapper_schema_fail"
+      ]
+    },
+    "gd_review_decision": {
+      "type": "string",
+      "enum": ["APPROVED", "REQUIRES_CHANGES", "FAILED", "REVIEW_TARGET_MISSING"]
+    },
+    "scope_checked": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["severity", "description"],
+        "properties": {
+          "severity": {
+            "type": "string",
+            "enum": ["P1", "P2", "P3", "info"]
+          },
+          "description": { "type": "string" },
+          "sc_ref": { "type": "string" },
+          "file_ref": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "merge_notes": { "type": "string" },
+    "residual_risk": { "type": "string" },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
+    },
+    "claude_review_origin": {
+      "type": "string",
+      "enum": ["skill_orchestrated", "direct"]
+    },
+    "cross_validation_findings": {
+      "type": "array",
+      "items": { "type": "object" }
+    }
+  },
+  "allOf": [
+    {
+      "$comment": "base-1: schema_version must be 2.0",
+      "properties": { "schema_version": { "const": "2.0" } }
+    },
+    {
+      "$comment": "base-2: review_kind must be in REVIEW_KIND_ENUM",
+      "properties": {
+        "review_kind": { "enum": ["plan", "execution_outcome", "code_diff", "combined"] }
+      }
+    },
+    {
+      "$comment": "base-3: review_target_kind must be in REVIEW_TARGET_KIND_ENUM",
+      "properties": {
+        "review_target_kind": {
+          "enum": [
+            "plan_only", "execution_only_no_code", "code_only",
+            "execution_plus_code", "no_artifact", "ambiguous_mixed_artifacts"
+          ]
+        }
+      }
+    },
+    {
+      "$comment": "base-4: target_role must be in TARGET_ROLE_ENUM",
+      "properties": {
+        "target_role": { "enum": ["plan_artifact", "execution_artifact", "code_diff", "combined_bundle"] }
+      }
+    },
+    {
+      "$comment": "base-5: no_artifact and ambiguous targets must use REVIEW_TARGET_MISSING or FAILED",
+      "if": {
+        "properties": {
+          "review_target_kind": { "enum": ["no_artifact", "ambiguous_mixed_artifacts"] }
+        }
+      },
+      "then": {
+        "properties": {
+          "gd_review_decision": { "enum": ["REVIEW_TARGET_MISSING", "FAILED", "REQUIRES_CHANGES"] }
+        }
+      }
+    },
+    {
+      "$comment": "review_kind=plan → review_target_kind=plan_only → target_role=plan_artifact",
+      "if": { "properties": { "review_kind": { "const": "plan" } } },
+      "then": {
+        "properties": {
+          "review_target_kind": { "const": "plan_only" },
+          "target_role": { "const": "plan_artifact" }
+        }
+      }
+    },
+    {
+      "$comment": "review_kind=execution_outcome → review_target_kind=execution_only_no_code → target_role=execution_artifact",
+      "if": { "properties": { "review_kind": { "const": "execution_outcome" } } },
+      "then": {
+        "properties": {
+          "review_target_kind": { "const": "execution_only_no_code" },
+          "target_role": { "const": "execution_artifact" }
+        }
+      }
+    },
+    {
+      "$comment": "review_kind=code_diff → review_target_kind=code_only → target_role=code_diff",
+      "if": { "properties": { "review_kind": { "const": "code_diff" } } },
+      "then": {
+        "properties": {
+          "review_target_kind": { "const": "code_only" },
+          "target_role": { "const": "code_diff" }
+        }
+      }
+    },
+    {
+      "$comment": "review_kind=combined → review_target_kind=execution_plus_code → target_role=combined_bundle",
+      "if": { "properties": { "review_kind": { "const": "combined" } } },
+      "then": {
+        "properties": {
+          "review_target_kind": { "const": "execution_plus_code" },
+          "target_role": { "const": "combined_bundle" }
+        }
+      }
+    },
+    {
+      "$comment": "review_kind=plan → template_kind=gd-plan-review",
+      "if": { "properties": { "review_kind": { "const": "plan" } } },
+      "then": { "properties": { "template_kind": { "const": "gd-plan-review" } } }
+    },
+    {
+      "$comment": "review_kind=execution_outcome → template_kind=gd-execution-outcome-review",
+      "if": { "properties": { "review_kind": { "const": "execution_outcome" } } },
+      "then": { "properties": { "template_kind": { "const": "gd-execution-outcome-review" } } }
+    },
+    {
+      "$comment": "review_kind=code_diff → template_kind=gd-code-diff-review",
+      "if": { "properties": { "review_kind": { "const": "code_diff" } } },
+      "then": { "properties": { "template_kind": { "const": "gd-code-diff-review" } } }
+    },
+    {
+      "$comment": "review_kind=combined → template_kind=gd-combined-review",
+      "if": { "properties": { "review_kind": { "const": "combined" } } },
+      "then": { "properties": { "template_kind": { "const": "gd-combined-review" } } }
+    }
+  ]
+}

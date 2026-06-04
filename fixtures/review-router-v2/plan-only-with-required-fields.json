@@ -1,0 +1,22 @@
+{
+  "_fixture_meta": {
+    "fixture_version": "2.0",
+    "schema_version": "2.0",
+    "_test_expect": "PASS",
+    "description": "Plan 8 v4.1 Step 8: plan_only with plan_ref + plan_hash required fields populated; APPROVED."
+  },
+  "schema_version": "2.0",
+  "router_invocation_id": "fixture-plan-only-required-001",
+  "mode": "fixture",
+  "review_target_kind": "plan_only",
+  "decision": "APPROVED",
+  "validator_signature": {
+    "validator": "gd-validate-route-report.py",
+    "schema_version": "2.0"
+  },
+  "recorded_at": "2026-05-14T14:00:00Z",
+  "findings": [],
+  "plan_ref": "fixtures/plans/well-formed-plan.md",
+  "plan_hash": "3333333333333333333333333333333333333333333333333333333333333333",
+  "notes": "Step 8 per-kind required fields: plan_only must carry plan_ref + plan_hash"
+}

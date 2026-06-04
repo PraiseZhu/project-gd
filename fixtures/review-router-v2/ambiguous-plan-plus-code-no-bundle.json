@@ -1,0 +1,32 @@
+{
+  "_fixture_meta": {
+    "fixture_version": "2.0",
+    "schema_version": "2.0",
+    "_test_expect": "PASS",
+    "description": "Plan 8 v4.1 Step 5: plan + code without bundle marker → ambiguous_mixed_artifacts; routed correctly with fail-closed REVIEW_TARGET_MISSING decision and a finding documenting the cause."
+  },
+  "schema_version": "2.0",
+  "router_invocation_id": "fixture-ambiguous-plan-plus-code-001",
+  "mode": "fixture",
+  "review_target_kind": "ambiguous_mixed_artifacts",
+  "decision": "REVIEW_TARGET_MISSING",
+  "validator_signature": {
+    "validator": "gd-validate-route-report.py",
+    "schema_version": "2.0"
+  },
+  "recorded_at": "2026-05-14T13:30:00Z",
+  "findings": [
+    {
+      "reviewer": "router",
+      "severity": "info",
+      "description": "plan file + code diff present without bundle declaration; fail-closed per Plan 8 v4.1 Step 5"
+    }
+  ],
+  "detected_artifact_set": {
+    "has_plan": true,
+    "has_execution": false,
+    "has_code": true
+  },
+  "failure_code": "AMBIGUOUS_MIXED_ARTIFACTS",
+  "notes": "ambiguous case routed correctly with fail-closed decision; Codex must not be invoked"
+}

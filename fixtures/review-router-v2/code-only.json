@@ -1,0 +1,24 @@
+{
+  "_fixture_meta": {
+    "fixture_version": "2.0",
+    "schema_version": "2.0",
+    "_test_expect": "PASS",
+    "description": "code-only diff without associated execution artifact, APPROVED"
+  },
+  "schema_version": "2.0",
+  "router_invocation_id": "fixture-code-only-001",
+  "mode": "fixture",
+  "review_target_kind": "code_only",
+  "decision": "APPROVED",
+  "validator_signature": {
+    "validator": "gd-validate-route-report.py",
+    "schema_version": "2.0"
+  },
+  "recorded_at": "2026-05-14T10:15:00Z",
+  "findings": [],
+  "codex_transport_status": "available",
+  "fix_rounds": 0,
+  "diff_source": "git diff main..HEAD -- scripts/",
+  "diff_hash": "2222222222222222222222222222222222222222222222222222222222222222",
+  "patch_generation_method": "git_diff"
+}

@@ -1,0 +1,34 @@
+{
+  "_fixture_meta": {
+    "fixture_version": "2.0",
+    "schema_version": "2.0",
+    "_test_expect": "PASS",
+    "description": "plan-only target, REQUIRES_CHANGES — Codex and Claude both find issues"
+  },
+  "schema_version": "2.0",
+  "router_invocation_id": "fixture-plan-only-rc-001",
+  "mode": "fixture",
+  "review_target_kind": "plan_only",
+  "decision": "REQUIRES_CHANGES",
+  "validator_signature": {
+    "validator": "gd-validate-route-report.py",
+    "schema_version": "2.0"
+  },
+  "recorded_at": "2026-05-14T10:05:00Z",
+  "findings": [
+    {
+      "reviewer": "claude",
+      "severity": "medium",
+      "description": "SC-3 missing evidence column in success criteria table"
+    },
+    {
+      "reviewer": "codex",
+      "severity": "high",
+      "description": "TASK_GOAL cannot be verified by any listed SC entry"
+    }
+  ],
+  "codex_transport_status": "available",
+  "fix_rounds": 0,
+  "plan_ref": "fixtures/plans/sample-plan-with-issues.md",
+  "plan_hash": "1111111111111111111111111111111111111111111111111111111111111111"
+}
