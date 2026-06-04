@@ -49,7 +49,7 @@ fi
 
 # 5. Bridge compat smoke (actually execute, not just check existence)
 check "bridge compat smoke" \
-  bash scripts/gd-bridge-compat-smoke.sh
+  bash tests/gd-bridge-compat-smoke.sh
 
 # 6. Backup manifest valid JSON
 MANIFEST="reports/project-gd-flow-closure-rev21/20260517T154346Z/backup-manifest.json"
@@ -204,11 +204,11 @@ check "L1.5: execution_outcome capsule has MANDATORY VERIFY STEP" \
     rm -f "${TMPDIR:-/var/tmp}/gd-l15-sanity-$$.json"'
 
 check "L1: combined capsule <= 30KB" \
-  bash scripts/gd-l1-combined-bundle-smoke.sh
+  bash tests/gd-l1-combined-bundle-smoke.sh
 
 # 13. L3 v1 fixture regression (no false positives)
 check "L3 v1 fixture regression" \
-  bash scripts/gd-l3-regression-v1-fixtures.sh
+  bash tests/gd-l3-regression-v1-fixtures.sh
 
 echo ""
 echo "=== L1/L2/L3 Release Gate Summary (consumed from gd-codex-chain-release-status.sh) ==="
