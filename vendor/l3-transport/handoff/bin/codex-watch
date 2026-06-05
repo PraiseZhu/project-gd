@@ -435,13 +435,19 @@ process_capsule() {
   local sandbox
   sandbox=$(mode_to_sandbox "$mode")
 
-  # GAP-1: provider chain for rotation (CODEX_PROVIDER_CHAIN, default "tapsvc")
+  # BUG-3: backoff opt-in (CODEX_RETRY_BACKOFF, default 0 = no wait).
+maybe_backoff() {
+  if [[ "${CODEX_RETRY_BACKOFF:-0}" -gt 0 ]]; then
+    log "Backoff: ${CODEX_RETRY_BACKOFF}s before retry (attempt=${attempt})"
+    sleep "${CODEX_RETRY_BACKOFF}"
+  fi
+}
+
+# GAP-1: provider chain for rotation (CODEX_PROVIDER_CHAIN, default "tapsvc")
   IFS=',' read -r -a PROVIDER_CHAIN <<< "${CODEX_PROVIDER_CHAIN:-tapsvc}"
   local chain_len=${#PROVIDER_CHAIN[@]}
-  # max_attempts = max(2, chain_len), capped at 3
-  local max_attempts=2
-  if [[ $chain_len -gt 2 ]]; then max_attempts=$chain_len; fi
-  if [[ $max_attempts -gt 3 ]]; then max_attempts=3; fi
+  # max_attempts = clamp(chain_len, 2, 3): at least 2, at most 3
+  local max_attempts=$(( chain_len < 2 ? 2 : (chain_len > 3 ? 3 : chain_len) ))
 
   # Base codex args (provider added per-attempt in loop)
   local codex_base_args=("exec" "--sandbox" "$sandbox" "--skip-git-repo-check" "--ephemeral" "--cd" "$cwd")
@@ -505,18 +511,14 @@ process_capsule() {
 
     if [[ $exec_exit -eq 0 ]]; then
       # Mode-aware completion check (SC-02): discuss→RECOMMENDATION, review→VERDICT
-      local completion_ok=false
+      local marker_regex
       if [[ "$mode" == "discuss" ]]; then
-        if grep -qE '^RECOMMENDATION:' "$tmp_stdout"; then
-          completion_ok=true
-        fi
+        marker_regex='^RECOMMENDATION:'
       else
-        if grep -qE '^VERDICT: (APPROVED|REQUIRES_CHANGES)' "$tmp_stdout"; then
-          completion_ok=true
-        fi
+        marker_regex='^VERDICT: (APPROVED|REQUIRES_CHANGES)'
       fi
 
-      if [[ "$completion_ok" == "true" ]]; then
+      if grep -qE "$marker_regex" "$tmp_stdout"; then
         # Success — write result, mark done, do NOT save stderr/exit as artifacts
         cat "$tmp_stdout" > "$result"
         echo "0" > "$exit_file"    # BUG-2: record final attempt exit on success
@@ -525,14 +527,10 @@ process_capsule() {
         break
       else
         # Exit 0 but no valid completion marker — save artifacts, do NOT retry
+        local marker_label="${mode^^}_NO_MARKER"  # DISCUSS_NO_MARKER or REVIEW-ONLY_NO_MARKER
         cat "$tmp_stdout" > "$result"
-        if [[ "$mode" == "discuss" ]]; then
-          echo "WATCH_NO_RECOMMENDATION: codex returned exit 0 but no RECOMMENDATION in output (attempt=${attempt})" >> "$result"
-          log "Failed: $job_id (no RECOMMENDATION, attempt=${attempt})"
-        else
-          echo "WATCH_NO_VERDICT: codex returned exit 0 but no VERDICT in output (attempt=${attempt})" >> "$result"
-          log "Failed: $job_id (no valid VERDICT, attempt=${attempt})"
-        fi
+        echo "WATCH_${marker_label}: codex returned exit 0 but no marker in output (attempt=${attempt})" >> "$result"
+        log "Failed: $job_id (no ${marker_regex} marker, attempt=${attempt})"
         cp "$tmp_stderr" "$stderr_file"
         echo "$exec_exit" > "$exit_file"
         final_status="failed"
@@ -543,11 +541,7 @@ process_capsule() {
       cp "$tmp_stderr" "$stderr_file"
       echo "$exec_exit" > "$exit_file"
       if [[ $attempt -lt $max_attempts ]]; then
-        # BUG-3: backoff opt-in (CODEX_RETRY_BACKOFF, default 0 = no wait)
-        if [[ "${CODEX_RETRY_BACKOFF:-0}" -gt 0 ]]; then
-          log "Backoff: ${CODEX_RETRY_BACKOFF}s before retry (attempt=${attempt})"
-          sleep "${CODEX_RETRY_BACKOFF}"
-        fi
+        maybe_backoff
         log "Timeout: $job_id (attempt=${attempt}, retrying)"
         continue
       fi

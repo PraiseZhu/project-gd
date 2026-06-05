@@ -48,33 +48,26 @@ if [[ ! -f "$CAPSULE_FILE" ]]; then
   exit 1
 fi
 
-# Use live codex-send-wait (same daemon as review, different mode)
+# Use live codex-send-wait (same daemon as review, different mode).
+# CODEX_SEND_WAIT_TIMEOUT is read by codex-send-wait; no hardcoded --timeout here
+# so the single env var controls both discuss and review paths (SC-06).
 CODEX_BIN="$HOME/.claude/handoff/bin/codex-send-wait"
-CODEX_OUTPUT=""
-CODEX_EXIT=0
 
-if [[ -x "$CODEX_BIN" ]]; then
-  CODEX_OUTPUT=$("$CODEX_BIN" --cwd "$DISCUSS_CWD" --mode discuss --payload-file "$CAPSULE_FILE" --timeout 540 2>&1) || CODEX_EXIT=$?
-else
-  CODEX_EXIT=127
-fi
-
-if [[ $CODEX_EXIT -eq 127 ]] || [[ $CODEX_EXIT -eq 2 ]]; then
+if [[ ! -x "$CODEX_BIN" ]]; then
   echo "[DISCUSS] DEGRADED — watch unavailable, cannot get second opinion"
   exit 2
-elif [[ $CODEX_EXIT -ne 0 ]]; then
-  echo "[DISCUSS] FAILED — codex-send-wait exit $CODEX_EXIT" >&2
+fi
+
+CODEX_OUTPUT=$("$CODEX_BIN" --cwd "$DISCUSS_CWD" --mode discuss \
+  --payload-file "$CAPSULE_FILE" 2>&1) || {
+  local exit_code=$?
+  if [[ $exit_code -eq 2 ]]; then
+    echo "[DISCUSS] DEGRADED — watch unavailable, cannot get second opinion"
+    exit 2
+  fi
+  echo "[DISCUSS] FAILED — codex-send-wait exit $exit_code" >&2
   echo "$CODEX_OUTPUT" >&2
   exit 4
-fi
+}
 
-# Output the discussion result (stdout — Claude reads this)
 echo "$CODEX_OUTPUT"
-
-# Quick sanity: check for RECOMMENDATION marker
-if ! echo "$CODEX_OUTPUT" | grep -q '^RECOMMENDATION:'; then
-  echo "[DISCUSS] WARNING — result missing RECOMMENDATION marker" >&2
-  # Still exit 0 — result is returned, Claude can decide
-fi
-
-exit 0

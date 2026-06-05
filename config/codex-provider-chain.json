@@ -1,6 +1,0 @@
-{
-  "chain": ["tapsvc", "tapsvc-fallback"],
-  "retry_backoff_sec": 0,
-  "send_wait_timeout_sec": 540,
-  "_comment": "chain: ordered provider list for CODEX_PROVIDER_CHAIN env. retry_backoff_sec: CODEX_RETRY_BACKOFF (0=off). send_wait_timeout_sec: CODEX_SEND_WAIT_TIMEOUT (must ≥ chain_len × CODEX_EXEC_TIMEOUT + backoff)"
-}

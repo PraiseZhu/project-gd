@@ -87,46 +87,36 @@ deploy_count=0
 declare -a DEPLOY_SOURCES=()
 declare -a DEPLOY_TARGETS=()
 
-# Binaries
-for f in "$SRC_BIN"/*; do
-  fname=$(basename "$f")
-  target="$LIVE_BIN/$fname"
-  DEPLOY_SOURCES+=("$f")
-  DEPLOY_TARGETS+=("$target")
-  src_hash=$(sha256_file "$f")
-  tgt_hash=$(sha256_file "$target")
-  if [[ "$src_hash" == "$tgt_hash" ]]; then
-    log "  SKIP bin/$fname (hash match)"
-  else
-    log "  DEPLOY bin/$fname ($src_hash → $tgt_hash)"
-    deploy_count=$((deploy_count + 1))
-  fi
+# Single loop over (src_dir, tgt_dir, label) tuples for bin and lib
+for pair in "$SRC_BIN:$LIVE_BIN:bin" "$SRC_LIB:$LIVE_LIB:lib"; do
+  IFS=':' read -r src_dir tgt_dir label <<< "$pair"
+  for f in "$src_dir"/*; do
+    fname=$(basename "$f")
+    target="$tgt_dir/$fname"
+    DEPLOY_SOURCES+=("$f")
+    DEPLOY_TARGETS+=("$target")
+    src_hash=$(sha256_file "$f")
+    tgt_hash=$(sha256_file "$target")
+    if [[ "$src_hash" == "$tgt_hash" ]]; then
+      log "  SKIP ${label}/${fname} (hash match)"
+    else
+      log "  DEPLOY ${label}/${fname} ($src_hash → $tgt_hash)"
+      deploy_count=$((deploy_count + 1))
+    fi
+  done
 done
 
-# Library
-for f in "$SRC_LIB"/*; do
-  fname=$(basename "$f")
-  target="$LIVE_LIB/$fname"
-  DEPLOY_SOURCES+=("$f")
-  DEPLOY_TARGETS+=("$target")
-  src_hash=$(sha256_file "$f")
-  tgt_hash=$(sha256_file "$target")
-  if [[ "$src_hash" == "$tgt_hash" ]]; then
-    log "  SKIP lib/$fname (hash match)"
-  else
-    log "  DEPLOY lib/$fname ($src_hash → $tgt_hash)"
-    deploy_count=$((deploy_count + 1))
-  fi
-done
-
-# Plist
+# Plist (also in DEPLOY arrays for unified post-copy verification)
+fname="$PLIST_NAME"
 target_plist="$LIVE_LAUNCHAGENTS/$PLIST_NAME"
+DEPLOY_SOURCES+=("$SRC_PLIST")
+DEPLOY_TARGETS+=("$target_plist")
 src_hash=$(sha256_file "$SRC_PLIST")
 tgt_hash=$(sha256_file "$target_plist")
 if [[ "$src_hash" == "$tgt_hash" ]]; then
-  log "  SKIP $PLIST_NAME (hash match)"
+  log "  SKIP $fname (hash match)"
 else
-  log "  DEPLOY $PLIST_NAME ($src_hash → $tgt_hash)"
+  log "  DEPLOY $fname ($src_hash → $tgt_hash)"
   deploy_count=$((deploy_count + 1))
 fi
 
@@ -185,18 +175,6 @@ for i in "${!DEPLOY_SOURCES[@]}"; do
     exit 1
   fi
 done
-
-# Plist (separate because it's not in the DEPLOY arrays for bin/lib)
-if [[ "$src_hash" != "$tgt_hash" ]]; then
-  cp "$SRC_PLIST" "$target_plist"
-  plist_hash_after=$(sha256_file "$target_plist")
-  if [[ "$src_hash" == "$plist_hash_after" ]]; then
-    log "  OK: $PLIST_NAME ($src_hash)"
-  else
-    log "  FAIL: $PLIST_NAME hash mismatch after copy!" >&2
-    exit 1
-  fi
-fi
 
 log "Deploy complete: $deploy_count files"
 
