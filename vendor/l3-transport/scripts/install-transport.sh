@@ -214,8 +214,8 @@ if $RESTART_DAEMON; then
     log "Waiting for drain (max 120s)..."
     waited=0
     while [[ $waited -lt 120 ]]; do
-      active_count=$(ls "$LIVE_HANDOFF/active"/*.capsule 2>/dev/null | wc -l | tr -d ' ')
-      running_count=$(ls "$LIVE_HANDOFF/active"/*.worker.running 2>/dev/null | wc -l | tr -d ' ')
+	      active_count=$(find "$LIVE_HANDOFF/active" -maxdepth 1 -name '*.capsule' -type f 2>/dev/null | wc -l | tr -d ' ')
+	      running_count=$(find "$LIVE_HANDOFF/active" -maxdepth 1 -name '*.worker.running' -type f 2>/dev/null | wc -l | tr -d ' ')
       if [[ $active_count -eq 0 ]] && [[ $running_count -eq 0 ]]; then
         log "Queue drained after ${waited}s"
         break
