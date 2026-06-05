@@ -1,0 +1,33 @@
+{
+  "template_kind": "gd-plan-review",
+  "reviewer": "codex",
+  "review_target": "/Users/praise/.claude/plans/serialized-inventing-biscuit.md",
+  "review_kind": "plan",
+  "review_run_status": "completed",
+  "gd_review_decision": "REQUIRES_CHANGES",
+  "scope_checked": [
+    {
+      "facet": "raw markdown structure",
+      "result": "pass",
+      "evidence": "writer-validated; verdict=REQUIRES_CHANGES"
+    }
+  ],
+  "findings": [
+    {
+      "severity": "P2",
+      "title": "install-transport 部署范围自相矛盾",
+      "sc_refs": [
+        "SC-12"
+      ],
+      "evidence": "`/Users/praise/.claude/plans/serialized-inventing-biscuit.md:119`、`/Users/praise/.claude/plans/serialized-inventing-biscuit.md:142`、`/Users/praise/.claude/plans/serialized-inventing-biscuit.md:185-187`",
+      "impact": "执行者会把讨论入口部署成两种不同形态，可能复制未计划的 `scripts/` 到 live，造成双副本漂移，SC-12 的幂等/hash/部署集验收也无法判断成功。",
+      "required_fix": "统一 Step 5：若按前文设计，应删除 “含 codex-consult.sh”，并明确 `install-transport.sh` 只部署 `handoff/bin`、`lib`、`plist`，不部署 `vendor/l3-transport/scripts/**`。",
+      "verify": "`install-transport.sh --dry-run` 输出仅列 `handoff/bin`、`lib`、plist；`grep -n \"含 codex-consult.sh\\\\|scripts/\" /Users/praise/.claude/plans/serialized-inventing-biscuit.md` 不再显示部署 `scripts/` 的矛盾描述。"
+    }
+  ],
+  "merge_notes": {
+    "conflict_with_other_reviewer": false
+  },
+  "residual_risk": [],
+  "timestamp": "2026-06-05T14:28:09Z"
+}
