@@ -1,5 +1,0 @@
-cbc53b03141382d32b5bfd91199c5aeb64544d64b23298f1f02bdb2638623abf  commands/gd.md
-e6ec41b8e81241b2fcf8d0eddd43594f31bafc18145d44d5bd8b8d560c1cdc88  docs/gd-v7-claude-command.md
-239389aec26ff1c134d788195e39adfc3af7b3cbcf8784adb2cf424c53a723a1  manifest.gd-v7.json
-f4e0585bdfa7b1aade1d336b778a07cc17505de5ad55effc6530d6220f0dfe24  prompts/gd-review-standard.md
-39ca14127c5bcc25cb2809139f5c19f3552db10ba00095a274bbde3c453bd2b0  scripts/gd-codex-review.py

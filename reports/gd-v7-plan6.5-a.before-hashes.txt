@@ -1,3 +1,0 @@
-09e4e4ce08c0e6f8e86186d1ab21e2112d61ee03b703a0748491d06075af1c06  commands/gd.md
-dad0c69a8aeabd6ac38e97fc81a5cc8bc08a56f30ca7c5963a7b9208b231e0ab  docs/gd-v7-claude-command.md
-239389aec26ff1c134d788195e39adfc3af7b3cbcf8784adb2cf424c53a723a1  manifest.gd-v7.json

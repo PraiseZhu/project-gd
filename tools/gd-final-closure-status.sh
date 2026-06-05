@@ -60,9 +60,9 @@ check "backup manifest valid JSON" \
 # Note: gd-install-rev21-for-handtest.sh moved to archive/ (one-time task complete)
 #       gd-bridge-compat-smoke.sh moved to tests/ (smoke/regression isolation)
 for s in \
-  scripts/gd-root-parity-status.sh \
-  scripts/gd-parity-verify.sh \
-  scripts/gd-final-closure-status.sh \
+  tools/gd-root-parity-status.sh \
+  tools/gd-parity-verify.sh \
+  tools/gd-final-closure-status.sh \
   tests/gd-bridge-compat-smoke.sh; do
   check "script executable: $s" test -x "$s"
 done
@@ -213,7 +213,7 @@ check "L3 v1 fixture regression" \
 echo ""
 echo "=== L1/L2/L3 Release Gate Summary (consumed from gd-codex-chain-release-status.sh) ==="
 
-RELEASE_GATE_OUT=$(bash "$MAIN/scripts/gd-codex-chain-release-status.sh" 2>/dev/null || true)
+RELEASE_GATE_OUT=$(bash "$MAIN/tools/gd-codex-chain-release-status.sh" 2>/dev/null || true)
 RELEASE_OVERALL=$(echo "$RELEASE_GATE_OUT" | grep "^OVERALL_RELEASE_STATUS:" | awk '{print $2}' || echo "unknown")
 L1_RS=$(echo "$RELEASE_GATE_OUT" | grep "^  L1_RELEASE_STATUS:" | awk '{print $2}' || echo "unknown")
 L2_RS=$(echo "$RELEASE_GATE_OUT" | grep "^  L2_RELEASE_STATUS:" | awk '{print $2}' || echo "unknown")
@@ -227,7 +227,7 @@ echo "  OVERALL_RELEASE_STATUS: $RELEASE_OVERALL"
 if [ "$RELEASE_OVERALL" = "READY_FOR_COMMIT" ]; then
   PASS=$((PASS+1))
 else
-  echo "  (run bash scripts/gd-codex-chain-release-status.sh for details)"
+  echo "  (run bash tools/gd-codex-chain-release-status.sh for details)"
   FAIL=$((FAIL+1))
 fi
 

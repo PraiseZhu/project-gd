@@ -31,7 +31,7 @@ FAIL=0
 # 1. L3 /gd command parity must still hold
 echo ""
 echo "--- L3 parity check ---"
-if bash "$ROOT/scripts/check-gd-command-parity.sh" 2>/dev/null | grep -q "installed_parity_pass"; then
+if bash "$ROOT/tools/check-gd-command-parity.sh" 2>/dev/null | grep -q "installed_parity_pass"; then
   echo "  L3_GD_COMMAND_PARITY: pass"
 else
   echo "  L3_GD_COMMAND_PARITY: FAIL — /gd command has drifted, fix before adding review route"

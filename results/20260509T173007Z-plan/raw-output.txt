@@ -1,2 +1,0 @@
-REV_VERDICT: FAILED
-failure_reason=codex_nonzero

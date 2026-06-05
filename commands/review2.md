@@ -11,7 +11,7 @@ L3_GD_REVIEW_SEMANTICS: unchanged
 RELEASE_VERDICT: NOT_APPLICABLE (default)
 ```
 
-`/review2` output never grants release approval. Only `scripts/gd-codex-chain-release-status.sh` produces `OVERALL_RELEASE_STATUS: READY_FOR_COMMIT`.
+`/review2` output never grants release approval. Only `tools/gd-codex-chain-release-status.sh` produces `OVERALL_RELEASE_STATUS: READY_FOR_COMMIT`.
 
 ## Usage
 
@@ -113,4 +113,4 @@ python3 scripts/gd-codex-bridge-review.py run-bridge \
 
 Install via `scripts/install-review-route-command.sh --route review2 --dry-run` (safe default).
 Live install requires explicit user authorization + ledger entry in `baselines/gd-v7-runtime-write-authorizations.jsonl`.
-Parity check: `scripts/gd-parity-verify.sh --bundle review2_command` (after install).
+Parity check: `tools/gd-parity-verify.sh --bundle review2_command` (after install).

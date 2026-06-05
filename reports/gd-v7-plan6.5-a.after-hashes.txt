@@ -1,2 +1,0 @@
-cbc53b03141382d32b5bfd91199c5aeb64544d64b23298f1f02bdb2638623abf  commands/gd.md
-e6ec41b8e81241b2fcf8d0eddd43594f31bafc18145d44d5bd8b8d560c1cdc88  docs/gd-v7-claude-command.md

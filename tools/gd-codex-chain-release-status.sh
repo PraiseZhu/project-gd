@@ -68,7 +68,7 @@ fi
 
 # ── L3: strict parity (/gd command) ───────────────────────────────────────
 echo "--- L3: /gd command (strict parity) ---"
-if bash "$ROOT/scripts/gd-parity-verify.sh" --bundle gd-command 2>/dev/null | grep -q '"status":"installed_parity_pass"'; then
+if bash "$ROOT/tools/gd-parity-verify.sh" --bundle gd-command 2>/dev/null | grep -q '"status":"installed_parity_pass"'; then
   echo "  [PARITY] L3_RELEASE_STATUS: READY"
 else
   echo "  [PARITY] L3_RELEASE_STATUS: BLOCKED (installed_runtime_drift)"
@@ -276,7 +276,7 @@ fi
 echo ""
 
 # ── review2_command parity status ──────────────────────────────────────────
-R2_OUT=$(bash "$ROOT/scripts/gd-parity-verify.sh" --bundle review2_command 2>/dev/null || true)
+R2_OUT=$(bash "$ROOT/tools/gd-parity-verify.sh" --bundle review2_command 2>/dev/null || true)
 R2_STATUS=$(echo "$R2_OUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('status','error'))" 2>/dev/null || echo "error")
 case "$R2_STATUS" in
   installed_parity_pass)
