@@ -173,6 +173,7 @@ try_claim() {
 mode_to_sandbox() {
   case "${1:-review-only}" in
     review-only)      echo "read-only" ;;
+    discuss)          echo "read-only" ;;
     workspace-write)  echo "workspace-write" ;;
     *)                echo "read-only" ;;
   esac
@@ -275,6 +276,39 @@ QUALITY RULES:
 - P3 items MUST go in Residual Risk, never as findings.
 
 Follow the REVIEW_RULES specified in the capsule.
+
+--- BEGIN CAPSULE ---
+${capsule_content}
+--- END CAPSULE ---
+PROMPT_EOF
+}
+
+build_discuss_prompt() {
+  local capsule_content="$1"
+
+  cat <<PROMPT_EOF
+You are a peer reviewer providing a second opinion. You are NOT a gatekeeper or judge.
+Your role is to think independently, surface tradeoffs, and give a reasoned recommendation.
+
+CORE RULES:
+- Think independently — you may disagree with the stated position
+- Surface tradeoffs, not just pros/cons
+- Give a clear lean (倾向) with reasoning
+- Do NOT issue a verdict (no APPROVED/REQUIRES_CHANGES)
+- Conclude with a single line starting with "RECOMMENDATION:" followed by free-text
+  (e.g. "RECOMMENDATION: 建议采纳方案 A，但在 X 场景下需额外缓存层")
+- The RECOMMENDATION line is your completion signal — it MUST be present
+
+OUTPUT FORMAT:
+# Discussion Result
+
+## 独立分析
+<your independent reasoning>
+
+## 取舍分析
+<tradeoffs, optionally as a table>
+
+RECOMMENDATION: <your recommendation, free-text>
 
 --- BEGIN CAPSULE ---
 ${capsule_content}
@@ -404,7 +438,12 @@ process_capsule() {
   local capsule_content
   capsule_content=$(cat "$capsule")
   local prompt
-  prompt=$(build_review_prompt "$capsule_content")
+  # Mode-aware prompt selection (SC-03): discuss→同侪第二意见, review→现有 reviewer
+  if [[ "$mode" == "discuss" ]]; then
+    prompt=$(build_discuss_prompt "$capsule_content")
+  else
+    prompt=$(build_review_prompt "$capsule_content")
+  fi
 
   # Temp files for this job's I/O — use deterministic paths in HANDOFF_ACTIVE
   # to avoid relying on mktemp (which requires TMPDIR write access).
@@ -435,19 +474,37 @@ process_capsule() {
     echo "attempt=${attempt} exit=${exec_exit}" >> "$attempts_file"
 
     if [[ $exec_exit -eq 0 ]]; then
-      if grep -qE '^VERDICT: (APPROVED|REQUIRES_CHANGES)' "$tmp_stdout"; then
+      # Mode-aware completion check (SC-02): discuss→RECOMMENDATION, review→VERDICT
+      local completion_ok=false
+      if [[ "$mode" == "discuss" ]]; then
+        if grep -qE '^RECOMMENDATION:' "$tmp_stdout"; then
+          completion_ok=true
+        fi
+      else
+        if grep -qE '^VERDICT: (APPROVED|REQUIRES_CHANGES)' "$tmp_stdout"; then
+          completion_ok=true
+        fi
+      fi
+
+      if [[ "$completion_ok" == "true" ]]; then
         # Success — write result, mark done, do NOT save stderr/exit as artifacts
         cat "$tmp_stdout" > "$result"
+        echo "0" > "$exit_file"    # BUG-2: record final attempt exit on success
         final_status="done"
-        log "Completed: $job_id (attempt=${attempt}, sandbox=${sandbox}, cwd=${cwd})"
+        log "Completed: $job_id (attempt=${attempt}, mode=${mode}, sandbox=${sandbox}, cwd=${cwd})"
         break
       else
-        # Exit 0 but no valid VERDICT — save artifacts, do NOT retry (output is likely wrong model)
+        # Exit 0 but no valid completion marker — save artifacts, do NOT retry
         cat "$tmp_stdout" > "$result"
-        echo "WATCH_NO_VERDICT: codex returned exit 0 but no VERDICT in output (attempt=${attempt})" >> "$result"
+        if [[ "$mode" == "discuss" ]]; then
+          echo "WATCH_NO_RECOMMENDATION: codex returned exit 0 but no RECOMMENDATION in output (attempt=${attempt})" >> "$result"
+          log "Failed: $job_id (no RECOMMENDATION, attempt=${attempt})"
+        else
+          echo "WATCH_NO_VERDICT: codex returned exit 0 but no VERDICT in output (attempt=${attempt})" >> "$result"
+          log "Failed: $job_id (no valid VERDICT, attempt=${attempt})"
+        fi
         cp "$tmp_stderr" "$stderr_file"
         echo "$exec_exit" > "$exit_file"
-        log "Failed: $job_id (no valid VERDICT, attempt=${attempt})"
         final_status="failed"
         break
       fi
@@ -456,6 +513,11 @@ process_capsule() {
       cp "$tmp_stderr" "$stderr_file"
       echo "$exec_exit" > "$exit_file"
       if [[ $attempt -lt $max_attempts ]]; then
+        # BUG-3: backoff opt-in (CODEX_RETRY_BACKOFF, default 0 = no wait)
+        if [[ "${CODEX_RETRY_BACKOFF:-0}" -gt 0 ]]; then
+          log "Backoff: ${CODEX_RETRY_BACKOFF}s before retry (attempt=${attempt})"
+          sleep "${CODEX_RETRY_BACKOFF}"
+        fi
         log "Timeout: $job_id (attempt=${attempt}, retrying)"
         continue
       fi
@@ -467,6 +529,11 @@ process_capsule() {
       cp "$tmp_stderr" "$stderr_file"
       echo "$exec_exit" > "$exit_file"
       if [[ $attempt -lt $max_attempts ]]; then
+        # BUG-3: backoff opt-in (CODEX_RETRY_BACKOFF, default 0 = no wait)
+        if [[ "${CODEX_RETRY_BACKOFF:-0}" -gt 0 ]]; then
+          log "Backoff: ${CODEX_RETRY_BACKOFF}s before retry (attempt=${attempt})"
+          sleep "${CODEX_RETRY_BACKOFF}"
+        fi
         log "Failed attempt: $job_id (exit=${exec_exit}, attempt=${attempt}, retrying)"
         continue
       fi

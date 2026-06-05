@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Send a capsule and wait for the result from codex-watch.
+# Mode-aware completion: review→VERDICT, discuss→RECOMMENDATION (SC-02)
 # Exit codes:
-#   0 — review complete, result contains valid VERDICT
+#   0 — complete, result contains valid completion marker (mode-dependent)
 #   1 — usage error
 #   2 — watcher stopped (WATCH_UNAVAILABLE)
 #   3 — timeout
-#   4 — review failed (status=failed or no valid VERDICT)
+#   4 — failed (status=failed or no valid completion marker)
 #   5 — batch cancelled before this job ran (Plan 9 Phase B)
 #   6 — batch cancelled while this job was running; result preserved as
 #       <job>.stale_completed.json but NOT trusted (Plan 9 Phase B)
@@ -68,7 +69,17 @@ while [[ $elapsed -lt $TIMEOUT ]]; do
     case "$current_status" in
       done)
         if [[ -f "$result_file" ]]; then
-          if grep -qE '^VERDICT: (APPROVED|REQUIRES_CHANGES)' "$result_file"; then
+          # Mode-aware completion check (SC-02): review→VERDICT, discuss→RECOMMENDATION
+          if [[ "$mode" == "discuss" ]]; then
+            if grep -qE '^RECOMMENDATION:' "$result_file"; then
+              cat "$result_file"
+              exit 0
+            else
+              echo "Error: discuss completed but result contains no RECOMMENDATION" >&2
+              cat "$result_file" >&2
+              exit 4
+            fi
+          elif grep -qE '^VERDICT: (APPROVED|REQUIRES_CHANGES)' "$result_file"; then
             cat "$result_file"
             exit 0
           else
