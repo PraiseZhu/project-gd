@@ -434,7 +434,17 @@ process_capsule() {
 
   local sandbox
   sandbox=$(mode_to_sandbox "$mode")
-  local codex_args=("exec" "--sandbox" "$sandbox" "--skip-git-repo-check" "--ephemeral" "--cd" "$cwd")
+
+  # GAP-1: provider chain for rotation (CODEX_PROVIDER_CHAIN, default "tapsvc")
+  IFS=',' read -r -a PROVIDER_CHAIN <<< "${CODEX_PROVIDER_CHAIN:-tapsvc}"
+  local chain_len=${#PROVIDER_CHAIN[@]}
+  # max_attempts = max(2, chain_len), capped at 3
+  local max_attempts=2
+  if [[ $chain_len -gt 2 ]]; then max_attempts=$chain_len; fi
+  if [[ $max_attempts -gt 3 ]]; then max_attempts=3; fi
+
+  # Base codex args (provider added per-attempt in loop)
+  local codex_base_args=("exec" "--sandbox" "$sandbox" "--skip-git-repo-check" "--ephemeral" "--cd" "$cwd")
   local capsule_content
   capsule_content=$(cat "$capsule")
   local prompt
@@ -452,7 +462,6 @@ process_capsule() {
   local tmp_prompt="${HANDOFF_ACTIVE}/${job_id}.tmp_prompt"
   echo "$prompt" > "$tmp_prompt"
 
-  local max_attempts=2
   local attempt=0
   local final_status="failed"
 
@@ -460,7 +469,28 @@ process_capsule() {
     attempt=$((attempt + 1))
     # Refresh heartbeat before each attempt so healthcheck doesn't falsely kickstart
     date +%s > "$HANDOFF_HEARTBEAT"
-    log "Attempt ${attempt}/${max_attempts}: $job_id"
+
+    # GAP-1: select provider for this attempt (round-robin through chain)
+    local provider_idx=$(( (attempt - 1) % chain_len ))
+    local provider="${PROVIDER_CHAIN[$provider_idx]}"
+
+    # GAP-1 fail-safe: verify provider block exists in ~/.codex/config.toml
+    # Skip this provider if block is missing; fall through to next attempt
+    if [[ -f "$HOME/.codex/config.toml" ]]; then
+      if ! grep -qE "^\[model_providers\.${provider}\]" "$HOME/.codex/config.toml" 2>/dev/null; then
+        log "Skipping provider ${provider}: no [model_providers.${provider}] block in config.toml"
+        if [[ $attempt -lt $max_attempts ]]; then
+          continue
+        fi
+        final_status="failed"
+        break
+      fi
+    fi
+
+    # Per-attempt codex args with provider
+    local codex_args=("${codex_base_args[@]}" "-c" "model_provider=${provider}")
+
+    log "Attempt ${attempt}/${max_attempts}: $job_id (provider=${provider})"
 
     # Clear per-attempt output
     > "$tmp_stdout"
@@ -471,7 +501,7 @@ process_capsule() {
       "$tmp_prompt" "$tmp_stdout" "$tmp_stderr" \
       codex "${codex_args[@]}" || exec_exit=$?
 
-    echo "attempt=${attempt} exit=${exec_exit}" >> "$attempts_file"
+    echo "attempt=${attempt} exit=${exec_exit} provider=${provider}" >> "$attempts_file"
 
     if [[ $exec_exit -eq 0 ]]; then
       # Mode-aware completion check (SC-02): discuss→RECOMMENDATION, review→VERDICT
