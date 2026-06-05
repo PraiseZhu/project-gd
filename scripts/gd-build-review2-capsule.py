@@ -225,8 +225,28 @@ def render_capsule(profile: str, target: str | None, inline_facts: dict,
 
     lines += [
         "OUTPUT_CONTRACT:",
-        "  Format: Finding -> Evidence -> Root Cause -> Fix",
-        "  Severity: P1 (blocker) | P2 (warning) | P3 (minor)",
+        "  Format:",
+        "    # Code Review Result",
+        "    VERDICT: APPROVED|REQUIRES_CHANGES",
+        "    REVIEW_DOMAIN: <domain>",
+        "    REVIEW_MODE: single_pass",
+        "    REVIEW_DELTA_SCOPE: full_matrix",
+        "",
+        "    ## Scope Checked",
+        "    | 检查面 | 结论 | 证据（≤30字）|",
+        "    |--------|------|---------------|",
+        "",
+        "    ## Findings",
+        "    ### Finding N [P1|P2] <title>",
+        "    SC: <SC-ID from plan>",
+        "    问题: <description>",
+        "    证据: <file:line or path>",
+        "    影响: <impact>",
+        "    最小修复: <fix>",
+        "    验收: <verification>",
+        "",
+        "    ## Residual Risk",
+        "    <none or P3 items only>",
         "",
         "  After findings, output mandatory read coverage as follows (one line per path):",
         "  MANDATORY_READ_COVERAGE:",
@@ -288,6 +308,18 @@ def main() -> int:
 
     # Build mandatory reads
     mandatory_reads = build_mandatory_read_section(cwd, args.profile)
+
+    # code_diff: inject target file as mandatory read if it's a diff patch
+    if args.profile == "code_diff" and args.target:
+        target_path = Path(args.target)
+        if target_path.is_file():
+            mandatory_reads.append({
+                "path": str(target_path),
+                "sha256": sha256_file(target_path),
+                "reason": "Diff patch to review for code correctness",
+                "section_or_range": "all",
+                "exists": True,
+            })
 
     # Validate
     errors = validate_capsule_data(args.profile, inline_facts, mandatory_reads)
