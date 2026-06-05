@@ -11,11 +11,13 @@
 		<key>TAPTAP_API_KEY</key>
 		<string>&lt;REDACTED-set-via-install-or-launchctl-setenv&gt;</string>
 		<key>CODEX_PROVIDER_CHAIN</key>
-		<string>tapsvc</string>
+		<string>tapsvc,tapsvc-fallback</string>
 		<key>CODEX_RETRY_BACKOFF</key>
 		<string>0</string>
 		<key>CODEX_SEND_WAIT_TIMEOUT</key>
 		<string>540</string>
+		<key>CODEX_FALLBACK_API_KEY</key>
+		<string>&lt;REDACTED-set-via-install-or-launchctl-setenv&gt;</string>
 	</dict>
 	<key>KeepAlive</key>
 	<true/>
