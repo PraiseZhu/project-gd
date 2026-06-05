@@ -206,8 +206,8 @@ if $RESTART_DAEMON; then
   log "=== Drain + Restart ==="
 
   # Check active queue
-  active_count=$(ls "$LIVE_HANDOFF/active"/*.capsule 2>/dev/null | wc -l | tr -d ' ')
-  running_count=$(ls "$LIVE_HANDOFF/active"/*.worker.running 2>/dev/null | wc -l | tr -d ' ')
+  active_count=$(find "$LIVE_HANDOFF/active" -maxdepth 1 -name '*.capsule' -type f 2>/dev/null | wc -l | tr -d ' ')
+  running_count=$(find "$LIVE_HANDOFF/active" -maxdepth 1 -name '*.worker.running' -type f 2>/dev/null | wc -l | tr -d ' ')
 
   if [[ $active_count -gt 0 ]] || [[ $running_count -gt 0 ]]; then
     log "Active jobs: ${active_count} capsules, ${running_count} running"

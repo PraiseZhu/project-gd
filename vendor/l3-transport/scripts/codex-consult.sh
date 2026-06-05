@@ -59,7 +59,7 @@ else
   CODEX_EXIT=127
 fi
 
-if [[ $CODEX_EXIT -eq 127 ]]; then
+if [[ $CODEX_EXIT -eq 127 ]] || [[ $CODEX_EXIT -eq 2 ]]; then
   echo "[DISCUSS] DEGRADED — watch unavailable, cannot get second opinion"
   exit 2
 elif [[ $CODEX_EXIT -ne 0 ]]; then
