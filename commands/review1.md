@@ -1,27 +1,97 @@
 ---
-description: L1 轻量 ad-hoc Codex 审查（/review1 plan|code）。落盘 capsule → handoff → ephemeral codex → 回传 verdict。最轻一档；结构化用 /review2，正式全链用 /gd。
+description: L1 交叉讨论/第二意见（默认）+ 轻量审核（--review）。拿不准时让 Codex 给独立分析。默认讨论模式（RECOMMENDATION），--review 子模式保留原有 verdict 审核。
 ---
 
 # /review1 命令
 
 > **Source of truth**：`Project GD/commands/review1.md`
 > **Installed copy**（仅授权后）：`~/.claude/commands/review1.md`，须 hash 一致
-> **链路层级**：L1 — 轻量 ad-hoc 单发 Codex 审查（最轻一档）。L2=`/review2`（profile 工作台）；L3=`/gd`（正式全链多 agent）
+> **链路层级**：L1 — 默认**交叉讨论/第二意见**；`--review` 子模式 = 轻量 ad-hoc 单发 Codex 审查。L2=`/review2`（profile 工作台）；L3=`/gd`（正式全链多 agent）
 > **收编自**：`~/.claude/commands/review.md`（原 `/review`），2026-06-05 收编入 GD
-> **传输层**：用 `vendor/l3-transport/`（review-result-writer → codex-send-wait → codex-watch daemon → codex exec --ephemeral）。运行层完整路径解耦（vendor writer 内部仍含 `~/.claude` 引用）见 `vendor/l3-transport/README.md` 待解耦清单，封装阶段完成。
+> **传输层**：用 `vendor/l3-transport/`（discuss: codex-consult → codex-send-wait --mode discuss；review: review-result-writer → codex-send-wait --mode review-only → codex-watch daemon → codex exec --ephemeral）。运行层完整路径解耦（vendor writer 内部仍含 `~/.claude` 引用）见 `vendor/l3-transport/README.md` 待解耦清单，封装阶段完成。
 
-手动触发 Codex review。**绝不自动触发** — 只有用户显式输入 `/review1 plan` 或 `/review1 code` 时才执行。
+手动触发 Codex 第二意见或审核。**绝不自动触发** — 只有用户显式输入 `/review1` 或 `/review1 --review` 时才执行。
 
 ## 用法
 
 ```
-/review1 plan          # 审查当前计划
-/review1 code          # 审查当前代码变更
+/review1               # 默认：交叉讨论/第二意见（无 verdict 闸门）
+/review1 --review plan # 审核当前计划（verdict gate）
+/review1 --review code # 审核当前代码变更（verdict gate）
 ```
+
+### 两种模式
+
+| 模式 | 触发 | 完成标记 | 闸门 | 留痕 |
+|------|------|---------|------|------|
+| **讨论**（默认） | `/review1` | `RECOMMENDATION:` | 无 verdict | 不写 review-baseline |
+| **审核** | `/review1 --review` | `VERDICT: APPROVED\|REQUIRES_CHANGES` | 双层 verdict | 写 review-baseline |
+
+讨论模式是「拿不准让 Codex 给第二意见」——Codex 独立推理、可反对、列取舍、给倾向，**不判决**。
+审核模式是「让 Codex 出审核判决」——保留原有 verdict 语义，0 回归。
 
 ---
 
-## Review Capsule 标准
+## Discuss Capsule 标准（讨论模式）
+
+每次 `/review1`（默认，无 `--review`）必须生成以下 discuss capsule：
+
+```text
+QUESTION: <你想问 Codex 的问题，一句话>
+CONTEXT: <相关上下文：当前任务、项目状态、已尝试方案>
+CLAUDE_LEAN: <可选，Claude 当前的倾向和理由>
+OPTIONS: <可选，正在考虑的方案，分号分隔>
+PROJECT_ROOT: <项目根目录绝对路径>
+```
+
+### 字段说明
+
+- `QUESTION` — 核心问题，Codex 围绕此给出独立分析
+- `CONTEXT` — 足够上下文让 Codex 理解场景（当前任务、约束、已做决策）
+- `CLAUDE_LEAN` — 可选，Claude 当前倾向 + 理由（Codex 可反对）
+- `OPTIONS` — 可选，正在考虑的方案列表
+- `PROJECT_ROOT` — 项目根目录，供 CWD 使用
+
+Discuss capsule **不含**：REVIEW_KIND、VERDICT、REVIEW_DOMAIN、SUCCESS_CRITERIA、BASELINE 等审核字段。
+
+### 讨论模式执行流程
+
+#### Step D1: 收集信息
+
+1. 从对话上下文提取用户问题、当前任务、约束
+2. 确定 Claude 当前倾向（如有）
+3. 列出正在考虑的方案（如有）
+
+#### Step D2: 生成 Discuss Capsule
+
+按上方格式填充。QUESTION 必须明确；CONTEXT 足够让 Codex 独立推理。
+
+#### Step D3: 生成 Capsule 临时文件
+
+将 capsule 写入临时文件（Bash `cat <<'EOF' > /tmp/discuss-capsule-$$.txt`）。
+
+#### Step D4: 发送并获取讨论结果
+
+```bash
+bash "<GD_ROOT>/vendor/l3-transport/scripts/codex-consult.sh" \
+  --capsule-file /tmp/discuss-capsule-$$.txt \
+  --cwd "$PWD"
+```
+
+脚本行为：
+- 内部调用 `codex-send-wait --mode discuss --timeout 540`
+- 返回 Codex 讨论文本（含 `RECOMMENDATION:` 收尾）
+- **不写** review-baseline、**不挂** stop hook
+- 不可用时输出 `[DISCUSS] DEGRADED`
+
+Codex 返回后 Claude 应：
+1. 展示 Codex 的独立分析和建议
+2. 结合自己的判断给出最终建议
+3. **不自动执行任何操作**，由用户决定
+
+---
+
+## Review Capsule 标准（审核模式，--review）
 
 每次 `/review1` 必须生成以下完整 capsule，所有字段必填：
 
@@ -446,7 +516,14 @@ Follow-up 默认不重新 full matrix，只检查：
 
 ## 执行流程
 
-### Step 1: 收集信息
+### 模式分发
+
+`/review1` 第一步：判断用户意图。
+
+- **无 `--review` 标志** → 走**讨论模式**（Step D1-D4），见上方「Discuss Capsule 标准」
+- **有 `--review plan` 或 `--review code`** → 走**审核模式**（Step 1-4），见下方
+
+### 审核模式 Step 1: 收集信息
 
 根据 `REVIEW_KIND` 收集所需数据：
 
@@ -473,16 +550,16 @@ Follow-up 默认不重新 full matrix，只检查：
 9. 确定 `REVIEW_ROUND` 和 `REVIEW_DELTA_SCOPE`
 10. 如为 followup，读取上一轮 findings 填入 `PREVIOUS_FINDINGS`
 
-### Step 2: 生成 Capsule
+### 审核模式 Step 2: 生成 Capsule
 
 按上方标准格式填充所有字段。不可省略任何字段。
 
-### Step 3: 生成 Capsule 临时文件
+### 审核模式 Step 3: 生成 Capsule 临时文件
 
 将 capsule 写入临时文件（Bash `cat <<'EOF' > /tmp/review-capsule-$$.txt`）。
 **禁止使用 Write 工具写 capsule 或 result** — 避免触发 terminal diff preview。
 
-### Step 4: 发送 + 保存结果（单次 Bash 调用）
+### 审核模式 Step 4: 发送 + 保存结果（单次 Bash 调用）
 
 **必须使用 `review-result-writer.sh` 脚本**，一次性完成 send、result 保存、baseline 更新。
 **禁止**用 Write 工具写 `~/.claude/review-baselines/` 下的任何文件。
