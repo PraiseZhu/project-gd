@@ -90,7 +90,7 @@ CODEX_OUTPUT=""
 CODEX_EXIT=0
 
 if [[ -x "$CODEX_BIN" ]]; then
-  CODEX_OUTPUT=$("$CODEX_BIN" --cwd "$REVIEW_CWD" --mode review-only --payload-file "$CAPSULE_FILE" 2>&1) || CODEX_EXIT=$?
+  CODEX_OUTPUT=$("$CODEX_BIN" --cwd "$REVIEW_CWD" --mode review-only --payload-file "$CAPSULE_FILE" --timeout 540 2>&1) || CODEX_EXIT=$?
 else
   CODEX_EXIT=127
 fi
