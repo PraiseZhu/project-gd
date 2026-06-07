@@ -527,7 +527,7 @@ maybe_backoff() {
         break
       else
         # Exit 0 but no valid completion marker — save artifacts, do NOT retry
-        local marker_label="$(printf '%s' "$mode" | tr 'a-z' 'A-Z')_NO_MARKER"  # DISCUSS_NO_MARKER or REVIEW-ONLY_NO_MARKER
+        local marker_label="$(echo "$mode" | tr 'a-z' 'A-Z')_NO_MARKER"  # DISCUSS_NO_MARKER or REVIEW-ONLY_NO_MARKER
         cat "$tmp_stdout" > "$result"
         echo "WATCH_${marker_label}: codex returned exit 0 but no marker in output (attempt=${attempt})" >> "$result"
         log "Failed: $job_id (no ${marker_regex} marker, attempt=${attempt})"
