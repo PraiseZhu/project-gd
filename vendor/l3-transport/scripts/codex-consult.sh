@@ -60,7 +60,7 @@ fi
 
 CODEX_OUTPUT=$("$CODEX_BIN" --cwd "$DISCUSS_CWD" --mode discuss \
   --payload-file "$CAPSULE_FILE" 2>&1) || {
-  local exit_code=$?
+  exit_code=$?
   if [[ $exit_code -eq 2 ]]; then
     echo "[DISCUSS] DEGRADED — watch unavailable, cannot get second opinion"
     exit 2
