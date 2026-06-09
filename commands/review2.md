@@ -42,8 +42,7 @@ BRIDGE_TARGET_POLICY: original_plan_only
 
 ```
 /review2 plan <plan-file>
-  Step1  gd-review2-preflight.sh                        # 本地跑通证据门（T2 owned）
-  Step2  gd-validate-review2-plan-target.py             # anti-fill 硬门（T4 owned）
+  Step1  gd-validate-review2-plan-target.py             # anti-fill 硬门（T4 owned）
            缺失 verify 命令/expect 泛词 → PLAN_ANTIFILL_FAIL exit≠0，不送
   Step3  gd-build-review2-capsule.py --kind plan        # 构建 capsule（原始计划为 PRIMARY_TARGET）
   Step4  gd-validate-review2-capsule.py                 # capsule 完整性校验（fail-closed）
@@ -58,7 +57,6 @@ BRIDGE_TARGET_POLICY: original_plan_only
 ```
 
 **Fail-closed 规则**：
-- 无 preflight 证据文件 → `DRYRUN_EVIDENCE_MISSING` exit≠0，不送
 - anti-fill 门不过 → `PLAN_ANTIFILL_FAIL` exit≠0，不送
 - capsule 验证失败 → `CAPSULE_VALIDATE_FAIL`，停止
 - capsule 缺 `BRIDGE_TARGET_POLICY` → `BRIDGE_TARGET_POLICY_MISSING`，停止

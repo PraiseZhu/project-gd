@@ -939,44 +939,45 @@ def merge_findings_union(
     def _severity_rank(s: str) -> int:
         return _SEVERITY_RANK.get(str(s).upper(), 0)
 
-    def _dedup_key(finding: dict) -> tuple[str, int, str]:
-        """Returns (file, canonical_line_bucket, category_normalized).
+    def _file_cat(finding: dict) -> tuple[str, str]:
+        """Returns (file_normalized, category_normalized) — the non-line part of the key."""
+        return (
+            str(finding.get("file", "")).strip(),
+            str(finding.get("category", "")).strip().lower(),
+        )
 
-        Line buckets: line // 3 * 3 gives a bucket of width 3, but we want ±3
-        overlap, so we use round-to-nearest-6 bucketing: floor(line / 6).
-        Two lines L1, L2 share a bucket when |L1 - L2| <= 3 for consecutive
-        bucket assignments (floor(L/6) may miss edge cases; we use a looser
-        bucket of floor((line+3)/6) so lines within ±3 of each other always
-        share at least one overlapping bucket).
-        Using floor((line + 3) / 6) ensures lines 1-9 → 0, 4-12 → 1, etc.,
-        giving ±3 overlap between adjacent lines.
-        """
-        file_norm = str(finding.get("file", "")).strip()
-        line = int(finding.get("line", 0))
-        bucket = (line + 3) // 6
-        category_norm = str(finding.get("category", "")).strip().lower()
-        return (file_norm, bucket, category_norm)
+    def _within_window(line_a: int, line_b: int, window: int = 3) -> bool:
+        return abs(line_a - line_b) <= window
 
-    # key → best finding so far
-    merged: dict[tuple[str, int, str], dict] = {}
+    # List of canonical findings; O(n²) but finding counts are small.
+    merged_list: list[dict] = []
 
     for findings in findings_lists:
         for finding in (findings or []):
-            key = _dedup_key(finding)
-            existing = merged.get(key)
-            if existing is None:
-                merged[key] = dict(finding)
+            fc = _file_cat(finding)
+            line = int(finding.get("line", 0))
+            # Search for an existing finding within ±3 of the same (file, category)
+            match_idx = None
+            for idx, existing in enumerate(merged_list):
+                if _file_cat(existing) == fc and _within_window(
+                    int(existing.get("line", 0)), line
+                ):
+                    match_idx = idx
+                    break
+            if match_idx is None:
+                merged_list.append(dict(finding))
             else:
+                existing = merged_list[match_idx]
                 # Severity upgrade: keep the higher-severity entry as canonical
                 if _severity_rank(finding.get("severity", "P3")) > _severity_rank(
                     existing.get("severity", "P3")
                 ):
-                    merged[key] = dict(finding)
+                    merged_list[match_idx] = dict(finding)
                 # else: keep existing (same or lower severity — existing stays)
 
     # Sort: P1 first, then P2, then P3; within same severity sort by file + line
     result = sorted(
-        merged.values(),
+        merged_list,
         key=lambda f: (
             -_severity_rank(f.get("severity", "P3")),
             str(f.get("file", "")),
