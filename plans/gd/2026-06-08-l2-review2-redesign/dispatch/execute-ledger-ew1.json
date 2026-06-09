@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "stage": "execute",
+  "parent_run_id": "gd-l2-parity-execute-20260609",
+  "batch_id": "execute-l2-ew1",
+  "recorded_at": "2026-06-09T06:30:00Z",
+  "child_agent_count": 2,
+  "max_parallel": 2,
+  "child_jobs": [
+    {
+      "job_id": "child-t1",
+      "result_path": "plans/gd/2026-06-08-l2-review2-redesign/results/t1-exhaustive-and-dual-codex-result.md",
+      "result_hash": "da34221ba87c8b3d214338c69a46399e0d9c655edd69ea6be3bd19c63db358f3",
+      "status": "completed"
+    },
+    {
+      "job_id": "child-t3",
+      "result_path": "plans/gd/2026-06-08-l2-review2-redesign/results/t3-plan-mode-template-result.md",
+      "result_hash": "9eef20633956ee2c1235638012b2aa3643f28f538ce47a67d679fe7e9fe2ef2f",
+      "status": "completed"
+    }
+  ],
+  "main_agent_merge": {
+    "merge_report_path": "plans/gd/2026-06-08-l2-review2-redesign/dispatch/execute-merge-report.md",
+    "merge_report_hash": "151b3b1a9c2559594ada59b39edcfe29aad892aff80a34c9e2150cdbb65e4783",
+    "final_decision": "APPROVED",
+    "blocking_buckets": []
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "schema_version": "1.1",
+  "run_mode": "live",
+  "started_at": "2026-06-08T14:55:00Z",
+  "finished_at": "2026-06-08T15:10:00Z",
+  "aggregate_path": "plans/gd/2026-06-08-l2-review2-redesign/dispatch/merge-report.md",
+  "manifest_path": "plans/gd/2026-06-08-l2-review2-redesign/dispatch-map.json",
+  "primary_gate": {"verdict": "APPROVED", "blocking": []},
+  "secondary_gate": {"verdict": "n_a", "blocking": []},
+  "gate_consistent": true,
+  "dirty_detected": false,
+  "jobs": [
+    {"queue_job_id": "plan-t1", "target_role": "plan", "primary_target": "plans/gd/2026-06-08-l2-review2-redesign/packets/t1-exhaustive-and-dual-codex.md", "bridge_exit": 0, "bridge_stderr_path": null, "bridge_stderr_summary": "none (planning dispatch; child_planner subagent, no codex bridge)", "raw_verdict": "completed", "mapped_status": "approved", "aggregate_bucket": "planning"},
+    {"queue_job_id": "plan-t2", "target_role": "plan", "primary_target": "plans/gd/2026-06-08-l2-review2-redesign/packets/t2-dryrun-gate.md", "bridge_exit": 0, "bridge_stderr_path": null, "bridge_stderr_summary": "none (planning dispatch; child_planner subagent, no codex bridge)", "raw_verdict": "completed", "mapped_status": "approved", "aggregate_bucket": "planning"},
+    {"queue_job_id": "plan-t3", "target_role": "plan", "primary_target": "plans/gd/2026-06-08-l2-review2-redesign/packets/t3-plan-mode-template.md", "bridge_exit": 0, "bridge_stderr_path": null, "bridge_stderr_summary": "none (planning dispatch; child_planner subagent, no codex bridge)", "raw_verdict": "completed", "mapped_status": "approved", "aggregate_bucket": "planning"},
+    {"queue_job_id": "plan-t4", "target_role": "plan", "primary_target": "plans/gd/2026-06-08-l2-review2-redesign/packets/t4-antifill-hard-gate.md", "bridge_exit": 0, "bridge_stderr_path": null, "bridge_stderr_summary": "none (planning dispatch; child_planner subagent, no codex bridge)", "raw_verdict": "completed", "mapped_status": "approved", "aggregate_bucket": "planning"},
+    {"queue_job_id": "plan-t5", "target_role": "plan", "primary_target": "plans/gd/2026-06-08-l2-review2-redesign/packets/t5-split-commands-triage.md", "bridge_exit": 0, "bridge_stderr_path": null, "bridge_stderr_summary": "none (planning dispatch; child_planner subagent, no codex bridge)", "raw_verdict": "completed", "mapped_status": "approved", "aggregate_bucket": "planning"},
+    {"queue_job_id": "plan-t6", "target_role": "plan", "primary_target": "plans/gd/2026-06-08-l2-review2-redesign/packets/t6-fix-bridge-target.md", "bridge_exit": 0, "bridge_stderr_path": null, "bridge_stderr_summary": "none (planning dispatch; child_planner subagent, no codex bridge)", "raw_verdict": "completed", "mapped_status": "approved", "aggregate_bucket": "planning"},
+    {"queue_job_id": "plan-t7", "target_role": "plan", "primary_target": "plans/gd/2026-06-08-l2-review2-redesign/packets/t7-controller-baseline-convergence.md", "bridge_exit": 0, "bridge_stderr_path": null, "bridge_stderr_summary": "none (planning dispatch; child_planner subagent, no codex bridge)", "raw_verdict": "completed", "mapped_status": "approved", "aggregate_bucket": "planning"},
+    {"queue_job_id": "plan-t8", "target_role": "plan", "primary_target": "plans/gd/2026-06-08-l2-review2-redesign/packets/t8-deliverable-packaging.md", "bridge_exit": 0, "bridge_stderr_path": null, "bridge_stderr_summary": "none (planning dispatch; child_planner subagent, no codex bridge)", "raw_verdict": "completed", "mapped_status": "approved", "aggregate_bucket": "planning"},
+    {"queue_job_id": "plan-t9", "target_role": "plan", "primary_target": "plans/gd/2026-06-08-l2-review2-redesign/packets/t9-deploy-live.md", "bridge_exit": 0, "bridge_stderr_path": null, "bridge_stderr_summary": "none (planning dispatch; child_planner subagent, no codex bridge)", "raw_verdict": "completed", "mapped_status": "approved", "aggregate_bucket": "planning"}
+  ],
+  "batch_ledgers": [
+    {"path": "batch-001-ledger.json", "hash": "8b9d57c60ee0b51a06aa2bc5b3daf4cdd99083e5d0fba9354f53e63a3c11f0b0"},
+    {"path": "batch-002-ledger.json", "hash": "c8e4a593b367cdca26dc506ab7bb781d07f8aea52aa915e40f1074579419d1c9"},
+    {"path": "batch-003-ledger.json", "hash": "698ae8e6309b2fa384cbe5be8b1466fd634633579a38d50adeb399d832522c92"},
+    {"path": "batch-004-ledger.json", "hash": "c6d136f69ccc065d76cca888cd02b0dffad8f5d3e2af267fa401ea444d0e562d"},
+    {"path": "batch-005-ledger.json", "hash": "97b36a9fcaeaa852f5a37477c3a8e5d3ecc4e39c55c75989d9857c2ded1ba269"}
+  ],
+  "suite_target_closure": [
+    {"target_id": "plan-t1", "mapped_status": "approved", "evidence_kind": "controller_approved"},
+    {"target_id": "plan-t2", "mapped_status": "approved", "evidence_kind": "controller_approved"},
+    {"target_id": "plan-t3", "mapped_status": "approved", "evidence_kind": "controller_approved"},
+    {"target_id": "plan-t4", "mapped_status": "approved", "evidence_kind": "controller_approved"},
+    {"target_id": "plan-t5", "mapped_status": "approved", "evidence_kind": "controller_approved"},
+    {"target_id": "plan-t6", "mapped_status": "approved", "evidence_kind": "controller_approved"},
+    {"target_id": "plan-t7", "mapped_status": "approved", "evidence_kind": "controller_approved"},
+    {"target_id": "plan-t8", "mapped_status": "approved", "evidence_kind": "controller_approved"},
+    {"target_id": "plan-t9", "mapped_status": "approved", "evidence_kind": "controller_approved"}
+  ]
+}

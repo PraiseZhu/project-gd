@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "stage": "plan",
+  "parent_run_id": "l2-review2-redesign-planning-run",
+  "batch_id": "batch-002",
+  "recorded_at": "2026-06-08T15:05:00Z",
+  "child_agent_count": 2,
+  "max_parallel": 2,
+  "child_jobs": [
+    {"job_id": "plan-t3", "result_path": "plans/gd/2026-06-08-l2-review2-redesign/packets/t3-plan-mode-template.md", "result_hash": "98954b70a07955a795b46faee551ee6807f8007b4389e55f434a5a0f4f8c8cd1", "status": "completed"},
+    {"job_id": "plan-t4", "result_path": "plans/gd/2026-06-08-l2-review2-redesign/packets/t4-antifill-hard-gate.md", "result_hash": "85f98d5d464f075cbe5cf3c3ec48ada2d0f4867aee2a13af156c3d702ed0e0c7", "status": "completed"}
+  ],
+  "main_agent_merge": {
+    "merge_report_path": "plans/gd/2026-06-08-l2-review2-redesign/dispatch/merge-report.md",
+    "merge_report_hash": "809865608e1fb3b7d177d6ac8474175786507b5a7700687dd03867a9129e5b38",
+    "final_decision": "APPROVED",
+    "blocking_buckets": []
+  }
+}

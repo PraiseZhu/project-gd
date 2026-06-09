@@ -252,9 +252,42 @@ Plan E 不得重新设计 bridge raw contract / mapped schema / merge matrix。
 
 ---
 
-## 9. 与旧 `/review` / `/rev` 的隔离
+## 9. 穷举强制（一次列全所有可发现 finding）
+
+> **所有 reviewer（Claude main / Claude subagent / Codex cross-review sidecar）必须严格遵守本节。**
+
+### 9.1 穷举义务
+
+reviewer 在给出任何 verdict 之前，必须完整扫描 PRIMARY_TARGET 内的**全部**以下对象：
+
+- 每一条 `SC-N`（成功标准）
+- 每一个实现模块 / 函数 / 脚本段
+- 每一条 fallback / 异常 / 降级路径
+- 每一个 `deliverables_produced[].path`（如存在）
+- 每一个 `verify_results[].cmd`（如存在）
+
+reviewer 必须**一次列全**所有在本次扫描中可发现的 finding，不得分批分轮逐条透露。
+
+### 9.2 协议违规判定（degraded）
+
+以下任一情形即构成**协议违规**，reviewer 输出自动判定为 `REVIEW_RUN_STATUS: degraded`：
+
+1. **明知多处问题、只报一条**：reviewer 可发现 ≥2 处 P1/P2 问题，但 findings 列表仅列出 1 条。
+2. **路径截断**：reviewer 明确表示"本轮只审部分 SC / 留待下轮"（多轮拆报等同于协议违规）。
+3. **选择性略过**：已扫描某 SC 但未记录发现（无论认为是否通过），且未在 SCOPE_CHECKED 表中给出明确的 pass 判定。
+
+`REVIEW_RUN_STATUS: degraded` 不得产出 `GD_REVIEW_DECISION: APPROVED`（见 §5 Merge Matrix 第 4 行）。
+
+### 9.3 SCOPE_CHECKED 完整性要求
+
+每次 review 输出的 `SCOPE_CHECKED` 表必须覆盖 PRIMARY_TARGET 中**全部** SC-ID；缺少任何一条 SC-ID 视为穷举不完整，进入 §9.2 第 3 条协议违规判定。
+
+---
+
+## 10. 与旧 `/review` / `/rev` 的隔离
 
 - 本标准**不**复用旧 `prompts/rev-review-standard.md`
 - 本标准**不**触发旧 `~/.claude/commands/review.md` 链路
 - 本标准**不**引入裸 `VERDICT:` 字段
 - 本标准产出物路径：`Project GD/reports/gd-*-review.md` 或 `~/.claude/review-baselines/<key>/result-*.md`（Codex 走后者；Claude 内部 review 走前者）
+

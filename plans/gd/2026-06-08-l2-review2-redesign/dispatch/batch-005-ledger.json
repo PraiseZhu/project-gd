@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "stage": "plan",
+  "parent_run_id": "l2-review2-redesign-planning-run",
+  "batch_id": "batch-005",
+  "recorded_at": "2026-06-08T15:05:00Z",
+  "child_agent_count": 1,
+  "max_parallel": 1,
+  "child_jobs": [
+    {"job_id": "plan-t9", "result_path": "plans/gd/2026-06-08-l2-review2-redesign/packets/t9-deploy-live.md", "result_hash": "ab62001a1a4755503f9ed8ff43d13e9093448515f32e75c59bdfcf234798f7cd", "status": "completed"}
+  ],
+  "main_agent_merge": {
+    "merge_report_path": "plans/gd/2026-06-08-l2-review2-redesign/dispatch/merge-report.md",
+    "merge_report_hash": "809865608e1fb3b7d177d6ac8474175786507b5a7700687dd03867a9129e5b38",
+    "final_decision": "APPROVED",
+    "blocking_buckets": []
+  }
+}

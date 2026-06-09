@@ -556,6 +556,55 @@ def _write_execution_review_ledger(
     ledger_path.write_text(json.dumps(ledger, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+CONTROLLER_SCRIPT = SCRIPTS / "gd-review-controller.py"
+
+
+def _run_controller_multi_round(
+    branch: str,
+    target: Path,
+    output_dir: Path,
+    invocation_id: str,
+    execution_result: Path | None = None,
+    claude_review_json: Path | None = None,
+    round2_fanout_threshold_lines: int = 150,
+    round2_fanout_threshold_files: int = 5,
+    max_rounds: int = 10,
+) -> int:
+    """T7: Invoke gd-review-controller.py as the multi-round loop driver for
+    execution_outcome and combined routes.
+
+    The controller runs Branch B (execution-only) or Branch C (combined) in a
+    convergence loop, emitting CONVERGENCE_TIMEOUT on stagnation or APPROVED on
+    success. This function is the router's integration point for T7 controller.
+
+    Returns 0 on APPROVED, 1 on CONVERGENCE_TIMEOUT / REQUIRES_CHANGES, 2 on error.
+    """
+    if not CONTROLLER_SCRIPT.exists():
+        print(
+            f"ERROR: CONTROLLER_NOT_FOUND: {CONTROLLER_SCRIPT} — T7 controller not deployed",
+            file=sys.stderr,
+        )
+        return 2
+
+    cmd = [
+        sys.executable, str(CONTROLLER_SCRIPT),
+        "--branch", branch,
+        "--cwd", str(GD_ROOT),
+        "--output-dir", str(output_dir),
+        f"--round2-fanout-threshold-lines={round2_fanout_threshold_lines}",
+        f"--round2-fanout-threshold-files={round2_fanout_threshold_files}",
+        f"--max-rounds={max_rounds}",
+    ]
+    if execution_result is not None:
+        cmd += ["--execution-result", str(execution_result)]
+    if claude_review_json is not None:
+        cmd += ["--claude-review-json", str(claude_review_json)]
+
+    env = {**os.environ, INVOCATION_ID_ENV: invocation_id}
+    r = subprocess.run(cmd, capture_output=False, text=True, env=env)
+    return r.returncode
+
+
 def _run_live_execution_only(
     target: Path,
     output_dir: Path,
@@ -564,15 +613,45 @@ def _run_live_execution_only(
     codex_mapped_result: Path | None = None,
     review_contract: str = "auto",
     live_bridge_timeout_sec: int = 360,
+    use_controller: bool = False,
+    claude_review_json: Path | None = None,
 ) -> int:
     """execution_only_no_code (Execution-Review Cross-Review v2):
       Stage 1: invoke gd-validate-execution-outcome.py (validate facts/deliverables/verify-reruns)
-      Stage 2: invoke / consume Codex bridge cross-review (validates review quality / SC / anti-fill)
+      Stage 2a (T7 controller path): multi-round convergence loop via gd-review-controller.py
+               --branch execution-only (use_controller=True).
+      Stage 2b (single-round path):  invoke / consume Codex bridge cross-review.
       APPROVED requires BOTH stages pass; missing Codex → REQUIRES_CHANGES with codex_review_status.
     """
     import hashlib
     outcome_script = SCRIPTS / "gd-validate-execution-outcome.py"
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    # T7: controller multi-round path — used when /review2 code drives the full loop.
+    # Single-round path (codex_raw_result / codex_mapped_result injection) is preserved
+    # for backward compat and fixture-based testing.
+    if use_controller:
+        # Stage 1: local outcome validator
+        r_outcome = subprocess.run(
+            [sys.executable, str(outcome_script), str(target)],
+            capture_output=True, text=True,
+            env={**os.environ, INVOCATION_ID_ENV: invocation_id},
+        )
+        if r_outcome.returncode != 0:
+            print(
+                f"ERROR: OUTCOME_VALIDATOR_FAIL: outcome validator failed before controller",
+                file=sys.stderr,
+            )
+            return 1
+        # Stage 2a: T7 controller multi-round loop
+        return _run_controller_multi_round(
+            branch="execution-only",
+            target=target,
+            output_dir=output_dir,
+            invocation_id=invocation_id,
+            execution_result=target,
+            claude_review_json=claude_review_json,
+        )
 
     # --- Stage 1: local outcome validator (validates facts) ---
     r_outcome = subprocess.run(
@@ -826,10 +905,40 @@ def _run_live_execution_plus_code(
     codex_mapped_result: Path | None = None,
     review_contract: str = "auto",
     live_bridge_timeout_sec: int = 360,
+    use_controller: bool = False,
+    claude_review_json: Path | None = None,
 ) -> int:
-    """execution_plus_code: outcome-first, then code if passes (3a-SC-5/SC-7).
+    """execution_plus_code (combined): outcome-first, then code if passes (3a-SC-5/SC-7).
     Stage 1: gd-validate-execution-outcome.py
-    Stage 2 (only if outcome passes): LOCAL_STATIC_ONLY code review (skill_orchestrated)"""
+    Stage 2a (T7 controller path): multi-round convergence loop via gd-review-controller.py
+             --branch combined (use_controller=True).
+    Stage 2b (single-round path): LOCAL_STATIC_ONLY code review (skill_orchestrated) — backward compat.
+    """
+    import hashlib
+
+    # T7: controller combined-branch path
+    if use_controller:
+        outcome_script = SCRIPTS / "gd-validate-execution-outcome.py"
+        r_outcome = subprocess.run(
+            [sys.executable, str(outcome_script), str(target)],
+            capture_output=True, text=True,
+            env={**os.environ, INVOCATION_ID_ENV: invocation_id},
+        )
+        if r_outcome.returncode != 0:
+            print(
+                "ERROR: OUTCOME_FIRST_FAIL: outcome validator failed before combined controller",
+                file=sys.stderr,
+            )
+            return 1
+        return _run_controller_multi_round(
+            branch="combined",
+            target=target,
+            output_dir=output_dir,
+            invocation_id=invocation_id,
+            execution_result=target,
+            claude_review_json=claude_review_json,
+        )
+
     import hashlib
     outcome_script = SCRIPTS / "gd-validate-execution-outcome.py"
     r_outcome = subprocess.run(
