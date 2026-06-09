@@ -8,3 +8,13 @@
 {"source":"scripts/gd-validate-review2-capsule.py","target":"~/.claude/scripts/gd-validate-review2-capsule.py","method":"direct_cp","ledger_scope":"sync_script_to_live"}
 {"source":"scripts/gd-codex-bridge-review.py","target":"~/.claude/scripts/gd-codex-bridge-review.py","method":"direct_cp","ledger_scope":"sync_script_to_live"}
 {"source":"scripts/gd-validate-review2-output.py","target":"~/.claude/scripts/gd-validate-review2-output.py","method":"direct_cp","ledger_scope":"sync_script_to_live"}
+# === T1-T8 new artifacts (gd-l2-parity) ===
+{"source":"scripts/gd-validate-review2-plan-target.py","target":"~/.claude/scripts/gd-validate-review2-plan-target.py","method":"direct_cp","ledger_scope":"sync_script_to_live"}
+{"source":"templates/plan-mode-template.md","target":"~/.claude/templates/plan-template.md","method":"direct_cp","ledger_scope":"install_plan_template"}
+{"source":"scripts/plan-mode-antifill-stop-hook.js","target":"~/.claude/hooks/plan-mode-antifill-stop-hook.js","method":"direct_cp","ledger_scope":"install_plan_mode_hook"}
+{"source":"scripts/gd-review-controller.py","target":"~/.claude/scripts/gd-review-controller.py","method":"direct_cp","ledger_scope":"sync_script_to_live"}
+{"source":"schema/gd-baseline-findings.schema.json","target":"~/.claude/schema/gd-baseline-findings.schema.json","method":"direct_cp","ledger_scope":"sync_script_to_live"}
+{"source":"scripts/gd-detect-review2-code-target.py","target":"~/.claude/scripts/gd-detect-review2-code-target.py","method":"direct_cp","ledger_scope":"sync_script_to_live"}
+{"source":"scripts/gd-review2-preflight.sh","target":"~/.claude/scripts/gd-review2-preflight.sh","method":"direct_cp","ledger_scope":"sync_script_to_live"}
+{"source":"scripts/gd-review2-package-deliverable.sh","target":"~/.claude/scripts/gd-review2-package-deliverable.sh","method":"direct_cp","ledger_scope":"sync_script_to_live"}
+{"source":"scripts/gd-review-router.py","target":"~/.claude/scripts/gd-review-router.py","method":"direct_cp","ledger_scope":"sync_script_to_live"}

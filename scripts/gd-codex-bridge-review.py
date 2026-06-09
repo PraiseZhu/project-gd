@@ -902,6 +902,146 @@ VALID_TARGET_ROLES = {
 EXPECTED_OUTPUT_SCHEMA = "schema/gd-review-result.schema.json"
 
 
+def merge_findings_union(
+    findings_lists: list[list[dict]],
+) -> list[dict]:
+    """三方（codex_A、codex_B、Claude self-review）findings 取并集后去重。
+
+    T1 (L2 parity) — Round 1 双 codex emphasis lens 三方并集去重原语。
+
+    每个 findings_lists 元素是一个 reviewer 的 finding 列表，每条 finding 格式：
+      {
+        "file":     str,           # 文件路径（相对）
+        "line":     int,           # 行号（1-based）
+        "category": str,           # 问题类别，如 "anti-fill" / "sc-conformance" 等
+        "severity": str,           # "P1" | "P2" | "P3"（大写）
+        "title":    str,           # 问题短标题（可选，用于可读性）
+        ...                        # 其他字段透传，不参与去重键计算
+      }
+
+    去重规则：
+    - 去重键：file + 行号 ±3 + category（大小写不敏感）
+    - 严重度取高：P1 > P2 > P3
+    - 去重后保留严重度最高的那条 finding 的完整字段
+    - 同一 finding 多个来源命中时，合并 title 取最先出现的那条（行号最小者优先作 canonical）
+
+    返回去重后的 finding 列表，按 severity（P1 优先）、file、line 排序。
+
+    可被单测覆盖的接口：
+      findings_a = [{"file": "a.py", "line": 10, "category": "sc-conformance", "severity": "P2", "title": "x"}]
+      findings_b = [{"file": "a.py", "line": 11, "category": "sc-conformance", "severity": "P1", "title": "y"}]
+      result = merge_findings_union([findings_a, findings_b])
+      # => [{"file": "a.py", "line": 11, "category": "sc-conformance", "severity": "P1", "title": "y"}]
+      assert len(result) == 1 and result[0]["severity"] == "P1"
+    """
+    _SEVERITY_RANK = {"P1": 3, "P2": 2, "P3": 1}
+
+    def _severity_rank(s: str) -> int:
+        return _SEVERITY_RANK.get(str(s).upper(), 0)
+
+    def _file_cat(finding: dict) -> tuple[str, str]:
+        """Returns (file_normalized, category_normalized) — the non-line part of the key."""
+        return (
+            str(finding.get("file", "")).strip(),
+            str(finding.get("category", "")).strip().lower(),
+        )
+
+    def _within_window(line_a: int, line_b: int, window: int = 3) -> bool:
+        return abs(line_a - line_b) <= window
+
+    # List of canonical findings; O(n²) but finding counts are small.
+    merged_list: list[dict] = []
+
+    for findings in findings_lists:
+        for finding in (findings or []):
+            fc = _file_cat(finding)
+            line = int(finding.get("line", 0))
+            # Search for an existing finding within ±3 of the same (file, category)
+            match_idx = None
+            for idx, existing in enumerate(merged_list):
+                if _file_cat(existing) == fc and _within_window(
+                    int(existing.get("line", 0)), line
+                ):
+                    match_idx = idx
+                    break
+            if match_idx is None:
+                merged_list.append(dict(finding))
+            else:
+                existing = merged_list[match_idx]
+                # Severity upgrade: keep the higher-severity entry as canonical
+                if _severity_rank(finding.get("severity", "P3")) > _severity_rank(
+                    existing.get("severity", "P3")
+                ):
+                    merged_list[match_idx] = dict(finding)
+                # else: keep existing (same or lower severity — existing stays)
+
+    # Sort: P1 first, then P2, then P3; within same severity sort by file + line
+    result = sorted(
+        merged_list,
+        key=lambda f: (
+            -_severity_rank(f.get("severity", "P3")),
+            str(f.get("file", "")),
+            int(f.get("line", 0)),
+        ),
+    )
+    return result
+
+
+# T6: kinds where the PRIMARY_TARGET must be a real artifact (diff / execution result)
+# and NOT the capsule envelope (filename == capsule.md).
+_EXECUTION_ARTIFACT_KINDS: frozenset[str] = frozenset({
+    "code_diff", "execution_outcome", "combined",
+})
+
+
+def _review_focus_for_kind(kind: str) -> str:
+    """T6 SC-6.1: return a kind-specific REVIEW_FOCUS string (not hardcoded).
+
+    Spec §2.3 focus 声明列:
+      plan              -> 审计划完整性+anti-fill
+      code_diff         -> 质量已由 /code-review 处理，只验 conformance
+      execution_outcome -> 只验执行结果 vs 计划 SC
+      combined          -> conformance（质量上游已处理）
+    """
+    _FOCUS_MAP: dict[str, str] = {
+        "plan": "审计划完整性+anti-fill",
+        "code_diff": "质量已由 /code-review 处理，只验 conformance",
+        "execution_outcome": "只验执行结果 vs 计划 SC",
+        "combined": "conformance（质量上游已处理）",
+    }
+    return _FOCUS_MAP.get(kind, f"review of {kind}")
+
+
+def _primary_target_for_kind(kind: str, target: Path) -> str:
+    """T6 SC-6.2: return the PRIMARY_TARGET string for the capsule.
+
+    For plan: original plan file (target itself).
+    For code_diff / combined / execution_outcome: the real artifact path (target).
+    The caller is responsible for ensuring target IS the real artifact (not capsule.md)
+    for non-plan kinds — enforced by _assert_not_capsule_target().
+    """
+    # In all cases the PRIMARY_TARGET is str(target.resolve()) — the content differs
+    # by kind (plan file vs diff patch vs execution result). The guard
+    # _assert_not_capsule_target() below ensures non-plan kinds don't receive capsule.md.
+    return str(target.resolve())
+
+
+def _assert_not_capsule_target(kind: str, target: Path) -> None:
+    """T6 SC-6.3: guard — raise ValueError when a non-plan kind receives capsule.md.
+
+    code_diff / execution_outcome / combined must point to the real artifact, not
+    the L2 capsule envelope. Raises ValueError with CAPSULE_TARGET_FORBIDDEN so
+    callers can surface a clear error instead of silently writing bad PRIMARY_TARGET.
+    """
+    if kind in _EXECUTION_ARTIFACT_KINDS and target.name.lower() == "capsule.md":
+        raise ValueError(
+            f"CAPSULE_TARGET_FORBIDDEN: --kind={kind!r} received capsule.md as target. "
+            "Pass the real diff / execution artifact, not the /review2 capsule envelope. "
+            "For code_diff use the .patch file; for execution_outcome use the result JSON; "
+            "for combined use the diff or bundle descriptor."
+        )
+
+
 def _related_context_summary(related_context: list[dict] | None) -> str:
     """Render RELATED_CONTEXT as a compact summary block, NOT inline full text.
     Each entry: {"role": "...", "path": "...", "hash": "..."}.
@@ -927,6 +1067,7 @@ def build_capsule_text(
     target_role: str | None = None,
     related_context: list[dict] | None = None,
     compat_v1: bool = False,
+    emphasis: str | None = None,
 ) -> tuple[str, str, str, str, str]:
     """返回 (capsule_text, target_hash, capsule_hash, gd_baseline_key, run_id)。
 
@@ -940,6 +1081,12 @@ def build_capsule_text(
     the v2 schema/template references. With compat_v1=True it accepts only v1
     {plan, code} and writes the legacy v1 references. Mixing is rejected with
     INVALID_REVIEW_KIND_FOR_MODE in the CLI handler.
+
+    T1 (L2 parity): `emphasis` controls REVIEW_LENS_EMPHASIS field injected into
+    the capsule header.  Supported values:
+      - "codex_A": SC-conformance→边界/路径越界→接口/契约→失败模式/fallback→anti-fill 泛化
+      - "codex_B": 失败模式/fallback→安全/secret 泄漏→anti-fill 泛化→SC-conformance→边界/路径越界
+      - None / other: neutral (omitted from capsule when None, written as-is otherwise)
     """
     active_enum = _get_active_kind_enum(compat_v1)
     if kind not in active_enum:
@@ -949,6 +1096,8 @@ def build_capsule_text(
             f"INVALID_REVIEW_KIND_FOR_MODE: --kind={kind!r} not in "
             f"{mode_label} enum {sorted(active_enum)}"
         )
+    # T6 SC-6.3: reject capsule.md as target for non-plan kinds before any I/O.
+    _assert_not_capsule_target(kind, target)
     if not target.exists():
         raise FileNotFoundError(f"target 不存在: {target}")
     if target_role is not None and target_role not in VALID_TARGET_ROLES:
@@ -993,11 +1142,47 @@ def build_capsule_text(
     title_for_kind = _get_title_by_kind(kind, compat_v1)
     mode_label = "v1 compat" if compat_v1 else "v2 default"
 
+    # T1: compute REVIEW_LENS_EMPHASIS value for this capsule
+    _EMPHASIS_CODEX_A = (
+        "SC-conformance→边界/路径越界→接口/契约→失败模式/fallback→anti-fill 泛化"
+    )
+    _EMPHASIS_CODEX_B = (
+        "失败模式/fallback→安全/secret 泄漏→anti-fill 泛化→SC-conformance→边界/路径越界"
+    )
+    if emphasis == "codex_A":
+        lens_emphasis_value = _EMPHASIS_CODEX_A
+    elif emphasis == "codex_B":
+        lens_emphasis_value = _EMPHASIS_CODEX_B
+    elif emphasis is not None:
+        lens_emphasis_value = emphasis  # caller-supplied neutral value
+    else:
+        lens_emphasis_value = None  # omit field when not specified
+
+    lens_emphasis_line = (
+        f"REVIEW_LENS_EMPHASIS: {lens_emphasis_value}\n" if lens_emphasis_value is not None else ""
+    )
+
+    # T6 SC-6.1: kind-specific REVIEW_FOCUS (not hardcoded "bridge candidate review of")
+    review_focus = _review_focus_for_kind(kind)
+    # T6 SC-6.2: PRIMARY_TARGET points to the real artifact, not capsule.md.
+    # For plan: original plan file. For code_diff/combined/execution_outcome: real diff/result.
+    primary_target_path = _primary_target_for_kind(kind, target)
+
+    # T6: L2 capsule context is RELATED_CONTEXT (path/hash summary), not PRIMARY_TARGET.
+    # For plan kind, target IS the plan so primary_target_path == target_abs (no change).
+    # For non-plan kinds, the capsule is an intermediate envelope — Codex reviews the real artifact.
+    capsule_as_related: bool = kind in _EXECUTION_ARTIFACT_KINDS
+    capsule_related_note = (
+        f"- role=l2_capsule_envelope path=(this capsule, sent inline) hash=(see CAPSULE_HASH above)\n"
+        if capsule_as_related else ""
+    )
+
     # writer 实际 grep 的 3 字段必须出现在行首
     capsule = (
         f"REVIEW_DOMAIN: ai_infra\n"
-        f"REVIEW_FOCUS: bridge candidate review of {target.name}\n"
-        f"REVIEW_FOCUS_SOURCE: plan\n"
+        + lens_emphasis_line
+        + f"REVIEW_FOCUS: {review_focus}\n"
+        f"REVIEW_FOCUS_SOURCE: kind_dynamic\n"
         f"REVIEW_KIND: {kind}\n"
         f"REVIEW_ROUND: initial\n"
         f"REVIEW_DELTA_SCOPE: full_matrix\n"
@@ -1028,15 +1213,15 @@ def build_capsule_text(
         # Review Trust §Step 2 required metadata block
         f"QUEUE_JOB_ID: {effective_queue_id}\n"
         f"TARGET_ROLE: {effective_role}\n"
-        f"PRIMARY_TARGET: {target_abs}\n"
+        f"PRIMARY_TARGET: {primary_target_path}\n"
         f"EXPECTED_OUTPUT_SCHEMA: {expected_schema}\n"
         f"TEMPLATE_KIND: {template_kind_for_capsule}\n"
-        f"RELATED_CONTEXT:\n{related_summary}\n\n"
+        f"RELATED_CONTEXT:\n{capsule_related_note}{related_summary}\n\n"
         f"## Goal Chain\n\n```\n{goal_text}\n```\n\n"
         f"## Review Standard\n\n```\n{standard_text}\n```\n\n"
         f"## Review Template ({template_path.name})\n\n```\n{template_text}\n```\n\n"
         f"## Target Artifact\n\n"
-        f"PRIMARY_TARGET_PATH: {target_abs}\n"
+        f"PRIMARY_TARGET_PATH: {primary_target_path}\n"
         f"PRIMARY_TARGET_HASH: {target_hash}\n"
         f"\n"
         f"**MANDATORY READ STEP** — Before producing any output, you MUST use your Read tool\n"
@@ -1067,6 +1252,9 @@ def build_capsule_text(
         f"- **每条 finding 必须 evidence: 含真实 path:line 引用**（L3 validator 会校验行号指向 target 真实内容）\n"
         f"- **每条 finding 的 sc_refs / SC-<N> 必须是 target 中真实存在的 SC-ID**（L3 validator 会校验）\n"
         f"- **APPROVED 时**必须输出 SCOPE_CHECKED 表，列出已审查的 SC-IDs（必须在 target 中真实存在）\n"
+        f"- **穷举强制（一次列全）**：你必须扫完 PRIMARY_TARGET 内全部 SC、模块、fallback 路径，"
+        f"**一次列全**所有可发现 finding，不得分批分轮透露；"
+        f"明知有多处问题却只报一条 = 协议违规，判定 degraded（见 §Review Standard §9）\n"
     )
     capsule_hash = _sha256_str(capsule)
     return capsule, target_hash, capsule_hash, gd_baseline_key, run_id
@@ -1204,6 +1392,21 @@ def cmd_run_bridge(args: argparse.Namespace) -> int:
                 "PLAN_TARGET_MUST_BE_ORIGINAL_PLAN: --kind=plan received a capsule "
                 f"file as target ({args.target!r}). Pass the original plan file, "
                 "not the /review2 capsule.",
+                file=sys.stderr,
+            )
+            return 1
+
+    # T6 SC-6.3: execution artifact kinds guard (symmetric with plan guard above).
+    # code_diff / execution_outcome / combined must receive a real artifact, not capsule.md.
+    if args.kind in _EXECUTION_ARTIFACT_KINDS:
+        sys.path.insert(0, str(GD_PROJECT_ROOT / "scripts"))
+        from lib.path_classification import is_review2_capsule_path  # noqa: E402
+        if is_review2_capsule_path(args.target):
+            print(
+                f"CAPSULE_TARGET_FORBIDDEN: --kind={args.kind!r} received capsule.md as target "
+                f"({args.target!r}). Pass the real diff / execution artifact. "
+                "code_diff expects a .patch file; execution_outcome expects a result JSON; "
+                "combined expects the diff or bundle descriptor.",
                 file=sys.stderr,
             )
             return 1

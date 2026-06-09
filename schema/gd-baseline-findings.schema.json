@@ -1,0 +1,146 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "gd-baseline-findings.schema.json",
+  "title": "GD Baseline Findings",
+  "description": "baseline_findings.json produced by gd-review-controller.py Round 1 — persists the union of codex_A + codex_B + claude self-review findings across multi-round convergence loops.",
+  "type": "object",
+  "required": ["schema_version", "baseline_round", "created_at", "controller_invocation_id", "findings"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "baseline_round": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Round number this baseline was established (always 1 for initial baseline)"
+    },
+    "created_at": {
+      "type": "string",
+      "description": "ISO-8601 timestamp when baseline was written"
+    },
+    "controller_invocation_id": {
+      "type": "string",
+      "description": "Controller run ID that produced this baseline"
+    },
+    "branch": {
+      "type": "string",
+      "enum": ["code-only", "execution-only", "combined"],
+      "description": "Review branch that generated this baseline"
+    },
+    "delta_snapshot": {
+      "type": ["string", "null"],
+      "description": "git stash create tree-ish or HEAD blob hash used as delta reference for Round 1"
+    },
+    "baseline_unresolved_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of unresolved findings at time of baseline creation"
+    },
+    "findings": {
+      "type": "array",
+      "description": "Union of all findings from codex_A, codex_B, and claude self-review; dedup key = (file, line±3, category)",
+      "items": {
+        "$ref": "#/definitions/finding"
+      }
+    }
+  },
+  "definitions": {
+    "finding": {
+      "type": "object",
+      "required": ["id", "severity", "title", "sc_refs", "file", "line", "category", "status", "source"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable finding identifier, e.g. F001, F002"
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["P1", "P2"],
+          "description": "P1 = blocking, P2 = non-blocking. Severity taken as max across sources."
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Short description of the finding"
+        },
+        "sc_refs": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Success-criterion references, e.g. ['SC-3.1', 'SC-5']"
+        },
+        "file": {
+          "type": ["string", "null"],
+          "description": "Relative path to affected file; null if file-agnostic"
+        },
+        "line": {
+          "type": ["integer", "null"],
+          "description": "Approximate line number in file; null if unknown. Dedup window is line±3.",
+          "minimum": 1
+        },
+        "line_window": {
+          "type": ["integer", "null"],
+          "description": "Half-width of the dedup window around 'line' (default 3 if absent)"
+        },
+        "category": {
+          "type": "string",
+          "description": "Finding category, e.g. sc_conformance, boundary, interface_contract, failure_mode, anti_fill, security"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["unresolved", "resolved"],
+          "description": "unresolved = still present; resolved = confirmed fixed in a later round"
+        },
+        "resolved_in_round": {
+          "type": ["integer", "null"],
+          "minimum": 2,
+          "description": "Round number in which this finding was confirmed resolved; null if still unresolved"
+        },
+        "source": {
+          "type": "string",
+          "enum": ["codex_A", "codex_B", "claude"],
+          "description": "Which reviewer first reported this finding. On dedup, source = first reporter."
+        },
+        "also_reported_by": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["codex_A", "codex_B", "claude"]
+          },
+          "description": "Other reviewers who independently reported the same finding (after dedup)"
+        },
+        "evidence": {
+          "type": ["string", "null"],
+          "description": "Evidence text from the original finding report"
+        },
+        "impact": {
+          "type": ["string", "null"],
+          "description": "Impact description from the original finding report"
+        },
+        "required_fix": {
+          "type": ["string", "null"],
+          "description": "Required fix description from the original finding report"
+        },
+        "verify": {
+          "type": ["string", "null"],
+          "description": "Verification command or assertion from the original finding report"
+        },
+        "round_history": {
+          "type": "array",
+          "description": "Per-round status snapshots for this finding",
+          "items": {
+            "type": "object",
+            "required": ["round", "status"],
+            "properties": {
+              "round": {"type": "integer", "minimum": 1},
+              "status": {"type": "string", "enum": ["unresolved", "resolved"]},
+              "note": {"type": ["string", "null"]}
+            }
+          }
+        }
+      }
+    }
+  }
+}

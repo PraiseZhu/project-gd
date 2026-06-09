@@ -1,0 +1,43 @@
+{
+  "schema_version": "1.0",
+  "stage": "review_plan",
+  "parent_run_id": "gd-l2-parity-review-plan-20260609",
+  "batch_id": "review-plan-batch-001",
+  "recorded_at": "2026-06-09T04:40:00Z",
+  "child_agent_count": 2,
+  "max_parallel": 2,
+  "capability_status": "available",
+  "child_jobs": [
+    {
+      "queue_job_id": "review-child-1-claude",
+      "agent_role": "claude_subagent_plan_review",
+      "result_path": "plans/gd/2026-06-08-l2-review2-redesign/dispatch/review-child-1-claude-self-review.md",
+      "result_hash": "a30fa32d4590308c68d0d4f6212feed1c0c9e23a4c2bf082ed1e32743ea87535",
+      "status": "completed",
+      "gd_review_decision": "REQUIRES_CHANGES",
+      "findings_count": 9,
+      "review_run_status": "completed"
+    },
+    {
+      "queue_job_id": "review-plan-codex-child-2",
+      "agent_role": "codex",
+      "result_path": "plans/gd/2026-06-08-l2-review2-redesign/dispatch/codex-bridge-out/mapped-result.json",
+      "result_hash": "a38c5daa6d0565e93c5e2073d5e7473cef120cae95a64c818a872bb26c28b1dd",
+      "transport_result_path": "/Users/praise/.claude/review-baselines/gd-plan-master-plan-md-a45e3e45e91e/result-20260608T163235Z.md",
+      "status": "completed",
+      "gd_review_decision": "REQUIRES_CHANGES",
+      "findings_count": 1,
+      "review_run_status": "completed",
+      "bridge_baseline_key": "gd-plan-master-plan-md-a45e3e45e91e"
+    }
+  ],
+  "main_agent_merge": {
+    "merge_verdict": "REQUIRES_CHANGES",
+    "total_findings_before_fix": 10,
+    "auto_fix_rounds": 1,
+    "auto_fix_applied": true,
+    "post_fix_verification": "all_pass",
+    "final_verdict_after_fix": "APPROVED",
+    "merge_report_path": "plans/gd/2026-06-08-l2-review2-redesign/review/loop-report.md"
+  }
+}
