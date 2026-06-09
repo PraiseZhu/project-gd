@@ -31,23 +31,6 @@ from pathlib import Path
 # 执行产物探测（复用 gd_review_detection 共享模块）
 # ---------------------------------------------------------------------------
 
-def _try_import_shared_detection():
-    """尝试 import 仓库共享模块 gd_review_detection；返回 has_execution_artifacts_in_dir 函数或 None。"""
-    try:
-        # 本脚本在 scripts/ 目录，gd_review_detection.py 同目录
-        script_dir = Path(__file__).resolve().parent
-        import importlib.util
-        spec = importlib.util.spec_from_file_location(
-            "gd_review_detection",
-            script_dir / "gd_review_detection.py",
-        )
-        if spec is None or spec.loader is None:
-            return None
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)  # type: ignore[union-attr]
-        return getattr(mod, "has_execution_artifacts_in_dir", None)
-    except Exception:
-        return None
 
 
 def _builtin_is_execution_json(path: Path) -> bool:
@@ -218,26 +201,11 @@ def main(argv: list[str] | None = None) -> int:
     # ------------------------------------------------------------------
     has_code, code_basis = _detect_has_code(cwd)
 
-    # 执行产物探测：扫 cwd，但对 shared_fn 结果用内置排除逻辑过滤
-    # 确保 fixtures/、plans/、_tmp/ 等噪声目录不触发 has_result=True
-    shared_fn = _try_import_shared_detection()
-    if shared_fn is not None:
-        # shared_fn 扫全目录；用内置 fallback 对 _EXECUTION_SCAN_EXCLUDE_DIRS 过滤验证
-        _shared_result = shared_fn(cwd)
-        if _shared_result:
-            # 仅当内置逻辑（排除噪声目录后）也认为有产物时，才认定 has_result=True
-            _builtin_result = _builtin_has_execution_artifacts_in_dir(cwd)
-            has_result = _builtin_result
-            result_basis = (
-                "gd_review_detection.has_execution_artifacts_in_dir"
-                if _builtin_result else "shared_found_but_filtered_by_exclude_dirs"
-            )
-        else:
-            has_result = False
-            result_basis = "gd_review_detection(no_artifact)"
-    else:
-        has_result = _builtin_has_execution_artifacts_in_dir(cwd)
-        result_basis = "builtin_has_execution_artifacts_in_dir"
+    # 执行产物探测：直接用内置实现（含 _EXECUTION_SCAN_EXCLUDE_DIRS 过滤）
+    # shared_fn (gd_review_detection) 无 exclude-dirs 逻辑，会误判 fixtures/plans/，
+    # 不再作为 authority；builtin 是这里的正确实现。
+    has_result = _builtin_has_execution_artifacts_in_dir(cwd)
+    result_basis = "builtin_has_execution_artifacts_in_dir"
 
     triage_basis = f"has_code={has_code}({code_basis}),has_result={has_result}({result_basis})"
 
