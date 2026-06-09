@@ -1,0 +1,21 @@
+{
+  "_fixture_meta": {
+    "fixture_version": "2.0",
+    "schema_version": "2.0",
+    "_test_expect": "FAIL",
+    "description": "execution_plus_code — missing stage_order; should fail outcome-before-code contract"
+  },
+  "schema_version": "2.0",
+  "router_invocation_id": "fixture-epc-no-order-001",
+  "mode": "fixture",
+  "review_target_kind": "execution_plus_code",
+  "decision": "REQUIRES_CHANGES",
+  "validator_signature": {
+    "validator": "gd-validate-route-report.py",
+    "schema_version": "2.0"
+  },
+  "recorded_at": "2026-05-14T10:00:00Z",
+  "findings": [],
+  "execution_artifact_ref": "fixtures/execution-results/valid-closure.json",
+  "outcome_validator_status": "passed"
+}

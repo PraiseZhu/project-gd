@@ -45,10 +45,10 @@ MANDATORY_READ = {
         {"path": "mirrors/codex-chain/sync-manifest.json",
          "reason": "Mirror freshness and manifest_only_metadata completeness",
          "section_or_range": "manifest_only_metadata / per_bucket_hash"},
-        {"path": "scripts/gd-codex-chain-release-status.sh",
+        {"path": "tools/gd-codex-chain-release-status.sh",
          "reason": "Release gate logic: L1/L2/L3 checks, exit codes, SSOT loading",
          "section_or_range": "all"},
-        {"path": "scripts/gd-final-closure-status.sh",
+        {"path": "tools/gd-final-closure-status.sh",
          "reason": "Final status contract: MACHINE/HUMAN field declarations, aggregate",
          "section_or_range": "Runtime Parity Bundle Summary section"},
     ],
@@ -56,10 +56,10 @@ MANDATORY_READ = {
         {"path": "config/gd-runtime-parity-manifest.json",
          "reason": "Parity manifest SSOT",
          "section_or_range": "bundles.*"},
-        {"path": "scripts/gd-parity-verify.sh",
+        {"path": "tools/gd-parity-verify.sh",
          "reason": "Parity verify script implementation",
          "section_or_range": "all"},
-        {"path": "scripts/check-gd-command-parity.sh",
+        {"path": "tools/check-gd-command-parity.sh",
          "reason": "L3 install gate script",
          "section_or_range": "all"},
     ],
@@ -95,7 +95,7 @@ def collect_inline_facts_release_closure(cwd: Path) -> dict[str, str]:
     facts["unstaged_files"] = unstaged or "(none)"
 
     # Release gate summary
-    gate_script = cwd / "scripts" / "gd-codex-chain-release-status.sh"
+    gate_script = cwd / "tools" / "gd-codex-chain-release-status.sh"
     if gate_script.is_file():
         _, gate_out = run(["bash", str(gate_script)], cwd)
         # Extract key lines
@@ -109,7 +109,7 @@ def collect_inline_facts_release_closure(cwd: Path) -> dict[str, str]:
         facts["release_gate_summary"] = "(gd-codex-chain-release-status.sh not found)"
 
     # Final status summary
-    final_script = cwd / "scripts" / "gd-final-closure-status.sh"
+    final_script = cwd / "tools" / "gd-final-closure-status.sh"
     if final_script.is_file():
         _, final_out = run(["bash", str(final_script)], cwd)
         key_lines = [l for l in final_out.splitlines()
@@ -225,8 +225,28 @@ def render_capsule(profile: str, target: str | None, inline_facts: dict,
 
     lines += [
         "OUTPUT_CONTRACT:",
-        "  Format: Finding -> Evidence -> Root Cause -> Fix",
-        "  Severity: P1 (blocker) | P2 (warning) | P3 (minor)",
+        "  Format:",
+        "    # Code Review Result",
+        "    VERDICT: APPROVED|REQUIRES_CHANGES",
+        "    REVIEW_DOMAIN: <domain>",
+        "    REVIEW_MODE: single_pass",
+        "    REVIEW_DELTA_SCOPE: full_matrix",
+        "",
+        "    ## Scope Checked",
+        "    | 检查面 | 结论 | 证据（≤30字）|",
+        "    |--------|------|---------------|",
+        "",
+        "    ## Findings",
+        "    ### Finding N [P1|P2] <title>",
+        "    SC: <SC-ID from plan>",
+        "    问题: <description>",
+        "    证据: <file:line or path>",
+        "    影响: <impact>",
+        "    最小修复: <fix>",
+        "    验收: <verification>",
+        "",
+        "    ## Residual Risk",
+        "    <none or P3 items only>",
         "",
         "  After findings, output mandatory read coverage as follows (one line per path):",
         "  MANDATORY_READ_COVERAGE:",
@@ -288,6 +308,18 @@ def main() -> int:
 
     # Build mandatory reads
     mandatory_reads = build_mandatory_read_section(cwd, args.profile)
+
+    # code_diff: inject target file as mandatory read if it's a diff patch
+    if args.profile == "code_diff" and args.target:
+        target_path = Path(args.target)
+        if target_path.is_file():
+            mandatory_reads.append({
+                "path": str(target_path),
+                "sha256": sha256_file(target_path),
+                "reason": "Diff patch to review for code correctness",
+                "section_or_range": "all",
+                "exists": True,
+            })
 
     # Validate
     errors = validate_capsule_data(args.profile, inline_facts, mandatory_reads)

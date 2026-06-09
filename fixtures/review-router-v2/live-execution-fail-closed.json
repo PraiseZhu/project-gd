@@ -1,0 +1,30 @@
+{
+  "_fixture_meta": {
+    "fixture_version": "2.0",
+    "schema_version": "2.0",
+    "_test_expect": "PASS",
+    "description": "live mode fail-closed (NOT_IMPLEMENTED/FW-H2A-3a) with execution_only_no_code — all required fields including not_run_blocked; should pass"
+  },
+  "schema_version": "2.0",
+  "router_invocation_id": "fixture-live-exec-fc-001",
+  "mode": "live",
+  "review_target_kind": "execution_only_no_code",
+  "decision": "FAILED",
+  "validator_signature": {
+    "validator": "gd-validate-route-report.py",
+    "schema_version": "2.0"
+  },
+  "recorded_at": "2026-05-14T10:00:00Z",
+  "findings": [
+    {
+      "reviewer": "router",
+      "severity": "info",
+      "description": "live mode not yet implemented (FW-H2A-3a); route report written for audit"
+    }
+  ],
+  "execution_artifact_ref": "fixtures/execution-results/valid-closure.json",
+  "outcome_validator_status": "not_run_blocked",
+  "failure_code": "NOT_IMPLEMENTED",
+  "blocked_by": "FW-H2A-3a",
+  "codex_transport_status": "unknown"
+}

@@ -1,0 +1,19 @@
+{
+  "_fixture_meta": {
+    "fixture_version": "2.0",
+    "schema_version": "2.0",
+    "_test_expect": "FAIL",
+    "description": "SC-Lx: invalid mode value must trigger schema violation"
+  },
+  "schema_version": "2.0",
+  "router_invocation_id": "fixture-bad-mode-001",
+  "mode": "production_live",
+  "review_target_kind": "plan_only",
+  "decision": "APPROVED",
+  "validator_signature": {
+    "validator": "gd-validate-route-report.py",
+    "schema_version": "2.0"
+  },
+  "recorded_at": "2026-05-14T10:25:00Z",
+  "findings": []
+}

@@ -1,0 +1,27 @@
+{
+  "_fixture_meta": {
+    "fixture_version": "2.0",
+    "schema_version": "2.0",
+    "_test_expect": "PASS",
+    "description": "no reviewable artifact detected, router outputs REVIEW_TARGET_MISSING"
+  },
+  "schema_version": "2.0",
+  "router_invocation_id": "fixture-no-artifact-001",
+  "mode": "fixture",
+  "review_target_kind": "no_artifact",
+  "decision": "REVIEW_TARGET_MISSING",
+  "validator_signature": {
+    "validator": "gd-validate-route-report.py",
+    "schema_version": "2.0"
+  },
+  "recorded_at": "2026-05-14T10:20:00Z",
+  "findings": [
+    {
+      "reviewer": "router",
+      "severity": "info",
+      "description": "no plan/*.md, no execution batch, no code diff under target — fail-closed"
+    }
+  ],
+  "failure_code": "NO_REVIEWABLE_ARTIFACT",
+  "notes": "Target directory contains no plan/*.md, no execution batch, no code diff — fail-closed"
+}

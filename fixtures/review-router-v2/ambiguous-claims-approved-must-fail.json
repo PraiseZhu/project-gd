@@ -1,0 +1,26 @@
+{
+  "_fixture_meta": {
+    "fixture_version": "2.0",
+    "schema_version": "2.0",
+    "_test_expect": "FAIL",
+    "description": "Plan 8 v4.1 Step 5: ambiguous_mixed_artifacts cannot return APPROVED. Documents intent for Step 8 enforcement (route-report validator currently does not yet enforce ambiguous decision restrictions, so this fixture may pass schema validation today; Step 8 will reject it)."
+  },
+  "schema_version": "2.0",
+  "router_invocation_id": "fixture-ambiguous-claims-approved-001",
+  "mode": "fixture",
+  "review_target_kind": "ambiguous_mixed_artifacts",
+  "decision": "APPROVED",
+  "validator_signature": {
+    "validator": "gd-validate-route-report.py",
+    "schema_version": "2.0"
+  },
+  "recorded_at": "2026-05-14T13:31:00Z",
+  "findings": [
+    {
+      "reviewer": "router",
+      "severity": "high",
+      "description": "INTENTIONALLY INVALID: ambiguous_mixed_artifacts must never produce APPROVED per Plan 8 v4.1 Step 5; Step 8 will enforce TARGET_KIND_TO_LEGAL_DECISIONS"
+    }
+  ],
+  "notes": "fixture exists to document Step 8 enforcement intent; current route-report validator does not yet check decision legality per target kind"
+}

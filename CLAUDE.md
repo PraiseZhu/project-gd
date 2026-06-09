@@ -112,6 +112,18 @@ REVIEW_STANDARD: Project GD/prompts/rev-review-standard.md
 - 不运行 live `/review plan`
 - 集成验证清单详见 [`PROJECT_GOAL.md` "测试计划"](./PROJECT_GOAL.md)
 
+## /gd 四阶段 Review 体系（三档）
+
+`/gd` 命令实现四阶段全链（plan → review plan → execute → review execution/code → final gate），对应三档 Review 体系：
+
+| 档 | 覆盖阶段 | 核心 validator / 机制 | 当前状态 |
+|---|------|-------------------|------|
+| **L1** | `/gd plan`（planning dispatch） | stage dispatch ledger(stage=plan) + controller-report + gd-validate-dispatch.py | `local_only` ★ active（rev21） |
+| **L2** | `/gd review plan`（plan cross-review） | gd-review-suite-controller.py + gd-codex-bridge-review.py --live-transport --compat-v1 + aggregate-final.json | `active` ★ bounded-parallel（rev21） |
+| **L3** | `/gd execute`（execution dispatch） + `/gd review`（execution review） | stage dispatch ledger(stage=execute) + controller-report + gd-validate-execution-batch.py(owned_paths) + Codex bridge kind=execution_outcome | **`local_only` ★ agent_exec 子 agent 化已实装（rev22，rev21 架构复用）**；human_exec 降为 emergency-only；execute 事后 review 由 `/gd review` execution-only 路径承担（revision=20） |
+
+`/gd execute` 当前默认模式 = `agent_exec`（capability probe fail-closed → 按 wave 派 1-2 child executor → stage-dispatch-ledger + controller-report）；`human_exec` 需用户显式 `override: emergency_non_final`；`dry_run` 仍 pending_future_plan。
+
 ## 版本管理
 
 详见 [`VERSIONING.md`](./VERSIONING.md)。

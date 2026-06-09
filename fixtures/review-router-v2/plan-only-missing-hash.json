@@ -1,0 +1,21 @@
+{
+  "_fixture_meta": {
+    "fixture_version": "2.0",
+    "schema_version": "2.0",
+    "_test_expect": "FAIL",
+    "description": "Plan 8 v4.1 Step 8 negative: plan_only missing plan_hash must fail validation."
+  },
+  "schema_version": "2.0",
+  "router_invocation_id": "fixture-plan-only-missing-hash-001",
+  "mode": "fixture",
+  "review_target_kind": "plan_only",
+  "decision": "APPROVED",
+  "validator_signature": {
+    "validator": "gd-validate-route-report.py",
+    "schema_version": "2.0"
+  },
+  "recorded_at": "2026-05-14T14:01:00Z",
+  "findings": [],
+  "plan_ref": "fixtures/plans/well-formed-plan.md",
+  "notes": "INTENTIONALLY INVALID: plan_only requires plan_hash (Step 8)"
+}

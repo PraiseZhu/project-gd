@@ -1,0 +1,23 @@
+{
+  "_fixture_meta": {
+    "fixture_version": "2.0",
+    "schema_version": "2.0",
+    "_test_expect": "PASS",
+    "description": "Plan 8 v4.1 Step 8: code_only with diff_source + diff_hash + patch_generation_method populated; APPROVED."
+  },
+  "schema_version": "2.0",
+  "router_invocation_id": "fixture-code-only-required-001",
+  "mode": "fixture",
+  "review_target_kind": "code_only",
+  "decision": "APPROVED",
+  "validator_signature": {
+    "validator": "gd-validate-route-report.py",
+    "schema_version": "2.0"
+  },
+  "recorded_at": "2026-05-14T14:02:00Z",
+  "findings": [],
+  "diff_source": "git diff feat/foo..HEAD -- src/",
+  "diff_hash": "4444444444444444444444444444444444444444444444444444444444444444",
+  "patch_generation_method": "git_diff",
+  "codex_transport_status": "available"
+}

@@ -1,6 +1,1 @@
-{
-  "track_id": "t1",
-  "produced_by": "valid-batch fixture",
-  "purpose": "physical artifact for v5 deliverable truth check",
-  "status": "ok"
-}
+{"task_id":"t1","exec_status":"completed","sc_results":{"SC-1":"pass"}}

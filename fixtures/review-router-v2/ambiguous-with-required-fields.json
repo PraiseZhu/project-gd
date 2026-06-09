@@ -1,0 +1,32 @@
+{
+  "_fixture_meta": {
+    "fixture_version": "2.0",
+    "schema_version": "2.0",
+    "_test_expect": "PASS",
+    "description": "Plan 8 v4.1 Step 8: ambiguous_mixed_artifacts with all required fields (detected_artifact_set + failure_code + finding) and decision REQUIRES_CHANGES (legal per TARGET_KIND_TO_LEGAL_DECISIONS)."
+  },
+  "schema_version": "2.0",
+  "router_invocation_id": "fixture-ambiguous-required-001",
+  "mode": "fixture",
+  "review_target_kind": "ambiguous_mixed_artifacts",
+  "decision": "REQUIRES_CHANGES",
+  "validator_signature": {
+    "validator": "gd-validate-route-report.py",
+    "schema_version": "2.0"
+  },
+  "recorded_at": "2026-05-14T14:04:00Z",
+  "findings": [
+    {
+      "reviewer": "router",
+      "severity": "info",
+      "description": "plan + execution + code all present without bundle declaration; ambiguous"
+    }
+  ],
+  "detected_artifact_set": {
+    "has_plan": true,
+    "has_execution": true,
+    "has_code": true
+  },
+  "failure_code": "AMBIGUOUS_MIXED_ARTIFACTS",
+  "notes": "Step 8: ambiguous required fields populated; REQUIRES_CHANGES allowed per legal decisions"
+}

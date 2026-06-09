@@ -1,0 +1,20 @@
+{
+  "_fixture_meta": {
+    "fixture_version": "2.0",
+    "schema_version": "2.0",
+    "_test_expect": "FAIL",
+    "description": "live_dry_run mode — notes and findings lack mock indicator; should fail mode-specific contract"
+  },
+  "schema_version": "2.0",
+  "router_invocation_id": "fixture-ldr-no-mock-001",
+  "mode": "live_dry_run",
+  "review_target_kind": "plan_only",
+  "decision": "APPROVED",
+  "validator_signature": {
+    "validator": "gd-validate-route-report.py",
+    "schema_version": "2.0"
+  },
+  "recorded_at": "2026-05-14T10:00:00Z",
+  "findings": [],
+  "notes": "live_dry_run: real detection ran; review complete"
+}
