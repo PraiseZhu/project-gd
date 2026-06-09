@@ -17,3 +17,4 @@
 {"source":"scripts/gd-detect-review2-code-target.py","target":"~/.claude/scripts/gd-detect-review2-code-target.py","method":"direct_cp","ledger_scope":"sync_script_to_live"}
 {"source":"scripts/gd-review2-preflight.sh","target":"~/.claude/scripts/gd-review2-preflight.sh","method":"direct_cp","ledger_scope":"sync_script_to_live"}
 {"source":"scripts/gd-review2-package-deliverable.sh","target":"~/.claude/scripts/gd-review2-package-deliverable.sh","method":"direct_cp","ledger_scope":"sync_script_to_live"}
+{"source":"scripts/gd-review-router.py","target":"~/.claude/scripts/gd-review-router.py","method":"direct_cp","ledger_scope":"sync_script_to_live"}

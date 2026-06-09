@@ -1172,6 +1172,7 @@ def run_live(
             codex_mapped_result=(Path(codex_mapped_result) if codex_mapped_result else None),
             review_contract=review_contract,
             live_bridge_timeout_sec=live_bridge_timeout_sec,
+            use_controller=True,
         )
 
     if kind == "code_only" and target is not None:
@@ -1184,6 +1185,7 @@ def run_live(
             codex_mapped_result=(Path(codex_mapped_result) if codex_mapped_result else None),
             review_contract=review_contract,
             live_bridge_timeout_sec=live_bridge_timeout_sec,
+            use_controller=True,
         )
 
     # Fallback: target is None for a non-plan kind — fail-closed.

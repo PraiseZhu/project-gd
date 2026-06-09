@@ -68,12 +68,26 @@ def _builtin_is_execution_json(path: Path) -> bool:
     return bool(_EXEC_SIGNATURE_FIELDS & set(data.keys()))
 
 
+_EXECUTION_SCAN_EXCLUDE_DIRS: frozenset[str] = frozenset({
+    "fixtures", "plans", "docs", "archive", "_tmp", "tests", "test",
+    "node_modules", ".git",
+})
+
+
 def _builtin_has_execution_artifacts_in_dir(directory: Path) -> bool:
-    """内置目录扫描（共享模块不可用时的 fallback）。"""
+    """内置目录扫描（共享模块不可用时的 fallback）。
+
+    只扫 directory 的直接子目录和 results/ 等已知产物位置，排除 fixtures/、
+    plans/、docs/ 等噪声目录，避免把历史 fixture JSON 误判为本次执行产物。
+    """
     if not directory.is_dir():
         return False
     for candidate in directory.rglob("*.json"):
+        # 排除 _ 前缀临时文件
         if candidate.name.startswith("_"):
+            continue
+        # 排除已知噪声目录（检查路径任意一段是否命中排除集合）
+        if any(part in _EXECUTION_SCAN_EXCLUDE_DIRS for part in candidate.parts):
             continue
         if _builtin_is_execution_json(candidate):
             return True
@@ -110,9 +124,16 @@ def _detect_has_code(cwd: Path) -> tuple[bool, str]:
         return True, "git_diff_cached=non-empty"
 
     # 3. untracked 文件（git ls-files --others --exclude-standard）
+    # 排除 _tmp/、dispatch/、plans/ 等非代码产物目录，避免临时文件被误判为代码改动
+    _UNTRACKED_EXCLUDE_PREFIXES = ("_tmp/", "dispatch/", "plans/", "docs/", "archive/")
     rc, out = _run(["git", "ls-files", "--others", "--exclude-standard"])
     if rc == 0 and out:
-        return True, "git_untracked=non-empty"
+        code_files = [
+            f for f in out.splitlines()
+            if f and not any(f.startswith(p) for p in _UNTRACKED_EXCLUDE_PREFIXES)
+        ]
+        if code_files:
+            return True, "git_untracked=non-empty"
 
     # 4. git 命令均失败（非 git 目录）→ 探测失败，has_code 视为 False
     rc_check, _ = _run(["git", "rev-parse", "--git-dir"])
@@ -197,14 +218,26 @@ def main(argv: list[str] | None = None) -> int:
     # ------------------------------------------------------------------
     has_code, code_basis = _detect_has_code(cwd)
 
-    # 执行产物探测：优先使用共享模块，fallback 内置实现
+    # 执行产物探测：只扫已知产物子目录，不扫全仓（避免 fixtures/plans 误判）
+    # 已知产物目录：results/、output/、reports/ — 不含 fixtures/、plans/、_tmp/
+    _RESULT_SCAN_DIRS = ["results", "output", "reports"]
     shared_fn = _try_import_shared_detection()
-    if shared_fn is not None:
-        has_result = shared_fn(cwd)
-        result_basis = "gd_review_detection.has_execution_artifacts_in_dir"
-    else:
-        has_result = _builtin_has_execution_artifacts_in_dir(cwd)
-        result_basis = "builtin_has_execution_artifacts_in_dir"
+    has_result = False
+    result_basis = "no_execution_artifact_found"
+    for _scan_subdir in _RESULT_SCAN_DIRS:
+        _scan_path = cwd / _scan_subdir
+        if not _scan_path.is_dir():
+            continue
+        if shared_fn is not None:
+            _found = shared_fn(_scan_path)
+            _basis = f"gd_review_detection({_scan_subdir}/)"
+        else:
+            _found = _builtin_has_execution_artifacts_in_dir(_scan_path)
+            _basis = f"builtin({_scan_subdir}/)"
+        if _found:
+            has_result = True
+            result_basis = _basis
+            break
 
     triage_basis = f"has_code={has_code}({code_basis}),has_result={has_result}({result_basis})"
 
