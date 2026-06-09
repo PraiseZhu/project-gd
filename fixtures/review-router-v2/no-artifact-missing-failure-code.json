@@ -1,0 +1,26 @@
+{
+  "_fixture_meta": {
+    "fixture_version": "2.0",
+    "schema_version": "2.0",
+    "_test_expect": "FAIL",
+    "description": "Plan 8 v4.1 Step 8 negative: no_artifact missing failure_code must fail validation."
+  },
+  "schema_version": "2.0",
+  "router_invocation_id": "fixture-no-artifact-missing-failure-code-001",
+  "mode": "fixture",
+  "review_target_kind": "no_artifact",
+  "decision": "REVIEW_TARGET_MISSING",
+  "validator_signature": {
+    "validator": "gd-validate-route-report.py",
+    "schema_version": "2.0"
+  },
+  "recorded_at": "2026-05-14T14:03:00Z",
+  "findings": [
+    {
+      "reviewer": "router",
+      "severity": "info",
+      "description": "no artifact under target"
+    }
+  ],
+  "notes": "INTENTIONALLY INVALID: no_artifact requires failure_code (Step 8)"
+}

@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "stage": "execute",
+  "parent_run_id": "sc9-dogfood-run-20260609",
+  "batch_id": "batch-sc9-001",
+  "recorded_at": "2026-06-09T03:10:00Z",
+  "child_agent_count": 1,
+  "max_parallel": 1,
+  "child_jobs": [
+    {
+      "job_id": "child-executor-001",
+      "result_path": "fixtures/sc9-dogfood/child-exec-001-result.json",
+      "result_hash": "aabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccdd",
+      "status": "completed"
+    }
+  ],
+  "main_agent_merge": {
+    "merge_report_path": "fixtures/sc9-dogfood/execute-merge-report.md",
+    "merge_report_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "final_decision": "APPROVED",
+    "blocking_buckets": []
+  }
+}

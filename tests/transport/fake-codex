@@ -1,0 +1,142 @@
+#!/usr/bin/env bash
+# fake-codex — Test shim for codex-watch / codex-send-wait offline testing.
+#
+# Controlled entirely by environment variables. Produces output that codex-watch
+# and codex-send-wait can parse (VERDICT / RECOMMENDATION lines).
+#
+# Env vars:
+#   FAKE_CODEX_MODE          — success | timeout | exit1 | provider_aware (default: success)
+#   FAKE_CODEX_OUTPUT_TYPE   — verdict | recommendation (default: verdict)
+#   FAKE_CODEX_VERDICT       — APPROVED | REQUIRES_CHANGES (default: APPROVED)
+#   FAKE_CODEX_RECOMMENDATION — recommendation text (default: "RECOMMENDATION: 建议采纳方案 A")
+#   FAKE_CODEX_PROVIDER      — when mode=provider_aware, which provider to succeed for
+#   FAKE_CODEX_ATTEMPT_FILE  — path to track attempt count (appends "attempt=N" per invocation)
+#   FAKE_CODEX_TIMEOUT_SEC   — seconds to sleep before timeout simulation (default: 300)
+#   FAKE_CODEX_ATTEMPT_EXIT  — comma-separated exit codes per attempt, e.g. "124,0"
+#   FAKE_CODEX_ATTEMPT_OUTPUT — comma-separated output types per attempt, e.g. "timeout,verdict"
+#
+# The ATTEMPT_* vars allow per-attempt behavior when used with codex-watch retry loop.
+# Attempt index is read from FAKE_CODEX_ATTEMPT_FILE line count.
+
+set -euo pipefail
+
+MODE="${FAKE_CODEX_MODE:-success}"
+OUTPUT_TYPE="${FAKE_CODEX_OUTPUT_TYPE:-verdict}"
+VERDICT="${FAKE_CODEX_VERDICT:-APPROVED}"
+RECOMMENDATION="${FAKE_CODEX_RECOMMENDATION:-RECOMMENDATION: 建议采纳方案 A，但需注意 X 场景下的取舍}"
+TIMEOUT_SEC="${FAKE_CODEX_TIMEOUT_SEC:-300}"
+
+# Determine attempt index
+ATTEMPT_INDEX=1
+if [[ -n "${FAKE_CODEX_ATTEMPT_FILE:-}" ]] && [[ -f "$FAKE_CODEX_ATTEMPT_FILE" ]]; then
+    ATTEMPT_INDEX=$(($(wc -l < "$FAKE_CODEX_ATTEMPT_FILE" | tr -d ' ') + 1))
+fi
+
+# Record attempt
+if [[ -n "${FAKE_CODEX_ATTEMPT_FILE:-}" ]]; then
+    echo "attempt=${ATTEMPT_INDEX}" >> "$FAKE_CODEX_ATTEMPT_FILE"
+fi
+
+# Per-attempt exit code override
+if [[ -n "${FAKE_CODEX_ATTEMPT_EXIT:-}" ]]; then
+    IFS=',' read -r -a EXIT_CODES <<< "$FAKE_CODEX_ATTEMPT_EXIT"
+    IDX=$((ATTEMPT_INDEX - 1))
+    if [[ $IDX -lt ${#EXIT_CODES[@]} ]]; then
+        EXIT_CODE="${EXIT_CODES[$IDX]}"
+        if [[ "$EXIT_CODE" == "124" ]]; then
+            sleep "$TIMEOUT_SEC"
+            exit 124
+        elif [[ "$EXIT_CODE" == "timeout" ]]; then
+            sleep "$TIMEOUT_SEC"
+            exit 124
+        else
+            exit "$EXIT_CODE"
+        fi
+    fi
+fi
+
+# Per-attempt output type override
+if [[ -n "${FAKE_CODEX_ATTEMPT_OUTPUT:-}" ]]; then
+    IFS=',' read -r -a OUTPUT_TYPES <<< "$FAKE_CODEX_ATTEMPT_OUTPUT"
+    IDX=$((ATTEMPT_INDEX - 1))
+    if [[ $IDX -lt ${#OUTPUT_TYPES[@]} ]]; then
+        OUTPUT_TYPE="${OUTPUT_TYPES[$IDX]}"
+    fi
+fi
+
+# Mode dispatch
+case "$MODE" in
+    timeout)
+        sleep "$TIMEOUT_SEC"
+        exit 124
+        ;;
+    exit1)
+        echo "Error: simulated codex failure" >&2
+        exit 1
+        ;;
+    provider_aware)
+        PROVIDER="${FAKE_CODEX_PROVIDER:-tapsvc}"
+        # Succeed only for the specified provider
+        if [[ "${CODEX_MODEL_PROVIDER:-tapsvc}" == "$PROVIDER" ]]; then
+            :
+        else
+            echo "Error: provider ${CODEX_MODEL_PROVIDER:-tapsvc} not available" >&2
+            exit 1
+        fi
+        ;;
+    success|*)
+        # Default: succeed
+        ;;
+esac
+
+# Produce output
+if [[ "$OUTPUT_TYPE" == "recommendation" ]]; then
+    cat <<OUTPUT_EOF
+# Discussion Result
+
+## 独立分析
+
+针对你提出的问题，我从以下几个角度进行了独立推理：
+
+1. **方案 A 的优势**：实现简单、风险可控、与现有架构兼容性好。
+2. **方案 A 的代价**：在 X 场景下可能出现性能退化，需要额外的缓存层来缓解。
+3. **替代方案 B**：虽然更彻底，但需要重构 L2/L3 的 verdict 语义，超出了当前 scope。
+
+## 取舍分析
+
+| 维度 | 方案 A | 方案 B |
+|------|--------|--------|
+| 实现复杂度 | 低 | 高 |
+| 风险 | 可控 | 较大 |
+| 长期维护 | 需额外缓存 | 架构更干净 |
+
+${RECOMMENDATION}
+
+以上分析基于当前上下文，建议结合你的实际场景权衡。
+OUTPUT_EOF
+else
+    cat <<OUTPUT_EOF
+# Code Review Result
+
+VERDICT: ${VERDICT}
+REVIEW_DOMAIN: ai_infra
+REVIEW_MODE: single_pass
+REVIEW_DELTA_SCOPE: full_matrix
+
+## Scope Checked
+
+| 检查面 | 结论 | 证据（≤30字） |
+|--------|------|---------------|
+| trigger surface | pass | 入口路径正确 |
+| state/baseline | pass | 状态文件格式正确 |
+| validation/runtime | pass | smoke 全绿 |
+
+## Findings
+
+## Residual Risk
+
+none
+OUTPUT_EOF
+fi
+
+exit 0

@@ -1,0 +1,21 @@
+{
+  "_fixture_meta": {
+    "fixture_version": "2.0",
+    "schema_version": "2.0",
+    "_test_expect": "PASS",
+    "description": "execution_only_no_code — all required outcome fields present; should pass"
+  },
+  "schema_version": "2.0",
+  "router_invocation_id": "fixture-exec-only-valid-001",
+  "mode": "fixture",
+  "review_target_kind": "execution_only_no_code",
+  "decision": "APPROVED",
+  "validator_signature": {
+    "validator": "gd-validate-route-report.py",
+    "schema_version": "2.0"
+  },
+  "recorded_at": "2026-05-14T10:00:00Z",
+  "findings": [],
+  "execution_artifact_ref": "fixtures/execution-results/valid-closure.json",
+  "outcome_validator_status": "passed"
+}

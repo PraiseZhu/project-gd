@@ -612,7 +612,7 @@ def main(argv: list[str]) -> int:
         return 1
 
     _mode = _quick.get("execution_mode")
-    _CLOSURE_INELIGIBLE_MODES = {"agent_exec", "dry_run"}
+    _CLOSURE_INELIGIBLE_MODES = {"dry_run"}  # agent_exec 已实装（rev22）；dry_run 仍 pending
     if _mode in _CLOSURE_INELIGIBLE_MODES:
         print(
             f"EXECUTION_BATCH_PENDING_FUTURE_PLAN: "

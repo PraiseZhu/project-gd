@@ -1,0 +1,22 @@
+{
+  "_fixture_meta": {
+    "fixture_version": "2.0",
+    "schema_version": "2.0",
+    "_test_expect": "PASS",
+    "description": "live_dry_run mode — real detection + mock bridge, plan APPROVED; validates mode contract"
+  },
+  "schema_version": "2.0",
+  "router_invocation_id": "fixture-live-dry-run-001",
+  "mode": "live_dry_run",
+  "review_target_kind": "plan_only",
+  "decision": "APPROVED",
+  "validator_signature": {
+    "validator": "gd-validate-route-report.py",
+    "schema_version": "2.0"
+  },
+  "recorded_at": "2026-05-14T10:45:00Z",
+  "findings": [],
+  "codex_transport_status": "not_called",
+  "fix_rounds": 0,
+  "notes": "live_dry_run: real target detection ran, Codex bridge call was mocked (no actual review)"
+}

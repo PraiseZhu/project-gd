@@ -1,0 +1,28 @@
+{
+  "_fixture_meta": {
+    "fixture_version": "2.0",
+    "schema_version": "2.0",
+    "_test_expect": "PASS",
+    "description": "execution-only target (batch artifacts present, no code diff) — validates execution_only_no_code kind contract"
+  },
+  "schema_version": "2.0",
+  "router_invocation_id": "fixture-exec-only-001",
+  "mode": "fixture",
+  "review_target_kind": "execution_only_no_code",
+  "decision": "REQUIRES_CHANGES",
+  "validator_signature": {
+    "validator": "gd-validate-route-report.py",
+    "schema_version": "2.0"
+  },
+  "recorded_at": "2026-05-14T11:00:00Z",
+  "findings": [
+    {
+      "reviewer": "codex",
+      "severity": "medium",
+      "description": "execution batch closure report missing owned_paths containment evidence"
+    }
+  ],
+  "execution_artifact_ref": "fixtures/execution-results/valid-closure.json",
+  "outcome_validator_status": "passed",
+  "fix_rounds": 0
+}
