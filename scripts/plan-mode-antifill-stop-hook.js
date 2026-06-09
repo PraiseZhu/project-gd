@@ -224,6 +224,14 @@ async function main() {
     process.exit(0);
   }
 
+  // Boundary guard (code, not just comment): this gate targets the plan-mode
+  // Stop event only. If this hook is ever registered to fire on other events,
+  // bail out so ordinary conversations — which may legitimately contain
+  // "SC-N" without a verify line — are never erroneously blocked.
+  if (payload.hook_event_name && payload.hook_event_name !== "Stop") {
+    process.exit(0);
+  }
+
   // Extract plan text from hook payload.
   // Claude Code Stop hook may inject plan text via `plan_text` field,
   // or via the transcript at `transcript_path`. We check `plan_text` first.

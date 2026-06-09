@@ -86,6 +86,12 @@ DEFAULT_ROUND2_FANOUT_THRESHOLD_FILES = 5
 # Maximum rounds before hard stop (safety ceiling beyond CONVERGENCE_TIMEOUT)
 DEFAULT_MAX_ROUNDS = 10
 
+# Upper bound on the /simplify codex exec call (codex can stall indefinitely).
+CODEX_SIMPLIFY_TIMEOUT_SEC = 600
+
+# Upper bound on local git operations (guards against index-lock stalls).
+GIT_OP_TIMEOUT_SEC = 30
+
 # Round 1 codex_A lens emphasis order (SC-7.1)
 LENS_A_EMPHASIS = (
     "SC-conformance → boundary/path-violation → interface/contract → "
@@ -128,26 +134,39 @@ def take_delta_snapshot(cwd: Path) -> tuple[str | None, str]:
     """
     r = subprocess.run(
         ["git", "stash", "create"],
-        cwd=str(cwd), capture_output=True, text=True,
+        cwd=str(cwd), capture_output=True, text=True, timeout=GIT_OP_TIMEOUT_SEC,
     )
     snapshot_ref = (r.stdout or "").strip() or None
 
+    # git stash create returns 0 with empty stdout on a clean tree, but a
+    # non-zero exit is a REAL failure that must NOT be silently coerced into
+    # the clean-tree HEAD fallback — doing so would mask the error and feed a
+    # bogus "clean tree" delta into the D7 fanout decision.
+    if r.returncode != 0:
+        print(
+            f"[controller] WARNING: git stash create failed (exit {r.returncode}): "
+            f"{(r.stderr or '').strip()[:200]} — falling back to HEAD blob",
+            file=sys.stderr,
+        )
+
     # Compute diff for DELTA_SCOPE capsule field
-    diff_r = subprocess.run(
-        ["git", "diff", "HEAD", "--stat"],
-        cwd=str(cwd), capture_output=True, text=True,
-    )
     diff_lines_r = subprocess.run(
         ["git", "diff", "HEAD"],
-        cwd=str(cwd), capture_output=True, text=True,
+        cwd=str(cwd), capture_output=True, text=True, timeout=GIT_OP_TIMEOUT_SEC,
     )
+    if diff_lines_r.returncode != 0:
+        print(
+            f"[controller] WARNING: git diff HEAD failed (exit {diff_lines_r.returncode}): "
+            f"{(diff_lines_r.stderr or '').strip()[:200]}",
+            file=sys.stderr,
+        )
     diff_text = diff_lines_r.stdout or ""
 
     if snapshot_ref is None:
         # Clean working tree: use HEAD tree hash as stable blob reference
         head_r = subprocess.run(
             ["git", "rev-parse", "HEAD"],
-            cwd=str(cwd), capture_output=True, text=True,
+            cwd=str(cwd), capture_output=True, text=True, timeout=GIT_OP_TIMEOUT_SEC,
         )
         snapshot_ref = head_r.stdout.strip() or "HEAD"
 
@@ -172,19 +191,40 @@ def compute_delta_size(diff_text: str) -> tuple[int, int]:
 # Dedup / union logic (SC-7.1)
 # ---------------------------------------------------------------------------
 
-def _finding_key(f: dict) -> tuple:
+def _finding_filecat(f: dict) -> tuple[str, str]:
+    """Non-line part of the dedup key: (file_normalized, category_normalized)."""
+    return (
+        (f.get("file") or "").strip().lower(),
+        (f.get("category") or "").strip().lower(),
+    )
+
+
+def _lines_within_window(line_a: object, line_b: object) -> bool:
+    """True when two findings' lines are within ±LINE_DEDUP_WINDOW of each other.
+
+    Fixed-bucket arithmetic (line // 7) was wrong: lines 4 and 7 fall into
+    buckets 0 and 1 despite being only 3 apart, so genuine duplicates were
+    double-counted. A direct |a - b| <= window comparison is the only correct
+    test for an overlap window. None-line findings match only other None-line
+    findings of the same (file, category).
     """
-    Canonical dedup key: (file_normalized, category, line_bucket).
-    line_bucket = line // (2*LINE_DEDUP_WINDOW + 1) so two findings with
-    line±3 land in the same bucket.
-    """
-    file_norm = (f.get("file") or "").strip().lower()
-    category = (f.get("category") or "").strip().lower()
-    raw_line = f.get("line")
-    # Bucket lines into windows of width 2*LINE_DEDUP_WINDOW+1 (=7).
-    # Two lines within ±3 of each other always share a bucket.
-    line_bucket = int(raw_line) // (2 * LINE_DEDUP_WINDOW + 1) if raw_line is not None else -1
-    return (file_norm, category, line_bucket)
+    if line_a is None and line_b is None:
+        return True
+    if line_a is None or line_b is None:
+        return False
+    return abs(int(line_a) - int(line_b)) <= LINE_DEDUP_WINDOW
+
+
+def _finding_matches_any(f: dict, collection: list[dict]) -> bool:
+    """True when *f* corresponds to some finding in *collection* under the same
+    (file, category) and a ±LINE_DEDUP_WINDOW line overlap. Replaces the old
+    set-of-buckets membership test, which could not express a ±3 window."""
+    fc = _finding_filecat(f)
+    fl = f.get("line")
+    for g in collection:
+        if _finding_filecat(g) == fc and _lines_within_window(g.get("line"), fl):
+            return True
+    return False
 
 
 def merge_findings_union(
@@ -205,26 +245,35 @@ def merge_findings_union(
         + [("claude", f) for f in (claude_findings or [])]
     )
 
-    seen: dict[tuple, dict] = {}  # key → merged finding
+    # Linear scan dedup: a finding merges into an existing one when they share
+    # (file, category) AND their lines are within ±LINE_DEDUP_WINDOW. O(n²) but
+    # finding counts per round are small. (Replaces the broken line//7 bucket.)
+    merged_list: list[dict] = []
     for source, f in tagged:
-        key = _finding_key(f)
-        if key not in seen:
+        fc = _finding_filecat(f)
+        match = None
+        for existing in merged_list:
+            if _finding_filecat(existing) == fc and _lines_within_window(
+                existing.get("line"), f.get("line")
+            ):
+                match = existing
+                break
+        if match is None:
             merged = dict(f)
             merged["source"] = source
             merged["also_reported_by"] = []
-            seen[key] = merged
+            merged_list.append(merged)
         else:
-            existing = seen[key]
             # Severity: keep max
-            if _severity_rank(f.get("severity", "P2")) > _severity_rank(existing.get("severity", "P2")):
-                existing["severity"] = f["severity"]
+            if _severity_rank(f.get("severity", "P2")) > _severity_rank(match.get("severity", "P2")):
+                match["severity"] = f["severity"]
             # Track duplicate reporters
-            if source not in existing.get("also_reported_by", []) and source != existing.get("source"):
-                existing.setdefault("also_reported_by", []).append(source)
+            if source not in match.get("also_reported_by", []) and source != match.get("source"):
+                match.setdefault("also_reported_by", []).append(source)
 
     # Assign stable IDs and set initial status
     result = []
-    for idx, f in enumerate(seen.values(), 1):
+    for idx, f in enumerate(merged_list, 1):
         f.setdefault("id", f"F{idx:03d}")
         f.setdefault("status", "unresolved")
         f.setdefault("resolved_in_round", None)
@@ -493,17 +542,15 @@ def update_baseline_statuses(
 
     Returns (updated_baseline, baseline_unresolved_count, new_in_delta_count).
     """
-    # Build index of round findings by key for O(1) lookup
-    round_keys: set[tuple] = {_finding_key(f) for f in round_findings}
-
     updated = []
     for f in baseline:
         new_f = dict(f)
         history = list(f.get("round_history", []))
         if f["status"] == "unresolved":
-            # Check objective presence: is the symptom key still in round findings?
-            fkey = _finding_key(f)
-            still_present = fkey in round_keys
+            # Check objective presence: is the symptom still reported this round?
+            # (±3 line window — not exact-key membership, which the old bucket
+            # test got wrong.)
+            still_present = _finding_matches_any(f, round_findings)
             if not still_present:
                 new_f["status"] = "resolved"
                 new_f["resolved_in_round"] = round_num
@@ -515,13 +562,12 @@ def update_baseline_statuses(
 
     baseline_unresolved = sum(1 for f in updated if f["status"] == "unresolved")
 
-    # new_in_delta: round findings whose key is not in baseline
-    baseline_keys: set[tuple] = {_finding_key(f) for f in baseline}
-    new_in_delta = sum(1 for f in round_findings if _finding_key(f) not in baseline_keys)
+    # new_in_delta: round findings that match no original-baseline finding.
+    new_in_delta = sum(1 for f in round_findings if not _finding_matches_any(f, baseline))
 
-    # Add new delta findings to baseline
+    # Add new delta findings to baseline (matched against the original baseline).
     for f in round_findings:
-        if _finding_key(f) not in baseline_keys:
+        if not _finding_matches_any(f, baseline):
             new_f = dict(f)
             new_f.setdefault("status", "unresolved")
             new_f.setdefault("source", "codex_A")
@@ -759,12 +805,22 @@ def run_branch_c(
         new_exec_result = stub_dispatch.produce_new_execution_result(simplify_time)
     else:
         print("[controller] Running /simplify via codex exec --ephemeral ...")
-        simplify_result = subprocess.run(
-            ["codex", "exec", "--ephemeral", "--", "/simplify"],
-            cwd=str(cwd), capture_output=True, text=True,
-        )
-        if simplify_result.returncode != 0:
-            print(f"[controller] /simplify exited {simplify_result.returncode}; continuing", file=sys.stderr)
+        try:
+            simplify_result = subprocess.run(
+                ["codex", "exec", "--ephemeral", "--", "/simplify"],
+                cwd=str(cwd), capture_output=True, text=True,
+                timeout=CODEX_SIMPLIFY_TIMEOUT_SEC,
+            )
+            if simplify_result.returncode != 0:
+                print(f"[controller] /simplify exited {simplify_result.returncode}; continuing", file=sys.stderr)
+        except subprocess.TimeoutExpired:
+            # codex exec can hang indefinitely (observed real-world stalls); a
+            # missing timeout would block the controller and its parent router.
+            print(
+                f"[controller] /simplify timed out after {CODEX_SIMPLIFY_TIMEOUT_SEC}s; "
+                "skipping simplify, continuing to Branch B",
+                file=sys.stderr,
+            )
 
         # Step 3: re-run tests/verify to produce new execution result AFTER simplify
         print("[controller] Re-running tests/verify to produce post-simplify execution result ...")

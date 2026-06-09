@@ -1,0 +1,22 @@
+{
+  "template_kind": "gd-code-diff-review",
+  "reviewer": "codex",
+  "review_target": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/gd-l2-parity/dispatch/review-code/l2-code-diff.patch",
+  "review_kind": "code_diff",
+  "review_run_status": "failed_to_run",
+  "gd_review_decision": "FAILED",
+  "scope_checked": [
+    {
+      "facet": "bridge runtime",
+      "result": "fail",
+      "evidence": "writer FAILED exit=0: [REVIEW] ✗ FAILED — codex-send-wait ex"
+    }
+  ],
+  "findings": [],
+  "merge_notes": {
+    "conflict_with_other_reviewer": false,
+    "degraded_reason": "writer FAILED exit=0: [REVIEW] ✗ FAILED — codex-send-wait exit 4\nFailure log: /Users/praise/.claude/review-baselines/gd-code_diff-l2-code-diff-patch-0805895815a9/error-20260609T070937Z.log"
+  },
+  "residual_risk": [],
+  "timestamp": "2026-06-09T07:15:24Z"
+}
