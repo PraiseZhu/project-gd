@@ -1,0 +1,33 @@
+{
+  "template_kind": "gd-code-diff-review",
+  "reviewer": "codex",
+  "review_target": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/gd-l2-parity/dispatch/review-code/l2-code-diff.patch",
+  "review_kind": "code_diff",
+  "review_run_status": "completed",
+  "gd_review_decision": "REQUIRES_CHANGES",
+  "scope_checked": [
+    {
+      "facet": "raw markdown structure",
+      "result": "pass",
+      "evidence": "writer-validated; verdict=REQUIRES_CHANGES"
+    }
+  ],
+  "findings": [
+    {
+      "severity": "P2",
+      "title": "plan 路由错误挂载 code preflight",
+      "sc_refs": [
+        "SC-6"
+      ],
+      "evidence": "`dispatch/review-code/l2-code-diff.patch:69` 将 plan Step1 设为 `gd-review2-preflight.sh`；`dispatch/review-code/l2-code-diff.patch:126` 声明只挂 `/review2 code`，`dispatch/review-code/l2-code-diff.patch:127` 声明 plan 路不调用 preflight。",
+      "impact": "`/review2 plan <plan-file>` active path 会在无 dry-run evidence 时被错误 fail-closed，计划审查无法进入 anti-fill/capsule/bridge 流程。",
+      "required_fix": "修改 `commands/review2.md` 的 `/review2 plan` 流程和 fail-closed 规则，移除 plan Step1 preflight 与 `DRYRUN_EVIDENCE_MISSING` plan 阻断，只保留 `gd-validate-review2-plan-target.py` 作为 plan 路硬门。",
+      "verify": "`rg -n \"gd-review2-preflight|DRYRUN_EVIDENCE_MISSING|GATE_BOUNDARY\" commands/review2.md`，确认 preflight 仅出现在 `/review2 code` 段，且 `/review2 plan` 段不再要求 dry-run evidence。"
+    }
+  ],
+  "merge_notes": {
+    "conflict_with_other_reviewer": false
+  },
+  "residual_risk": [],
+  "timestamp": "2026-06-09T08:46:20Z"
+}

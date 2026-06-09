@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "stage": "review_execution_code",
+  "parent_run_id": "gd-l2-review-code-final-20260609",
+  "batch_id": "exec-review-ew2",
+  "recorded_at": "2026-06-09T08:00:00Z",
+  "child_agent_count": 1,
+  "max_parallel": 2,
+  "child_jobs": [
+    {
+      "job_id": "exec-review-r2",
+      "result_path": "dispatch/review-code/execution-static-review-r2.md",
+      "result_hash": "ac86925550a1f25cd8ce4e14bd88904ed799ed64da44498065f1de943f828d18",
+      "status": "completed"
+    }
+  ],
+  "main_agent_merge": {
+    "merge_report_path": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/gd-l2-parity/dispatch/review-code/exec-review-merge-report.md",
+    "merge_report_hash": "c101fbbe8ccdc546f1606506a228285f6cc03ca42e78d9a4a80a162962db679d",
+    "final_decision": "APPROVED",
+    "blocking_buckets": []
+  }
+}
