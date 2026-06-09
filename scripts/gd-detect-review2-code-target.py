@@ -218,26 +218,26 @@ def main(argv: list[str] | None = None) -> int:
     # ------------------------------------------------------------------
     has_code, code_basis = _detect_has_code(cwd)
 
-    # 执行产物探测：只扫已知产物子目录，不扫全仓（避免 fixtures/plans 误判）
-    # 已知产物目录：results/、output/、reports/ — 不含 fixtures/、plans/、_tmp/
-    _RESULT_SCAN_DIRS = ["results", "output", "reports"]
+    # 执行产物探测：扫 cwd，但对 shared_fn 结果用内置排除逻辑过滤
+    # 确保 fixtures/、plans/、_tmp/ 等噪声目录不触发 has_result=True
     shared_fn = _try_import_shared_detection()
-    has_result = False
-    result_basis = "no_execution_artifact_found"
-    for _scan_subdir in _RESULT_SCAN_DIRS:
-        _scan_path = cwd / _scan_subdir
-        if not _scan_path.is_dir():
-            continue
-        if shared_fn is not None:
-            _found = shared_fn(_scan_path)
-            _basis = f"gd_review_detection({_scan_subdir}/)"
+    if shared_fn is not None:
+        # shared_fn 扫全目录；用内置 fallback 对 _EXECUTION_SCAN_EXCLUDE_DIRS 过滤验证
+        _shared_result = shared_fn(cwd)
+        if _shared_result:
+            # 仅当内置逻辑（排除噪声目录后）也认为有产物时，才认定 has_result=True
+            _builtin_result = _builtin_has_execution_artifacts_in_dir(cwd)
+            has_result = _builtin_result
+            result_basis = (
+                "gd_review_detection.has_execution_artifacts_in_dir"
+                if _builtin_result else "shared_found_but_filtered_by_exclude_dirs"
+            )
         else:
-            _found = _builtin_has_execution_artifacts_in_dir(_scan_path)
-            _basis = f"builtin({_scan_subdir}/)"
-        if _found:
-            has_result = True
-            result_basis = _basis
-            break
+            has_result = False
+            result_basis = "gd_review_detection(no_artifact)"
+    else:
+        has_result = _builtin_has_execution_artifacts_in_dir(cwd)
+        result_basis = "builtin_has_execution_artifacts_in_dir"
 
     triage_basis = f"has_code={has_code}({code_basis}),has_result={has_result}({result_basis})"
 
