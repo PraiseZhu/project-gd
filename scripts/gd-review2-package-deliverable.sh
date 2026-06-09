@@ -239,8 +239,9 @@ echo ""
 # 获取当前分支名（用于草稿填充）
 BRANCH_NAME="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo 'unknown-branch')"
 # 获取最近改动文件摘要（最多显示 10 条）
-CHANGED_FILES="$(git diff --cached --name-only 2>/dev/null | head -10 || true)"
-CHANGED_COUNT="$(git diff --cached --name-only 2>/dev/null | wc -l | tr -d ' ' || echo '0')"
+_ALL_CHANGED="$(git diff --cached --name-only 2>/dev/null || true)"
+CHANGED_FILES="$(echo "$_ALL_CHANGED" | head -10)"
+CHANGED_COUNT="$(echo "$_ALL_CHANGED" | grep -c . || echo '0')"
 
 # commit message 首行：单文件用 fix:，多文件用 feat:
 if [[ "$CHANGED_COUNT" == "1" ]]; then

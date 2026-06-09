@@ -208,22 +208,18 @@ def main(argv: list[str] | None = None) -> int:
 
     triage_basis = f"has_code={has_code}({code_basis}),has_result={has_result}({result_basis})"
 
-    if has_code and not has_result:
-        print("REVIEW2_CODE_TARGET: code-only")
+    _TARGET_MAP = {
+        (True, False): "code-only",
+        (False, True): "execution-only",
+        (True, True):  "combined",
+    }
+    target = _TARGET_MAP.get((has_code, has_result))
+    if target is not None:
+        print(f"REVIEW2_CODE_TARGET: {target}")
         print(f"REVIEW2_TRIAGE_BASIS: {triage_basis}")
         return 0
 
-    if has_result and not has_code:
-        print("REVIEW2_CODE_TARGET: execution-only")
-        print(f"REVIEW2_TRIAGE_BASIS: {triage_basis}")
-        return 0
-
-    if has_code and has_result:
-        print("REVIEW2_CODE_TARGET: combined")
-        print(f"REVIEW2_TRIAGE_BASIS: {triage_basis}")
-        return 0
-
-    # 两者皆 False → INDETERMINATE，exit 2（交上层问用户，守 D1）
+    # (False, False) → INDETERMINATE，exit 2（交上层问用户，守 D1）
     print("REVIEW2_CODE_TARGET: INDETERMINATE")
     print(f"REVIEW2_TRIAGE_BASIS: {triage_basis}")
     print(

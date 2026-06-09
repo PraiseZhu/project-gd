@@ -562,12 +562,11 @@ def update_baseline_statuses(
 
     baseline_unresolved = sum(1 for f in updated if f["status"] == "unresolved")
 
-    # new_in_delta: round findings that match no original-baseline finding.
-    new_in_delta = sum(1 for f in round_findings if not _finding_matches_any(f, baseline))
+    # Collect new delta findings in one pass (avoids scanning baseline twice per finding).
+    new_delta_findings = [f for f in round_findings if not _finding_matches_any(f, baseline)]
+    new_in_delta = len(new_delta_findings)
 
-    # Add new delta findings to baseline (matched against the original baseline).
-    for f in round_findings:
-        if not _finding_matches_any(f, baseline):
+    for f in new_delta_findings:
             new_f = dict(f)
             new_f.setdefault("status", "unresolved")
             new_f.setdefault("source", "codex_A")
@@ -606,6 +605,71 @@ def write_baseline(
 
 
 # ---------------------------------------------------------------------------
+# Shared convergence loop (SC-7.4 / SC-7.6) — used by Branch A and Branch B
+# ---------------------------------------------------------------------------
+
+def _run_convergence_loop(
+    kind: str,
+    target: "Path",
+    cwd: "Path",
+    output_dir: "Path",
+    invocation_id: str,
+    baseline: list[dict],
+    snap_ref: str,
+    branch_label: str,
+    claude_findings: list[dict],
+    threshold_lines: int,
+    threshold_files: int,
+    max_rounds: int,
+    stub_dispatch: "StubDispatch | None",
+) -> str:
+    """Round 2+ convergence loop shared between Branch A and Branch B.
+
+    Returns "APPROVED" or raises SystemExit(1) with CONVERGENCE_TIMEOUT.
+    """
+    write_baseline(baseline, output_dir, invocation_id, branch_label, snap_ref)
+    print(f"[controller] Round 1 complete: {len(baseline)} baseline findings")
+
+    prev_unresolved: int | None = None
+    stagnant_rounds = 0
+
+    for round_num in range(2, max_rounds + 1):
+        round_findings, snap_ref, dispatch_count = run_round_n(
+            round_num=round_num,
+            kind=kind, target=target, cwd=cwd, output_dir=output_dir,
+            invocation_id=invocation_id,
+            baseline_findings=baseline,
+            threshold_lines=threshold_lines,
+            threshold_files=threshold_files,
+            stub_dispatch=stub_dispatch,
+        )
+        baseline, baseline_unresolved, new_in_delta = update_baseline_statuses(
+            baseline, round_findings, round_num
+        )
+        print(
+            f"[controller] Round {round_num}: dispatch={dispatch_count}  "
+            f"baseline_unresolved={baseline_unresolved}  new_in_delta={new_in_delta}"
+        )
+
+        if prev_unresolved is not None and baseline_unresolved >= prev_unresolved:
+            stagnant_rounds += 1
+        else:
+            stagnant_rounds = 0
+        prev_unresolved = baseline_unresolved
+
+        if stagnant_rounds >= 2:
+            print(f"CONVERGENCE_TIMEOUT: {branch_label} baseline_unresolved stagnant for 2 rounds")
+            sys.exit(1)
+
+        if baseline_unresolved == 0 and new_in_delta == 0:
+            print("APPROVED")
+            return "APPROVED"
+
+    print(f"CONVERGENCE_TIMEOUT: {branch_label} reached max_rounds without convergence")
+    sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
 # Branch A: code-only loop
 # ---------------------------------------------------------------------------
 
@@ -625,70 +689,20 @@ def run_branch_a(
     Direct codex invocation via codex exec --ephemeral through bridge wrapper.
     """
     print(f"[controller] Branch A: code-only  invocation_id={invocation_id}")
+    target = cwd  # bridge detects diff from working dir
 
-    # Detect git diff target
-    diff_r = subprocess.run(
-        ["git", "diff", "HEAD", "--name-only"],
-        cwd=str(cwd), capture_output=True, text=True,
-    )
-    changed_files = [f for f in (diff_r.stdout or "").splitlines() if f.strip()]
-    if not changed_files and stub_dispatch is None:
-        # Use staged changes
-        diff_r2 = subprocess.run(
-            ["git", "diff", "--cached", "--name-only"],
-            cwd=str(cwd), capture_output=True, text=True,
-        )
-        changed_files = [f for f in (diff_r2.stdout or "").splitlines() if f.strip()]
-    target = cwd  # Use working dir; bridge will detect diff
-
-    # Round 1
     baseline, snap_ref = run_round1(
         kind="code_diff", target=target, cwd=cwd, output_dir=output_dir,
         invocation_id=invocation_id, claude_findings=claude_findings,
         stub_dispatch=stub_dispatch,
     )
-    write_baseline(baseline, output_dir, invocation_id, "code-only", snap_ref)
-    print(f"[controller] Round 1 complete: {len(baseline)} baseline findings")
-
-    prev_unresolved: int | None = None
-    stagnant_rounds = 0
-
-    for round_num in range(2, max_rounds + 1):
-        round_findings, snap_ref, dispatch_count = run_round_n(
-            round_num=round_num,
-            kind="code_diff", target=target, cwd=cwd, output_dir=output_dir,
-            invocation_id=invocation_id,
-            baseline_findings=baseline,
-            threshold_lines=threshold_lines,
-            threshold_files=threshold_files,
-            stub_dispatch=stub_dispatch,
-        )
-        baseline, baseline_unresolved, new_in_delta = update_baseline_statuses(
-            baseline, round_findings, round_num
-        )
-        print(
-            f"[controller] Round {round_num}: dispatch={dispatch_count}  "
-            f"baseline_unresolved={baseline_unresolved}  new_in_delta={new_in_delta}"
-        )
-
-        # CONVERGENCE_TIMEOUT check (SC-7.4)
-        if prev_unresolved is not None and baseline_unresolved >= prev_unresolved:
-            stagnant_rounds += 1
-        else:
-            stagnant_rounds = 0
-        prev_unresolved = baseline_unresolved
-
-        if stagnant_rounds >= 2:
-            print("CONVERGENCE_TIMEOUT: baseline_unresolved did not decrease for 2 consecutive rounds")
-            sys.exit(1)
-
-        # APPROVED check (SC-7.9)
-        if baseline_unresolved == 0 and new_in_delta == 0:
-            print("APPROVED")
-            return "APPROVED"
-
-    print("CONVERGENCE_TIMEOUT: reached max_rounds without convergence")
-    sys.exit(1)
+    return _run_convergence_loop(
+        kind="code_diff", target=target, cwd=cwd, output_dir=output_dir,
+        invocation_id=invocation_id, baseline=baseline, snap_ref=snap_ref,
+        branch_label="code-only", claude_findings=claude_findings,
+        threshold_lines=threshold_lines, threshold_files=threshold_files,
+        max_rounds=max_rounds, stub_dispatch=stub_dispatch,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -712,56 +726,20 @@ def run_branch_b(
     Returns "APPROVED" or raises SystemExit(1) with CONVERGENCE_TIMEOUT.
     """
     print(f"[controller] Branch B: execution-only  invocation_id={invocation_id}")
-
     target = execution_result or cwd
 
-    # Round 1
     baseline, snap_ref = run_round1(
         kind="execution_outcome", target=target, cwd=cwd, output_dir=output_dir,
         invocation_id=invocation_id, claude_findings=claude_findings,
         stub_dispatch=stub_dispatch,
     )
-    write_baseline(baseline, output_dir, invocation_id, "execution-only", snap_ref)
-    print(f"[controller] Round 1 complete: {len(baseline)} baseline findings")
-
-    prev_unresolved: int | None = None
-    stagnant_rounds = 0
-
-    for round_num in range(2, max_rounds + 1):
-        round_findings, snap_ref, dispatch_count = run_round_n(
-            round_num=round_num,
-            kind="execution_outcome", target=target, cwd=cwd, output_dir=output_dir,
-            invocation_id=invocation_id,
-            baseline_findings=baseline,
-            threshold_lines=threshold_lines,
-            threshold_files=threshold_files,
-            stub_dispatch=stub_dispatch,
-        )
-        baseline, baseline_unresolved, new_in_delta = update_baseline_statuses(
-            baseline, round_findings, round_num
-        )
-        print(
-            f"[controller] Round {round_num}: dispatch={dispatch_count}  "
-            f"baseline_unresolved={baseline_unresolved}  new_in_delta={new_in_delta}"
-        )
-
-        if prev_unresolved is not None and baseline_unresolved >= prev_unresolved:
-            stagnant_rounds += 1
-        else:
-            stagnant_rounds = 0
-        prev_unresolved = baseline_unresolved
-
-        # CONVERGENCE_TIMEOUT — branch B has same protection (SC-7.6)
-        if stagnant_rounds >= 2:
-            print("CONVERGENCE_TIMEOUT: branch B baseline_unresolved stagnant for 2 rounds")
-            sys.exit(1)
-
-        if baseline_unresolved == 0 and new_in_delta == 0:
-            print("APPROVED")
-            return "APPROVED"
-
-    print("CONVERGENCE_TIMEOUT: branch B reached max_rounds without convergence")
-    sys.exit(1)
+    return _run_convergence_loop(
+        kind="execution_outcome", target=target, cwd=cwd, output_dir=output_dir,
+        invocation_id=invocation_id, baseline=baseline, snap_ref=snap_ref,
+        branch_label="execution-only", claude_findings=claude_findings,
+        threshold_lines=threshold_lines, threshold_files=threshold_files,
+        max_rounds=max_rounds, stub_dispatch=stub_dispatch,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -928,18 +906,21 @@ def _make_finding(
 # Self-tests (SC verification without real codex / network)
 # ---------------------------------------------------------------------------
 
+def _make_temp_git_repo(td: str) -> None:
+    """Initialise *td* as a git repo with one HEAD commit (required by git stash create)."""
+    subprocess.run(["git", "init", td], capture_output=True)
+    seed = Path(td) / ".gitkeep"
+    seed.write_text("seed\n")
+    subprocess.run(["git", "-C", td, "add", ".gitkeep"], capture_output=True)
+    subprocess.run(["git", "-C", td, "-c", "user.email=t@t.com", "-c", "user.name=T",
+                    "commit", "-m", "seed"], capture_output=True)
+
+
 def _selftest_convergence_timeout() -> int:
     """SC-7.4: baseline_unresolved does not decrease for 2 rounds → CONVERGENCE_TIMEOUT."""
     with tempfile.TemporaryDirectory() as td:
         tdp = Path(td)
-        # Init a temp git repo so git stash create works
-        subprocess.run(["git", "init", td], capture_output=True)
-        # Create an initial tracked file so the repo has a HEAD ref
-        _seed = Path(td) / ".gitkeep"
-        _seed.write_text("seed\n")
-        subprocess.run(["git", "-C", td, "add", ".gitkeep"], capture_output=True)
-        subprocess.run(["git", "-C", td, "-c", "user.email=t@t.com", "-c", "user.name=T",
-                        "commit", "-m", "seed"], capture_output=True)
+        _make_temp_git_repo(td)
 
         stub = StubDispatch()
         # Round 1: 2 unresolved findings
