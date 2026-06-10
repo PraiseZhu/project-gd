@@ -1,0 +1,31 @@
+{
+  "schema_version": "1.0",
+  "run_mode": "fixture",
+  "started_at": "2026-06-09T00:00:00Z",
+  "finished_at": "2026-06-09T00:01:00Z",
+  "aggregate_path": "fixtures/review-fusion/regression-controller-report.json",
+  "manifest_path": "fixtures/review-fusion/dispatch-map.json",
+  "primary_gate": {
+    "verdict": "REQUIRES_CHANGES",
+    "blocking": []
+  },
+  "secondary_gate": {
+    "verdict": "REQUIRES_CHANGES",
+    "blocking": []
+  },
+  "gate_consistent": true,
+  "dirty_detected": false,
+  "jobs": [
+    {
+      "queue_job_id": "rf-reg-job-001",
+      "target_role": "plan",
+      "primary_target": "fixtures/review-fusion/_regwork/result.json",
+      "bridge_exit": 0,
+      "bridge_stderr_path": null,
+      "bridge_stderr_summary": "none",
+      "raw_verdict": "REQUIRES_CHANGES",
+      "mapped_status": "completed",
+      "aggregate_bucket": "primary"
+    }
+  ]
+}

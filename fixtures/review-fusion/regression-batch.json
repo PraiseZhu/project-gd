@@ -1,0 +1,37 @@
+{
+  "batch_id": "rf-reg-batch-001",
+  "dispatch_id": "rf-reg-dispatch",
+  "wave_ref": "w1",
+  "batch_created_at": "2026-06-09T00:00:00Z",
+  "execution_mode": "agent_exec",
+  "task_results": [
+    {
+      "task_id": "rf-reg-t1",
+      "track_ref": "rf-t1",
+      "exec_status": "completed",
+      "not_run_reason": null,
+      "deliverables_produced": [
+        {
+          "path": "fixtures/review-fusion/_regwork/result.json",
+          "kind": "file",
+          "verified": true
+        }
+      ],
+      "verify_results": [
+        {
+          "sc_ref": "SC-7",
+          "method": "command",
+          "cmd": "test -f fixtures/review-fusion/_regwork/result.json",
+          "result": "PASS"
+        }
+      ],
+      "gd_execution_status_json": {
+        "task_id": "rf-reg-t1",
+        "exec_status": "completed",
+        "sc_results": {
+          "SC-7": "pass"
+        }
+      }
+    }
+  ]
+}

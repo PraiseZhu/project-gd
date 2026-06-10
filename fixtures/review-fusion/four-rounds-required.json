@@ -1,0 +1,65 @@
+{
+  "scenario": "four_rounds_required",
+  "plan_file": "fixtures/review-fusion/four-rounds-required.json",
+  "rounds": [
+    {
+      "type": "review",
+      "round": 1,
+      "claude_verdict": "REQUIRES_CHANGES",
+      "codex_verdict": "REQUIRES_CHANGES",
+      "findings": [
+        {"reviewer": "claude", "severity": "P1", "description": "missing sc acceptance"},
+        {"reviewer": "codex", "severity": "P1", "description": "anti-fill detected"}
+      ]
+    },
+    {
+      "type": "fix",
+      "round": 1,
+      "changes": ["added sc acceptance section"]
+    },
+    {
+      "type": "review",
+      "round": 2,
+      "claude_verdict": "REQUIRES_CHANGES",
+      "codex_verdict": "REQUIRES_CHANGES",
+      "findings": [
+        {"reviewer": "claude", "severity": "P1", "description": "still missing evidence"},
+        {"reviewer": "codex", "severity": "P2", "description": "incomplete verify"}
+      ]
+    },
+    {
+      "type": "fix",
+      "round": 2,
+      "changes": ["added evidence section"]
+    },
+    {
+      "type": "review",
+      "round": 3,
+      "claude_verdict": "REQUIRES_CHANGES",
+      "codex_verdict": "REQUIRES_CHANGES",
+      "findings": [
+        {"reviewer": "claude", "severity": "P1", "description": "verify incomplete"},
+        {"reviewer": "codex", "severity": "P1", "description": "still failing sc-4"}
+      ]
+    },
+    {
+      "type": "fix",
+      "round": 3,
+      "changes": ["updated verify section"]
+    },
+    {
+      "type": "review",
+      "round": 4,
+      "claude_verdict": "REQUIRES_CHANGES",
+      "codex_verdict": "REQUIRES_CHANGES",
+      "findings": [
+        {"reviewer": "claude", "severity": "P1", "description": "plan still not specific"},
+        {"reviewer": "codex", "severity": "P1", "description": "auto-fill not resolved"}
+      ]
+    }
+  ],
+  "expected_outcome": {
+    "fix_rounds_attempted": 3,
+    "final_verdict": "REQUIRES_CHANGES"
+  }
+}

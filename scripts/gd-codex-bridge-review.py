@@ -246,6 +246,17 @@ VERDICT_LINE_RE = re.compile(r"^VERDICT:\s*(APPROVED|REQUIRES_CHANGES)\s*$", re.
 BARE_VERDICT_ANY_RE = re.compile(r"^(VERDICT|REV_VERDICT)\s*:", re.MULTILINE)
 TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$")
 
+# ----------------------------- Lens Emphasis Constants ----------------------------- #
+
+_LENS_EMPHASIS_A = (
+    "本视角额外侧重：目标链 / SC 覆盖完整性 / fail-closed 与治理不变量（结构与符合性视角）；"
+    "但不改变 §Review Standard 的穷举与 conformance 职责。"
+)
+_LENS_EMPHASIS_B = (
+    "本视角额外侧重：边界条件 / fallback 路径 / 收窄 scope 语义 / 漏报风险（对抗与边角视角）；"
+    "但不改变 §Review Standard 的穷举与 conformance 职责。"
+)
+
 # ----------------------------- Helpers ----------------------------- #
 
 
@@ -927,6 +938,8 @@ def build_capsule_text(
     target_role: str | None = None,
     related_context: list[dict] | None = None,
     compat_v1: bool = False,
+    lens_emphasis: str | None = None,
+    _run_id_override: str | None = None,
 ) -> tuple[str, str, str, str, str]:
     """返回 (capsule_text, target_hash, capsule_hash, gd_baseline_key, run_id)。
 
@@ -978,8 +991,19 @@ def build_capsule_text(
     template_text = template_path.read_text(encoding="utf-8") if template_path.exists() else "(missing)"
     goal_text = GOAL_PATH.read_text(encoding="utf-8")[:3000] if GOAL_PATH.exists() else "(missing)"
 
-    run_id = _new_run_id()
     target_abs = str(target.resolve())
+    if _run_id_override is not None:
+        run_id = _run_id_override
+    elif queue_job_id is not None:
+        # Live transport: random run_id for unique tracking per dispatch.
+        run_id = _new_run_id()
+    else:
+        # Adhoc / test path: stable run_id derived from inputs so two calls
+        # with identical non-lens params produce the same QUEUE_JOB_ID and
+        # GD_BASELINE_KEY (lens isolation contract for SC-2 verification).
+        run_id = "adhoc-" + hashlib.sha256(
+            f"{kind}{target_abs}{target_hash}".encode("utf-8")
+        ).hexdigest()[:16]
     gd_baseline_key = _gd_baseline_key(kind, target_abs, target_hash, run_id)
 
     # Review Trust §Step 2 default fallbacks
@@ -992,6 +1016,7 @@ def build_capsule_text(
     template_kind_for_capsule = _get_template_kind_for_capsule(kind, compat_v1)
     title_for_kind = _get_title_by_kind(kind, compat_v1)
     mode_label = "v1 compat" if compat_v1 else "v2 default"
+    effective_lens = "neutral" if not lens_emphasis else lens_emphasis
 
     # writer 实际 grep 的 3 字段必须出现在行首
     capsule = (
@@ -1000,6 +1025,7 @@ def build_capsule_text(
         f"REVIEW_FOCUS_SOURCE: plan\n"
         f"REVIEW_KIND: {kind}\n"
         f"REVIEW_ROUND: initial\n"
+        f"REVIEW_LENS_EMPHASIS: {effective_lens}\n"
         f"REVIEW_DELTA_SCOPE: full_matrix\n"
         f"PLAN_ALIGNMENT_PRESENT: true\n"
         f"PLAN_REVIEW_ALIGNMENT: Plan 6.5-B bridge review of {target.name}\n"
@@ -1066,7 +1092,21 @@ def build_capsule_text(
         f"- REQUIRES_CHANGES 必须含 ≥1 ### Finding\n"
         f"- **每条 finding 必须 evidence: 含真实 path:line 引用**（L3 validator 会校验行号指向 target 真实内容）\n"
         f"- **每条 finding 的 sc_refs / SC-<N> 必须是 target 中真实存在的 SC-ID**（L3 validator 会校验）\n"
-        f"- **APPROVED 时**必须输出 SCOPE_CHECKED 表，列出已审查的 SC-IDs（必须在 target 中真实存在）\n"
+        f"- **APPROVED 时**必须输出 '## Scope Checked' 段，第一列逐条列出 target 中每个 SC-ID。"
+        f"SC-ID 格式**严格**为 `SC-<数字>`（大写 SC + 连字符，例 `SC-1`、`SC-14`）；"
+        f"**禁止**写成 `SC1` / `sc-1` / `SC 1`——L3 validator 会判为「无 SC-ID」而 reject。模板：\n"
+        f"  ## Scope Checked\n"
+        f"  | SC-ID | 结论 | 证据(≤30字) |\n"
+        f"  |-------|------|-------------|\n"
+        f"  | SC-1 | PASS | ... |\n"
+        f"  | SC-2 | PASS | ... |\n"
+        f"  （逐条覆盖 target 全部 SC-ID，SC-ID 必须在 target 中真实存在）\n"
+        f"- **审查定位（conformance scoping）**：你的主目标是核对「执行结果 / 已实现功能是否符合已批准计划的 SC（conformance）」；代码本身顺带扫一眼，可指出明显问题，但 MUST NOT 把地毯式找 bug 当作职责——地毯式找 bug 由上游 `/code-review` 承担。\n"
+        + f"- **视角侧重（REVIEW_LENS_EMPHASIS: {effective_lens}）**："
+        + {"codex_A": _LENS_EMPHASIS_A, "codex_B": _LENS_EMPHASIS_B}.get(
+            effective_lens, "中立视角，无额外侧重。"
+        )
+        + "\n"
     )
     capsule_hash = _sha256_str(capsule)
     return capsule, target_hash, capsule_hash, gd_baseline_key, run_id
