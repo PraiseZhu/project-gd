@@ -257,6 +257,14 @@ _LENS_EMPHASIS_B = (
     "但不改变 §Review Standard 的穷举与 conformance 职责。"
 )
 
+# L2（检查优先级排序镜头）：描述文本直接写入 REVIEW_LENS_EMPHASIS 行。
+_EMPHASIS_CODEX_A = (
+    "SC-conformance→边界/路径越界→接口/契约→失败模式/fallback→anti-fill 泛化"
+)
+_EMPHASIS_CODEX_B = (
+    "失败模式/fallback→安全/secret 泄漏→anti-fill 泛化→SC-conformance→边界/路径越界"
+)
+
 # ----------------------------- Helpers ----------------------------- #
 
 
@@ -1155,9 +1163,7 @@ def build_capsule_text(
         # Adhoc / test path: stable run_id derived from inputs so two calls
         # with identical non-lens params produce the same QUEUE_JOB_ID and
         # GD_BASELINE_KEY (lens isolation contract for SC-2 verification).
-        run_id = "adhoc-" + hashlib.sha256(
-            f"{kind}{target_abs}{target_hash}".encode("utf-8")
-        ).hexdigest()[:16]
+        run_id = "adhoc-" + _sha256_str(f"{kind}{target_abs}{target_hash}")[:16]
     gd_baseline_key = _gd_baseline_key(kind, target_abs, target_hash, run_id)
 
     # Review Trust §Step 2 default fallbacks
@@ -1172,13 +1178,7 @@ def build_capsule_text(
     mode_label = "v1 compat" if compat_v1 else "v2 default"
 
     # --- 双镜头路由：L3(lens_emphasis) 优先，否则 L2(emphasis)，否则省略 ---
-    # L2（检查优先级排序镜头）：描述文本直接写入 REVIEW_LENS_EMPHASIS 行。
-    _EMPHASIS_CODEX_A = (
-        "SC-conformance→边界/路径越界→接口/契约→失败模式/fallback→anti-fill 泛化"
-    )
-    _EMPHASIS_CODEX_B = (
-        "失败模式/fallback→安全/secret 泄漏→anti-fill 泛化→SC-conformance→边界/路径越界"
-    )
+    # 镜头文案见模块级常量：L2 _EMPHASIS_CODEX_A/B，L3 _LENS_EMPHASIS_A/B。
     lens_detail_line = ""
     if lens_emphasis is not None:
         # L3（分析视角镜头）：REVIEW_LENS_EMPHASIS 写标签 + 末尾"视角侧重"行。

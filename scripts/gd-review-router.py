@@ -1170,14 +1170,12 @@ def _run_live_execution_plus_code(
             claude_review_json=claude_review_json,
         )
 
-    import hashlib
     outcome_script = SCRIPTS / "gd-validate-execution-outcome.py"
     r_outcome = subprocess.run(
         [sys.executable, str(outcome_script), str(target)],
         capture_output=True, text=True,
         env={**os.environ, INVOCATION_ID_ENV: invocation_id},
     )
-    raw_hash = hashlib.sha256(target.read_bytes()).hexdigest()
 
     if r_outcome.returncode != 0:
         # Outcome failed → OUTCOME_FIRST_FAIL; code review MUST NOT run (3a-SC-7)
@@ -1439,6 +1437,10 @@ def run_live(
 
     # Plan 3a: non-plan target kinds — all have defined live behavior (3a-SC-5).
     # No NOT_IMPLEMENTED. Handlers below.
+    # Injected raw/mapped (offline/fixture) → single-round consume (Path A/B);
+    # only drive the T7 multi-round controller when nothing was injected (true live).
+    # Named once so the two execution handlers below cannot drift.
+    is_true_live = codex_raw_result is None and codex_mapped_result is None
     if kind == "execution_only_no_code" and target is not None:
         return _run_live_execution_only(
             target, output_dir, invocation_id,
@@ -1446,9 +1448,7 @@ def run_live(
             codex_mapped_result=(Path(codex_mapped_result) if codex_mapped_result else None),
             review_contract=review_contract,
             live_bridge_timeout_sec=live_bridge_timeout_sec,
-            # Injected raw/mapped (offline/fixture) → single-round consume (Path A/B).
-            # Only drive the T7 multi-round controller when no result was injected (true live).
-            use_controller=(codex_raw_result is None and codex_mapped_result is None),
+            use_controller=is_true_live,
         )
 
     if kind == "code_only" and target is not None:
@@ -1461,9 +1461,7 @@ def run_live(
             codex_mapped_result=(Path(codex_mapped_result) if codex_mapped_result else None),
             review_contract=review_contract,
             live_bridge_timeout_sec=live_bridge_timeout_sec,
-            # Injected raw/mapped (offline/fixture) → single-round consume (Path A/B).
-            # Only drive the T7 multi-round controller when no result was injected (true live).
-            use_controller=(codex_raw_result is None and codex_mapped_result is None),
+            use_controller=is_true_live,
         )
 
     # Fallback: target is None for a non-plan kind — fail-closed.
