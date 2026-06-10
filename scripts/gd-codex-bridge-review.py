@@ -246,6 +246,17 @@ VERDICT_LINE_RE = re.compile(r"^VERDICT:\s*(APPROVED|REQUIRES_CHANGES)\s*$", re.
 BARE_VERDICT_ANY_RE = re.compile(r"^(VERDICT|REV_VERDICT)\s*:", re.MULTILINE)
 TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$")
 
+# ----------------------------- Lens Emphasis Constants ----------------------------- #
+
+_LENS_EMPHASIS_A = (
+    "本视角额外侧重：目标链 / SC 覆盖完整性 / fail-closed 与治理不变量（结构与符合性视角）；"
+    "但不改变 §Review Standard 的穷举与 conformance 职责。"
+)
+_LENS_EMPHASIS_B = (
+    "本视角额外侧重：边界条件 / fallback 路径 / 收窄 scope 语义 / 漏报风险（对抗与边角视角）；"
+    "但不改变 §Review Standard 的穷举与 conformance 职责。"
+)
+
 # ----------------------------- Helpers ----------------------------- #
 
 
@@ -1068,6 +1079,8 @@ def build_capsule_text(
     related_context: list[dict] | None = None,
     compat_v1: bool = False,
     emphasis: str | None = None,
+    lens_emphasis: str | None = None,
+    _run_id_override: str | None = None,
 ) -> tuple[str, str, str, str, str]:
     """返回 (capsule_text, target_hash, capsule_hash, gd_baseline_key, run_id)。
 
@@ -1082,11 +1095,15 @@ def build_capsule_text(
     {plan, code} and writes the legacy v1 references. Mixing is rejected with
     INVALID_REVIEW_KIND_FOR_MODE in the CLI handler.
 
-    T1 (L2 parity): `emphasis` controls REVIEW_LENS_EMPHASIS field injected into
-    the capsule header.  Supported values:
-      - "codex_A": SC-conformance→边界/路径越界→接口/契约→失败模式/fallback→anti-fill 泛化
-      - "codex_B": 失败模式/fallback→安全/secret 泄漏→anti-fill 泛化→SC-conformance→边界/路径越界
-      - None / other: neutral (omitted from capsule when None, written as-is otherwise)
+    双镜头（dual-codex lens）—— L2 与 L3 各有一套，按参数路由，互不覆盖：
+      - `emphasis`（L2 parity）：codex_A/codex_B 走"检查优先级排序"镜头
+        (_EMPHASIS_CODEX_A/B)，描述文本直接写入 REVIEW_LENS_EMPHASIS 行；None 省略该行。
+      - `lens_emphasis`（L3 review-fusion）：codex_A/codex_B 走"分析视角"镜头
+        (模块级 _LENS_EMPHASIS_A/B)，REVIEW_LENS_EMPHASIS 写标签 + Reviewer Instructions
+        末尾另起"视角侧重"行。
+      - `_run_id_override`（L3 SC-2 镜头隔离）：固定 run_id，使非镜头参数相同的两次调用
+        产生相同 QUEUE_JOB_ID / GD_BASELINE_KEY。
+      同时传时 lens_emphasis（L3）优先。
     """
     active_enum = _get_active_kind_enum(compat_v1)
     if kind not in active_enum:
@@ -1127,8 +1144,20 @@ def build_capsule_text(
     template_text = template_path.read_text(encoding="utf-8") if template_path.exists() else "(missing)"
     goal_text = GOAL_PATH.read_text(encoding="utf-8")[:3000] if GOAL_PATH.exists() else "(missing)"
 
-    run_id = _new_run_id()
     target_abs = str(target.resolve())
+    # run_id（L3 SC-2 镜头隔离）：_run_id_override 固定；否则 live(queue_job_id) 随机；否则 adhoc 稳定。
+    if _run_id_override is not None:
+        run_id = _run_id_override
+    elif queue_job_id is not None:
+        # Live transport: random run_id for unique tracking per dispatch.
+        run_id = _new_run_id()
+    else:
+        # Adhoc / test path: stable run_id derived from inputs so two calls
+        # with identical non-lens params produce the same QUEUE_JOB_ID and
+        # GD_BASELINE_KEY (lens isolation contract for SC-2 verification).
+        run_id = "adhoc-" + hashlib.sha256(
+            f"{kind}{target_abs}{target_hash}".encode("utf-8")
+        ).hexdigest()[:16]
     gd_baseline_key = _gd_baseline_key(kind, target_abs, target_hash, run_id)
 
     # Review Trust §Step 2 default fallbacks
@@ -1142,35 +1171,44 @@ def build_capsule_text(
     title_for_kind = _get_title_by_kind(kind, compat_v1)
     mode_label = "v1 compat" if compat_v1 else "v2 default"
 
-    # T1: compute REVIEW_LENS_EMPHASIS value for this capsule
+    # --- 双镜头路由：L3(lens_emphasis) 优先，否则 L2(emphasis)，否则省略 ---
+    # L2（检查优先级排序镜头）：描述文本直接写入 REVIEW_LENS_EMPHASIS 行。
     _EMPHASIS_CODEX_A = (
         "SC-conformance→边界/路径越界→接口/契约→失败模式/fallback→anti-fill 泛化"
     )
     _EMPHASIS_CODEX_B = (
         "失败模式/fallback→安全/secret 泄漏→anti-fill 泛化→SC-conformance→边界/路径越界"
     )
-    if emphasis == "codex_A":
-        lens_emphasis_value = _EMPHASIS_CODEX_A
-    elif emphasis == "codex_B":
-        lens_emphasis_value = _EMPHASIS_CODEX_B
+    lens_detail_line = ""
+    if lens_emphasis is not None:
+        # L3（分析视角镜头）：REVIEW_LENS_EMPHASIS 写标签 + 末尾"视角侧重"行。
+        effective_lens = lens_emphasis
+        lens_emphasis_line = f"REVIEW_LENS_EMPHASIS: {effective_lens}\n"
+        lens_detail_line = (
+            f"- **视角侧重（REVIEW_LENS_EMPHASIS: {effective_lens}）**："
+            + {"codex_A": _LENS_EMPHASIS_A, "codex_B": _LENS_EMPHASIS_B}.get(
+                effective_lens, "中立视角，无额外侧重。"
+            )
+            + "\n"
+        )
     elif emphasis is not None:
-        lens_emphasis_value = emphasis  # caller-supplied neutral value
+        # L2（检查优先级排序镜头）
+        if emphasis == "codex_A":
+            _lens_value = _EMPHASIS_CODEX_A
+        elif emphasis == "codex_B":
+            _lens_value = _EMPHASIS_CODEX_B
+        else:
+            _lens_value = emphasis  # caller-supplied neutral value
+        lens_emphasis_line = f"REVIEW_LENS_EMPHASIS: {_lens_value}\n"
     else:
-        lens_emphasis_value = None  # omit field when not specified
-
-    lens_emphasis_line = (
-        f"REVIEW_LENS_EMPHASIS: {lens_emphasis_value}\n" if lens_emphasis_value is not None else ""
-    )
+        lens_emphasis_line = ""  # 两者皆无 → 省略该字段
 
     # T6 SC-6.1: kind-specific REVIEW_FOCUS (not hardcoded "bridge candidate review of")
     review_focus = _review_focus_for_kind(kind)
     # T6 SC-6.2: PRIMARY_TARGET points to the real artifact, not capsule.md.
-    # For plan: original plan file. For code_diff/combined/execution_outcome: real diff/result.
     primary_target_path = _primary_target_for_kind(kind, target)
 
     # T6: L2 capsule context is RELATED_CONTEXT (path/hash summary), not PRIMARY_TARGET.
-    # For plan kind, target IS the plan so primary_target_path == target_abs (no change).
-    # For non-plan kinds, the capsule is an intermediate envelope — Codex reviews the real artifact.
     capsule_as_related: bool = kind in _EXECUTION_ARTIFACT_KINDS
     capsule_related_note = (
         f"- role=l2_capsule_envelope path=(this capsule, sent inline) hash=(see CAPSULE_HASH above)\n"
@@ -1251,10 +1289,20 @@ def build_capsule_text(
         f"- REQUIRES_CHANGES 必须含 ≥1 ### Finding\n"
         f"- **每条 finding 必须 evidence: 含真实 path:line 引用**（L3 validator 会校验行号指向 target 真实内容）\n"
         f"- **每条 finding 的 sc_refs / SC-<N> 必须是 target 中真实存在的 SC-ID**（L3 validator 会校验）\n"
-        f"- **APPROVED 时**必须输出 SCOPE_CHECKED 表，列出已审查的 SC-IDs（必须在 target 中真实存在）\n"
+        f"- **APPROVED 时**必须输出 '## Scope Checked' 段，第一列逐条列出 target 中每个 SC-ID。"
+        f"SC-ID 格式**严格**为 `SC-<数字>`（大写 SC + 连字符，例 `SC-1`、`SC-14`）；"
+        f"**禁止**写成 `SC1` / `sc-1` / `SC 1`——L3 validator 会判为「无 SC-ID」而 reject。模板：\n"
+        f"  ## Scope Checked\n"
+        f"  | SC-ID | 结论 | 证据(≤30字) |\n"
+        f"  |-------|------|-------------|\n"
+        f"  | SC-1 | PASS | ... |\n"
+        f"  | SC-2 | PASS | ... |\n"
+        f"  （逐条覆盖 target 全部 SC-ID，SC-ID 必须在 target 中真实存在）\n"
+        f"- **审查定位（conformance scoping）**：你的主目标是核对「执行结果 / 已实现功能是否符合已批准计划的 SC（conformance）」；代码本身顺带扫一眼，可指出明显问题，但 MUST NOT 把地毯式找 bug 当作职责——地毯式找 bug 由上游 `/code-review` 承担。\n"
         f"- **穷举强制（一次列全）**：你必须扫完 PRIMARY_TARGET 内全部 SC、模块、fallback 路径，"
         f"**一次列全**所有可发现 finding，不得分批分轮透露；"
-        f"明知有多处问题却只报一条 = 协议违规，判定 degraded（见 §Review Standard §9）\n"
+        f"明知有多处问题却只报一条 = 协议违规，判定 degraded（见 §Review Standard §10）\n"
+        + lens_detail_line
     )
     capsule_hash = _sha256_str(capsule)
     return capsule, target_hash, capsule_hash, gd_baseline_key, run_id

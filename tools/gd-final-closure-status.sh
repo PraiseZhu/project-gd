@@ -79,7 +79,7 @@ check "G4 gate rejects controller-report path-not-found" \
     fixtures/negative/final-controller-report-path-not-found.json 2>&1 | grep -q controller_report_file_not_found'
 check "G4 gate rejects controller-report invalid-json" \
   bash -c 'python3 scripts/gd-validate-parent-close-gate.py \
-    fixtures/negative/final-controller-report-invalid-json.json 2>&1 | grep -q controller_report_invalid_json'
+    fixtures/negative/final-controller-report-invalid-json.json 2>&1 | grep -q controller_report_invalid'
 
 # 10 (F2/C4). Deterministic capsule-build checks for execution_outcome and combined.
 F2_EO_OUT="${TMPDIR:-/var/tmp}/gd-f2-eo-$$.txt"

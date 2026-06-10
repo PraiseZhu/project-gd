@@ -1,0 +1,506 @@
+
+============================================================
+  l3-fusion-packets-r2
+============================================================
+
+  t1  REQUIRES_CHANGES (1 findings, status=completed)
+  ┌─ #1 [P2] SC-5 自证不能验证 fail-closed 行为
+  │  SC: ['SC-5']
+  │  证据: `/Users/praise/AI-Agent/Claude/projects/Project GD/plans/gd/2026-06-09-l3-review-fusion/packets/t1-transport-guard.md:40` 声明 `blocked_by: []`；同文件 `:101` 说明 pytest 依赖 t5；`:111` 仅断言函数 callable；`:115` 的行
+  │  影响: 执行者可以提交只有空函数或错误逻辑的 guard 并通过当前自证；后续双 Codex 派发仍可能在 transport 不可用时降级或误放行，违背 SC-5 的 fail-closed 目标。
+  │  修复: 在 §7 为 SC-5 增加一个不依赖 `tests/review-fusion` 的自包含行为验证命令：用 `python3 -c` 导入 guard，通过 fake runner/注入探测结果模拟“先失败后恢复”和“持续失败”两种路径，并断言恢复路径 `available == True`、持续失败路径 `available == False` 且 `fail_closed == True`、`outcome == "codex_transport_unavailable"`。
+  └─ 验证: 修改后执行新增的 SC-5 自包含命令，输出 `PASS`；该命令不读取或创建 `tests/review-fusion` / `fixtures/review-fusion`。
+
+
+  t2  REQUIRES_CHANGES (2 findings, status=completed)
+  ┌─ #2 [P1] owned_paths 未包含实际交付文件
+  │  SC: ['SC-2', 'SC-6']
+  │  证据: `plans/gd/2026-06-09-l3-review-fusion/packets/t2-bridge-lens-conformance.md:57-60`, `:76`, `:94-101`
+  │  影响: 执行该 packet 会把核心交付文件判为越界写入，或误改 required_context 文件，后续 execution review 按路径规则失败。
+  │  修复: 将 `owned_paths` 改为 `scripts/gd-codex-bridge-review.py`、`prompts/gd-review-standard.md`；保留 `spec/docs/master-plan` 只在 `required_context`。
+  └─ 验证: 重新检查 `owned_paths` 与 `deliverables.path` 完全一致，且 `required_context` 不与 `owned_paths` 重叠。
+
+  ┌─ #3 [P2] 核心验证命令无法判定 SC 完成
+  │  SC: ['SC-2', 'SC-6']
+  │  证据: `plans/gd/2026-06-09-l3-review-fusion/packets/t2-bridge-lens-conformance.md:84-86`, `:116`, `:120`, `:124`
+  │  影响: bridge 生成错误或 conformance/穷举文案缺半边时仍可能通过验收，生成链路继续产出不符合计划的 capsule。
+  │  修复: SC-2 用顺序保留的逐行 diff/过滤后全文相等断言；SC-6 将每个必需 token 拆成独立 `grep -q ... && grep -q ...`。
+  └─ 验证: 故意删掉任一必需 token 或引入额外 capsule 差异时验证失败；完整实现时全部命令输出预期 PASS。
+
+
+  t3  REQUIRES_CHANGES (2 findings, status=completed)
+  ┌─ #4 [P1] live bridge 路径例外缺失
+  │  SC: ['SC-2']
+  │  证据: `/Users/praise/AI-Agent/Claude/projects/Project GD/plans/gd/2026-06-09-l3-review-fusion/packets/t3-review-plan-convergence.md:62`、`:168`、`:179`、`:199`
+  │  影响: 实现者按禁令执行会无法跑 live bridge；按 bridge 执行又会违反 packet 边界，SC-2/SC-3 的 Codex round 无法作为合规路径验收。
+  │  修复: 在路径权限/禁区中补一句：禁止直接写 `/Users/praise/.claude/**`，但允许通过 `gd-codex-bridge-review.py run-bridge --live-transport` 间接写 `~/.claude/review-baselines/<gd_baseline_key>/`；仍禁止直接调用 writer/daemon/旧命令。
+  └─ 验证: grep target 确认存在 `review-baselines/<gd_baseline_key>` 例外，且仍无直接调用 `review-result-writer.sh` / `codex-send-wait` 的实现要求。
+
+  ┌─ #5 [P2] pytest 验证期望值不可达
+  │  SC: ['SC-4']
+  │  证据: `/Users/praise/AI-Agent/Claude/projects/Project GD/plans/gd/2026-06-09-l3-review-fusion/packets/t3-review-plan-convergence.md:87`、`:89`、`:117`、`:125`
+  │  影响: 即使 t5 fixture 和实现正确，验收命令仍可能被判失败，核心成功标准无法稳定判断。
+  │  修复: 将两个 pytest verify 改为 `... -q && echo PASS` 后再断言 `PASS`，或把 expect 改成匹配 pytest 成功尾行的 `passed`。
+  └─ 验证: 对 SC-2/SC-4 verify 命令运行成功时尾行确为 plan 中声明的 expect。
+
+
+  t4  REQUIRES_CHANGES (3 findings, status=completed)
+  ┌─ #6 [P1] task SC 未绑定 verify
+  │  SC: ['SC-1']
+  │  证据: plans/gd/2026-06-09-l3-review-fusion/packets/t4-code-path-quality-conformance.md:90 定义 SC-1，:91 定义 SC-2；:134、:142、:150 仅写 SC-5/SC-6。
+  │  影响: 后续 reviewer/validator 从 target 提取 SC-1/SC-2 时，找不到对应 verify 绑定，核心成功条件不可判定。
+  │  修复: 给现有验证补 task 级 `sc_ref: SC-1`、`sc_ref: SC-2`，保留 master 映射说明即可。
+  └─ 验证: `grep -nE 'sc_ref: SC-1|sc_ref: SC-2' plans/gd/2026-06-09-l3-review-fusion/packets/t4-code-path-quality-conformance.md` 均命中，且每个 task SC 至少有一条 command/assertion。
+
+  ┌─ #7 [P1] SC-1 命令走错路径且会假阳性
+  │  SC: ['SC-1']
+  │  证据: plans/gd/2026-06-09-l3-review-fusion/packets/t4-code-path-quality-conformance.md:136；scripts/gd-review-router.py:9 写明 detect_only no review invoked，:251 写 detection result only，:1165 拒绝入口 env。
+  │  影响: 上游质量门缺失时验证仍可能通过，fail-closed 分支没有被实际验证。
+  │  修复: 改为 `--mode live` 触发 code/执行类 target；入口不要设置该 env，改用 `--invocation-id t4-verify-sc5`；断言 route_report 的 `failure_code` 是质量门失败码。
+  └─ 验证: 伪造 `/code-review` 不可用后命令退出非 0，stderr 不含 `SIDE_DOOR_DETECTED`，route_report 含 `mode: live`、`fail_closed`、`CODE_REVIEW_UNAVAILABLE` 或 `UPSTREAM_QUALITY_GATE_FAIL`。
+
+  ┌─ #8 [P2] SC-2 grep 允许缺项通过
+  │  SC: ['SC-2']
+  │  证据: plans/gd/2026-06-09-l3-review-fusion/packets/t4-code-path-quality-conformance.md:91 要求三类标识；:144 使用 OR；:148 只单独计数 conformance。
+  │  影响: 实现漏掉 `code-review` 或 `simplify` 仍可能通过 SC-2，质量/符合性分离目标会失真。
+  │  修复: 拆成三个独立 grep，或改为 `grep -q conformance ... && grep -q code-review ... && grep -q simplify ...`。
+  └─ 验证: 分别删除任一 token 时 SC-2 verify 必须失败；三者同时存在才输出 PASS。
+
+
+  t5  REQUIRES_CHANGES (1 findings, status=completed)
+  ┌─ #9 [P2] SC-5 权威验证漏跑 retry_recover
+  │  SC: ['SC-5']
+  │  证据: `/Users/praise/AI-Agent/Claude/projects/Project GD/plans/gd/2026-06-09-l3-review-fusion/packets/t5-regression-fixtures.md:91` 要求 `retry_recover`；同文件 `:168` 只跑 `-k 'fail_closed'`；`:176` 标明补充自检非权威。
+  │  影响: `retry_recover` 缺失或失败时，SC-5 仍可能被判通过，无法证明 bounded retry 恢复目标达成。
+  │  修复: 将 SC-5 权威 verify 改为 `-k 'fail_closed or retry_recover'`，或新增一条 `sc_ref: SC-5` 的权威 `retry_recover` verify。
+  └─ 验证: `python3 -m pytest tests/review-fusion -k 'fail_closed or retry_recover' -q 2>&1 | tail -1` 末行含 `passed` 且无 `failed`/`error`。
+
+
+  t6  REQUIRES_CHANGES (2 findings, status=completed)
+  ┌─ #10 [P2] SC-1 未验证 6 个具体部署条目
+  │  SC: ['SC-1']
+  │  证据: `plans/gd/2026-06-09-l3-review-fusion/packets/t6-deploy-manifest.md:83`, `:113-124`, `:153-160`
+  │  影响: 执行者漏写或写错某个 runtime artifact 仍可能通过验收，Plan E 后续部署会缺文件或部署错误文件。
+  │  修复: 增加一个 Python verify，断言 7 个期望条目的 exact source/target/method/ledger_scope 存在，且 gd.md 条目 installer 为 `scripts/install-gd-command.sh`、args 为 `["--install"]`。
+  └─ 验证: 运行新增 verify 输出 `MANIFEST_ENTRIES_OK`，且删除任一目标条目会失败。
+
+  ┌─ #11 [P1] SC-2 授权记录可用占位符通过
+  │  SC: ['SC-2']
+  │  证据: `plans/gd/2026-06-09-l3-review-fusion/packets/t6-deploy-manifest.md:84`, `:127-128`, `:161-164`
+  │  影响: ledger 可能生成伪授权并被后续 deploy-live 当作 runtime 写入依据，触发安全/授权边界失效。
+  │  修复: 在 SC-2 verify 中断言匹配条目含非空 `granted_by`、非空 `authorization_source`，且值不包含 `<`、`>`、`TODO`、`占位`。
+  └─ 验证: 运行 ledger verify 输出 `LEDGER_OK`；将授权字段置空或占位符时命令失败。
+
+
+============================================================
+  l3-fusion-packets-r3
+============================================================
+
+  t1  REQUIRES_CHANGES (3 findings, status=completed)
+  ┌─ #12 [P1] SC-5 verify 命令被注释截断
+  │  SC: ['SC-5']
+  │  证据: `plans/gd/2026-06-09-l3-review-fusion/packets/t1-transport-guard.md:111`
+  │  影响: SC-5 的自包含验证不会输出期望的 `PASS`，active verify 会失败，无法判断 fail-closed/retry 是否真的生效。
+  │  修复: 去掉 `python3 -c` 字符串里的 `#` 行内注释，或改成 `exec("""...""")` 多行脚本，确保 r1/r2 断言和 `print('PASS')` 执行。
+  └─ 验证: 运行 line 111 修复后的命令，stdout 精确输出 `PASS`。
+
+  ┌─ #13 [P2] timeout 与 healthcheck 未绑定核心验证
+  │  SC: ['SC-5']
+  │  证据: `plans/gd/2026-06-09-l3-review-fusion/packets/t1-transport-guard.md:101`, `:127`, `:128`, `:111`
+  │  影响: 实现可缺失 timeout/healthcheck 仍被当前结构性验证放过，四道防线目标无法判定完成。
+  │  修复: 在 SC-5 自包含命令中增加 `healthcheck` 可调用断言、`PROBE_TIMEOUT_SEC` 存在断言，并模拟 healthcheck false 时返回 fail-closed。
+  └─ 验证: 修复后命令对缺少 `healthcheck` 或 `PROBE_TIMEOUT_SEC` 的 guard 必须失败，对完整实现输出 `PASS`。
+
+  ┌─ #14 [P2] required_context 与 owned_paths 重叠
+  │  SC: ['SC-1']
+  │  证据: `plans/gd/2026-06-09-l3-review-fusion/packets/t1-transport-guard.md:46`, `:56`
+  │  影响: packet 的依赖矩阵会形成自引用，后续 parallel/dependency 校验无法可靠判断外部输入与本任务可写产物边界。
+  │  修复: 从 `required_context` 移除 controller，并在读写权限中补一句本任务 `owned_paths` 可读后写；required_context 只保留外部只读输入。
+  └─ 验证: 检查 `required_context ∩ owned_paths == ∅`，且 SC-1 仍明确允许读取并修改 controller。
+
+
+  t2  REQUIRES_CHANGES (2 findings, status=completed)
+  ┌─ #15 [P1] owned_paths 未覆盖实际交付物
+  │  SC: ['SC-2', 'SC-6']
+  │  证据: `plans/gd/2026-06-09-l3-review-fusion/packets/t2-bridge-lens-conformance.md:57`、`:76`、`:93`、`:98`
+  │  影响: 执行者按计划改交付物会越界；不改则 SC-2/SC-6 无法完成。
+  │  修复: 将 `owned_paths` 改为 `scripts/gd-codex-bridge-review.py`、`prompts/gd-review-standard.md`；把 spec/docs/master-plan 仅保留在 `required_context`。
+  └─ 验证: 确认 `deliverables[].path` 全部属于 `owned_paths`，且 `required_context` 不与 `owned_paths` 重叠。
+
+  ┌─ #16 [P1] SC-2 验证命令缺少必填入参
+  │  SC: ['SC-2']
+  │  证据: `plans/gd/2026-06-09-l3-review-fusion/packets/t2-bridge-lens-conformance.md:112`；`scripts/gd-codex-bridge-review.py:922`
+  │  影响: 改完后核心验收命令仍会失败，无法判断 lens 双视角字节差异是否合格。
+  │  修复: 在验证命令中传入真实 `kind='plan'`、目标 packet `Path`、项目根 `Path('.')`，再比较 codex_A/codex_B。
+  └─ 验证: 修正后的 SC-2 命令输出唯一 `PASS`。
+
+
+  t3  REQUIRES_CHANGES (2 findings, status=completed)
+  ┌─ #17 [P1] live bridge 路径与 .claude 禁令冲突
+  │  SC: ['SC-3']
+  │  证据: `plans/gd/2026-06-09-l3-review-fusion/packets/t3-review-plan-convergence.md:168` 调用 `run-bridge --live-transport`；`:179` 写明不写 `/Users/praise/.claude/**`；`:199` 禁止访问 `/Users/praise/.claude/**`。
+  │  影响: live transport 依赖旧 writer 的 `~/.claude/review-baselines/<gd_baseline_key>/` raw result；执行时要么违反 packet 禁令，要么 bridge 无法完成，SC-3 生产路径不可落地。
+  │  修复: 在 forbidden/禁区中保留“禁止直接写 `.claude`”，但明确豁免 bridge live transport 间接写入 `~/.claude/review-baselines/<gd_baseline_key>/`，且禁止其他 `.claude` 路径。
+  └─ 验证: 重新阅读 packet，能同时看到 `--live-transport` 与仅限 `review-baselines/<gd_baseline_key>/` 的路径豁免；无全量禁止访问 `.claude/**` 的冲突表述。
+
+  ┌─ #18 [P2] required_context 包含自身 owned_path
+  │  SC: ['SC-2']
+  │  证据: `plans/gd/2026-06-09-l3-review-fusion/packets/t3-review-plan-convergence.md:48` 列出 `scripts/gd-review-merge-and-fix-loop.py`；`:59-60` 又把同一路径列为 owned_paths。
+  │  影响: 后续 task packet 校验会把该任务判为自依赖；执行器也无法区分“只读上下文”与“可写目标文件”。
+  │  修复: 从 `required_context` 移除 `scripts/gd-review-merge-and-fix-loop.py`，并在 owned_paths 或实现路线中说明执行前可读取该 owned file 当前内容。
+  └─ 验证: `required_context` 中不存在任何 `owned_paths` 路径；owned_paths 仍只包含 `scripts/gd-review-merge-and-fix-loop.py`。
+
+
+  t4  REQUIRES_CHANGES (2 findings, status=completed)
+  ┌─ #19 [P1] SC-1 verify command cannot execute
+  │  SC: ['SC-1']
+  │  证据: `plans/gd/2026-06-09-l3-review-fusion/packets/t4-code-path-quality-conformance.md:136`；实跑同命令输出 `SyntaxError: invalid syntax`
+  │  影响: 执行方无法用该命令判断 SC-1 是否真的 fail-closed，核心成功标准不可验收。
+  │  修复: 将该 verify 改成可执行脚本形态，例如 heredoc/多行 `python3 - <<'PY'`，并保留 `exit!=0`、`decision`、`failure_code` 断言。
+  └─ 验证: 复制修复后的 SC-1 `cmd` 在仓库根目录运行，命令自身无 `SyntaxError`，并输出 `exit=<非0>` 与预期 `failure_code`。
+
+  ┌─ #20 [P1] SC-2 lacks task-level verify binding
+  │  SC: ['SC-2']
+  │  证据: `plans/gd/2026-06-09-l3-review-fusion/packets/t4-code-path-quality-conformance.md:90-91` 定义 SC-1/SC-2；`:134-150` 的 verify 未出现 `sc_ref: SC-2`
+  │  影响: 质量门先行、Codex conformance 后置、两段产物分别可观测这些 SC-2 目标无法被 task 级验收直接判定。
+  │  修复: 新增 `sc_ref: SC-2` verify，断言质量门调用点早于 bridge、route_report 含独立 `upstream_quality_gate` 与 `codex_review_scope="conformance"` 字段。
+  └─ 验证: `grep -n 'sc_ref: SC-2' plans/gd/2026-06-09-l3-review-fusion/packets/t4-code-path-quality-conformance.md` 命中，且新增命令能失败时返回非零、成功时输出明确 PASS。
+
+
+  ✅ t5  APPROVED (0 findings)
+
+  t6  REQUIRES_CHANGES (1 findings, status=completed)
+  ┌─ #21 [P1] SC-2 必需读取的 commands/gd.md 未纳入可读上下文
+  │  SC: ['SC-2']
+  │  证据: `plans/gd/2026-06-09-l3-review-fusion/packets/t6-deploy-manifest.md:43`-`47` 仅列 3 个 required_context；`:75` 限定读取范围；`:84`、`:128`、`:163` 要求读取/hash `commands/gd.md`。
+  │  影响: 严格按 packet 执行时，子 agent 无法合法读取 `commands/gd.md`，导致 ledger 授权条目的 `new_source_hash` 无法生成或验证，SC-2 成功不可判断。
+  │  修复: 将 `commands/gd.md` 加入 `required_context`，或在读取权限中显式声明可只读访问 `commands/gd.md` 仅用于 `new_source_hash` 计算与验证。
+  └─ 验证: 重新检查 packet，确认 `commands/gd.md` 出现在 `required_context` 或读取权限白名单中，且 SC-2 verify 的 `open('commands/gd.md','rb')` 与该权限声明一致。
+
+
+============================================================
+  l3-fusion-packets-r4
+============================================================
+
+  t1  REQUIRES_CHANGES (1 findings, status=completed)
+  ┌─ #22 [P1] SC-5 端到端验证依赖 t5，但 blocked_by 为空
+  │  SC: ['SC-5']
+  │  证据: `/Users/praise/AI-Agent/Claude/projects/Project GD/plans/gd/2026-06-09-l3-review-fusion/packets/t1-transport-guard.md:40`；`:100`；`:114`；`:147`
+  │  影响: 调度器可在 t5 前执行 t1，导致 SC-5 核心验证不可运行或被降级为结构自证，无法判断 controller fail-closed 行为是否真的满足目标。
+  │  修复: 在 `blocked_by` 中加入提供 `tests/review-fusion` fixture 的 t5 task id，或把 pytest 项明确移出本 packet 的完成验收并改为后续集成验收。
+  └─ 验证: 重新检查 packet：`blocked_by` 包含 t5 依赖，或 SC-5 本任务 verify 仅保留可立即执行命令且 pytest 出现在集成任务中。
+
+
+  t2  REQUIRES_CHANGES (2 findings, status=completed)
+  ┌─ #23 [P1] owned_paths 未包含实际交付物
+  │  SC: ['SC-2', 'SC-6']
+  │  证据: `/Users/praise/AI-Agent/Claude/projects/Project GD/plans/gd/2026-06-09-l3-review-fusion/packets/t2-bridge-lens-conformance.md:57`、`:76`、`:94`、`:98`
+  │  影响: 执行者按交付物修改会越出 `owned_paths`，后续 execution review 会按路径越界阻断；若按 `owned_paths` 执行则无法完成 SC-2/SC-6。
+  │  修复: 将 `owned_paths` 改为 `scripts/gd-codex-bridge-review.py` 与 `prompts/gd-review-standard.md`，保留 spec/docs/master-plan 在 `required_context`。
+  └─ 验证: 重新检查 packet：deliverables 路径全部包含于 `owned_paths`，`required_context` 不与 `owned_paths` 重叠。
+
+  ┌─ #24 [P1] SC-2 验证命令无法验证目标
+  │  SC: ['SC-2']
+  │  证据: `/Users/praise/AI-Agent/Claude/projects/Project GD/plans/gd/2026-06-09-l3-review-fusion/packets/t2-bridge-lens-conformance.md:112`；`scripts/gd-codex-bridge-review.py:922`
+  │  影响: SC-2 验证要么不输出期望的 `PASS`，要么无法调用函数；lens 双视角字节差异是否符合计划无法判断。
+  │  修复: 重写为可执行的多行 Python 命令，传入 `kind`、`target`、`cwd`，并显式断言 codex_A/codex_B 仅 `REVIEW_LENS_EMPHASIS` 行和 Reviewer Instructions lens 展开句不同，最后打印 `PASS`。
+  └─ 验证: 运行修正后的 SC-2 命令，stdout 精确包含 `PASS`，且额外制造非 lens 差异时命令非零退出。
+
+
+  t3  REQUIRES_CHANGES (1 findings, status=completed)
+  ┌─ #25 [P1] SC-3 只用字符串 grep，无法判断 dual-codex 与去 D7 是否真实生效
+  │  SC: ['SC-3']
+  │  证据: `plans/gd/2026-06-09-l3-review-fusion/packets/t3-review-plan-convergence.md:88` 定义 SC-3 行为；`plans/gd/2026-06-09-l3-review-fusion/packets/t3-review-plan-convergence.md:121` 仅 grep `REVIEW_ROUND/BASELIN
+  │  影响: 生成链路可能继续走单 Codex 或 D7 分支，计划验收仍会显示 PASS，导致后续 `/gd` review 收敛结果不可判定。
+  │  修复: 在 SC-3 verify 中补一个可执行断言，验证 r2+ 实际触发两个 Codex job、两 job 均携带四字段，且 `large_delta`/D7 升级分支不存在或不会被调用。
+  └─ 验证: 运行新增 SC-3 测试，例如 `python3 -m pytest tests/review-fusion -k 'round2_dual_codex_no_d7_scope_fields' -q`，输出 `passed`；同时保留四字段 grep 作为辅助检查。
+
+
+  t4  REQUIRES_CHANGES (2 findings, status=completed)
+  ┌─ #26 [P1] SC-1 验证命令不可执行且可误判
+  │  SC: ['SC-1']
+  │  证据: `/Users/praise/AI-Agent/Claude/projects/Project GD/plans/gd/2026-06-09-l3-review-fusion/packets/t4-code-path-quality-conformance.md:130`、`:136`、`:137`
+  │  影响: 执行时可能因验证脚本自身失败，或因任意非零退出误判通过，无法确认质量门失败时真的写入非 APPROVED、failure_code、输出 hash 并短路 Codex。
+  │  修复: 把 SC-1 command 改成可执行脚本，创建 dummy target，运行 router 后解析 route_report，并断言 `returncode != 0`、`decision != APPROVED`、`failure_code` 为允许枚举、质量门输出 ref/hash 存在。
+  └─ 验证: 运行修复后的 SC-1 command，输出包含实际 route_report 断言结果，且去掉 `fail_closed` 分支或 failure_code 时命令失败。
+
+  ┌─ #27 [P1] SC-2 只用 grep，不能判断两段闭环
+  │  SC: ['SC-2']
+  │  证据: `/Users/praise/AI-Agent/Claude/projects/Project GD/plans/gd/2026-06-09-l3-review-fusion/packets/t4-code-path-quality-conformance.md:91`、`:142`、`:146`
+  │  影响: 代码只在注释里出现关键字、顺序反了、或 route_report 缺少分离字段时仍可能通过，核心目标“质量/符合性分离”无法验收。
+  │  修复: 新增或替换为 `sc_ref: SC-2` 的可执行验证，断言 `upstream_quality_gate.steps[]`、质量门输出 hash、`codex_review_scope=="conformance"`，并能证明 Codex 阶段只在质量门成功后发生。
+  └─ 验证: 修复后的 SC-2 command 在缺少 route_report 分离字段、缺少 conformance scope、或顺序倒置时失败。
+
+
+  t5  FAILED (1 findings, status=degraded)
+  ┌─ #28 [P2] bridge_contract 未纳入权威验收
+  │  SC: ['SC-6']
+  │  证据: plans/gd/2026-06-09-l3-review-fusion/packets/t5-regression-fixtures.md:32、160-174、176-185、212
+  │  影响: 执行者只跑 §7 verify 时，bridge candidate 回归缺失仍可能显示成功，后续桥接契约退化不会被 gate 拦住。
+  │  修复: 将现有 `code_path_quality_conformance_separation or bridge_contract` pytest 命令提升到 §7 verify，并绑定 `sc_ref: SC-6`；同步在 §5 明确 SC-6 为本 packet 权威验收项。
+  └─ 验证: `python3 -m pytest tests/review-fusion -k 'code_path_quality_conformance_separation or bridge_contract' -q 2>&1 | tail -1` 末行含 `passed` 且无 `failed`/`error`，packet 的 verify YAML 含 `sc_ref: SC-6`。
+
+
+  t6  REQUIRES_CHANGES (2 findings, status=completed)
+  ┌─ #29 [P1] SC-1 manifest verify 命令语法错误
+  │  SC: ['SC-1']
+  │  证据: `plans/gd/2026-06-09-l3-review-fusion/packets/t6-deploy-manifest.md:155`；实跑输出 `SyntaxError: invalid syntax`
+  │  影响: 子 agent 即使正确 append manifest，执行验证也会失败；按 anti-fill 规则 A/C，核心 SC 无可用验收。
+  │  修复: 将 SC-1 verify 改成可执行形式，例如 heredoc 多行 Python，或用列表推导/函数避免在 `python3 -c` 中写 compound `for` 语句。
+  └─ 验证: 在未改动运行态路径的前提下运行 packet 中替换后的 SC-1 命令，命令退出码为 0 且输出 `MANIFEST_ENTRIES_OK`。
+
+  ┌─ #30 [P2] transport-guard source 缺失未被强制阻断
+  │  SC: ['SC-1']
+  │  证据: `plans/gd/2026-06-09-l3-review-fusion/packets/t6-deploy-manifest.md:49`、`:118`、`:155`；`test -f scripts/gd-codex-transport-guard.py` 当前为 missing
+  │  影响: t6 可能产出看似通过的 manifest，后续 Plan E / deploy-live 执行 `direct_cp` 时因 source 缺失失败，影响后续部署链路。
+  │  修复: 在 t6 verify/preflight 中加入 7 个 source 路径的 `test -f` 检查，至少强制检查 `scripts/gd-codex-transport-guard.py`；缺失时写入 handoff blockers 并不得标记 SC-1 通过。
+  └─ 验证: 删除或缺失任一 source 时 preflight 失败并报告路径；所有 source 存在时 preflight 通过后再执行 manifest entry 验证。
+
+
+============================================================
+  l3-fusion-packets-r5
+============================================================
+
+  ✅ t1  APPROVED (0 findings)
+
+  t2  REQUIRES_CHANGES (2 findings, status=completed)
+  ┌─ #31 [P1] owned_paths 与交付物冲突
+  │  SC: ['SC-2', 'SC-6']
+  │  证据: `/Users/praise/AI-Agent/Claude/projects/Project GD/plans/gd/2026-06-09-l3-review-fusion/packets/t2-bridge-lens-conformance.md:56`-`:60` 只列 `specs/`、`docs/`、`master-plan.md`；`:76` 声明写入限 `scripts/gd-cod
+  │  影响: 执行 SC-2/SC-6 的实际改动会落在 `owned_paths` 之外，触发路径越界；若严格遵守 `owned_paths`，任务目标无法完成。
+  │  修复: 将 `owned_paths` 改为包含 `scripts/gd-codex-bridge-review.py` 和 `prompts/gd-review-standard.md`；把 `specs/`、`docs/`、`master-plan.md` 保留在 `required_context`，不要列为 owned。
+  └─ 验证: 重新检查该 packet：`owned_paths` 中存在两个交付物路径，且 `required_context` 与 `owned_paths` 无重叠。
+
+  ┌─ #32 [P2] required_context 与 owned_paths 循环重叠
+  │  SC: ['SC-2', 'SC-6']
+  │  证据: `/Users/praise/AI-Agent/Claude/projects/Project GD/plans/gd/2026-06-09-l3-review-fusion/packets/t2-bridge-lens-conformance.md:43`-`:49` 重复列出三份 context；`:56`-`:60` 又把同三份文件列为 `owned_paths`。
+  │  影响: 后续调度/审查无法判断这些文件是只读输入还是本任务可写产物，容易影响并发隔离和越界判断。
+  │  修复: 去重 `required_context`，并确保其所有路径均不出现在 `owned_paths`。
+  └─ 验证: 用人工或脚本比对两组路径，交集为空，且 `required_context` 无重复项。
+
+
+  t3  REQUIRES_CHANGES (2 findings, status=completed)
+  ┌─ #33 [P1] bridge live transport 与 `.claude` 写入禁令冲突
+  │  SC: ['SC-3']
+  │  证据: `plans/gd/2026-06-09-l3-review-fusion/packets/t3-review-plan-convergence.md:62`, `:176`, `:187`
+  │  影响: 执行时要么违反 forbidden_paths，要么不能使用 live transport，SC-3 的 dual-codex mapped findings 无法产生。
+  │  修复: 将禁令改为“禁止直接写 `.claude`，仅允许 bridge/writer 产生 `~/.claude/review-baselines/<gd_baseline_key>/`”。
+  └─ 验证: 目标文件中 `.claude` 禁令包含该唯一例外，且 `--live-transport` 路径不再与 forbidden_paths 冲突。
+
+  ┌─ #34 [P2] t5 fixture 依赖未进入调度依赖
+  │  SC: ['SC-2', 'SC-4']
+  │  证据: `plans/gd/2026-06-09-l3-review-fusion/packets/t3-review-plan-convergence.md:40`, `:85`, `:111`, `:117`, `:133`
+  │  影响: t3 可能在 t5 前执行，核心验证命令失败，无法判断 SC-2/SC-4 是否达成。
+  │  修复: 在 `blocked_by` 加入拥有 `tests/review-fusion` 与 `fixtures/review-fusion` 的 t5 packet，或把这两项验收明确标为 post-t5 integration gate。
+  └─ 验证: 调度依赖中出现 t5，或 SC-2/SC-4 验证段明确不可作为 t3 独立完成门槛。
+
+
+  t4  REQUIRES_CHANGES (1 findings, status=completed)
+  ┌─ #35 [P1] SC-1 fail-closed 验证未命中质量门失败场景
+  │  SC: ['SC-1']
+  │  证据: `/Users/praise/AI-Agent/Claude/projects/Project GD/plans/gd/2026-06-09-l3-review-fusion/packets/t4-code-path-quality-conformance.md:130` 声明要模拟 `/code-review` 不可用；`:136` 实际命令仅执行 `--mode detect_only`，断言
+  │  影响: 子 agent 可在未实现质量门 fail-closed 的情况下通过核心验收，后续 code/执行路可能在 `/code-review` 或 `/simplify` 不可用时静默进入 Codex conformance 或产出错误 `APPROVED`。
+  │  修复: 将 SC-1 第一条 verify 改为可执行 live code/执行路场景：强制 `/code-review` 或 `/simplify` 不可用/返回非零，断言 router `exit≠0`、route_report `decision != APPROVED`、`failure_code` 为质量门失败枚举、存在 `upstream_quality_gate.steps[].output_ref/output_hash`，且未进入 Codex bridge。
+  └─ 验证: 运行修正后的 SC-1 verify，看到命令非零退出且 route_report 同时满足 `fail_closed`、非 `APPROVED`、质量门 failure_code、输出 hash 落盘、无 Codex bridge 调用记录。
+
+
+  t5  REQUIRES_CHANGES (1 findings, status=completed)
+  ┌─ #36 [P2] bridge_contract 未覆盖降级/超时 fail-closed
+  │  SC: ['SC-6']
+  │  证据: `/Users/praise/AI-Agent/Claude/projects/Project GD/plans/gd/2026-06-09-l3-review-fusion/packets/t5-regression-fixtures.md:216`；`/Users/praise/AI-Agent/Claude/projects/Project GD/prompts/gd-review-stan
+  │  影响: 回归套件可能全绿但漏掉 bridge 降级或超时自动通过/非 FAILED 的核心错误，后续 Plan E 接线时 fail-closed 不能被判定。
+  │  修复: 在 `test_code_path_separation.py` 的 `bridge_contract` 用例要求中补充 `degraded -> FAILED` 与 `failed_to_run -> FAILED` 两个断言，不扩大到其它链路。
+  └─ 验证: `python3 -m pytest tests/review-fusion -k 'bridge_contract' -q` 通过，且用例名/断言明确覆盖 `degraded` 与 `failed_to_run`。
+
+
+  t6  REQUIRES_CHANGES (2 findings, status=completed)
+  ┌─ #37 [P1] SC-1 验证命令引用不存在脚本
+  │  SC: ['SC-1']
+  │  证据: `plans/gd/2026-06-09-l3-review-fusion/packets/t6-deploy-manifest.md:155`；运行 `python3 scripts/gd-validate-deploy-manifest-entries.py .deploy-manifest.jsonl` 返回 `[Errno 2] No such file or directory`。
+  │  影响: 执行者即使正确 append manifest，也会在核心验证阶段直接失败，无法判断 SC-1 成功。
+  │  修复: 将 verify 改为仓库已存在的验证命令，或把该 validator 作为前置 deliverable/required_context 并确保 t6 执行前已存在。
+  └─ 验证: 在仓库根执行 line 155 对应命令，输出 `MANIFEST_ENTRIES_OK`。
+
+  ┌─ #38 [P1] SC-2 授权记录缺少自包含授权来源
+  │  SC: ['SC-2']
+  │  证据: `plans/gd/2026-06-09-l3-review-fusion/packets/t6-deploy-manifest.md:7-8` 声明自包含；`:84` 要求显式授权；`:128` 仍是占位；`:167` 会拒绝占位。
+  │  影响: 执行者只能失败、伪造授权，或读取 packet 外对话上下文；三者都会破坏 SC-2 或安全边界。
+  │  修复: 在 packet 中加入明确授权证据路径/字段，或把 SC-2 改为“授权缺失时阻塞，不 append ledger”。
+  └─ 验证: line 167 的 ledger 校验输出 `LEDGER_OK`，且新增记录含非占位 `granted_by` 与 `authorization_source`。
+
+
+============================================================
+  l3-fusion-packets-r6
+============================================================
+
+  t1  REQUIRES_CHANGES (2 findings, status=completed)
+  ┌─ #39 [P2] 读取权限与 controller 接入目标自相矛盾
+  │  SC: ['SC-1']
+  │  证据: `plans/gd/2026-06-09-l3-review-fusion/packets/t1-transport-guard.md:42`、`:55`、`:70`、`:71`、`:131`、`:155`
+  │  影响: implementer 要么违反本 packet 的读取边界，要么盲改 controller，SC-1 的 active 接入无法可靠完成。
+  │  修复: 在“读取权限分层”明确允许读取本任务 `owned_paths` 中需修改文件，并修正第155行“四份”表述；不要把 owned path 加进 `required_context`。
+  └─ 验证: 重新阅读 packet，确认 `owned_paths` 可读可写、`required_context` 仍只含外部上下文，且 controller 接入步骤不再与读取禁令冲突。
+
+  ┌─ #40 [P2] healthcheck 兜底缺少可判定验证
+  │  SC: ['SC-5']
+  │  证据: `plans/gd/2026-06-09-l3-review-fusion/packets/t1-transport-guard.md:32`、`:100`、`:110`、`:127`、`:129`
+  │  影响: 实现可以只定义空的 `healthcheck()` 并通过当前自包含验证，第四道防线是否生效无法判断。
+  │  修复: 在 SC-5 自包含命令中加入 healthcheck 失败注入断言，例如调用入口函数时传入/monkeypatch 失败 healthcheck，并断言返回 `available=False`、`fail_closed=True`。
+  └─ 验证: 运行更新后的 SC-5 命令，缺失 healthcheck fail-closed 行为时失败，正确实现时输出 `PASS`。
+
+
+  t2  REQUIRES_CHANGES (2 findings, status=completed)
+  ┌─ #41 [P1] SC-2 验证命令不可执行
+  │  SC: ['SC-2']
+  │  证据: `plans/gd/2026-06-09-l3-review-fusion/packets/t2-bridge-lens-conformance.md:108`；`python3 -c "a=1; for i in [1]: print(i)"` 输出 `SyntaxError`；`test -f packets/t2-bridge-lens-conformance.md` 输出 `EXIT=1`
+  │  影响: 执行者按 packet 跑验证会失败；即使实现正确，也无法通过 SC-2，bridge candidate 后续合并没有可信验收依据。
+  │  修复: 将 line 108 改成可执行的 heredoc 或 `exec("""...""")` 多行 Python；target 改为真实路径 `plans/gd/2026-06-09-l3-review-fusion/packets/t2-bridge-lens-conformance.md`；同时断言 codex_A/codex_B 只在允许的 lens 元数据行和 instructions 展开行不同。
+  └─ 验证: 在 repo root 运行修复后的 SC-2 command 输出 `PASS`，且不会触发 `SyntaxError` 或 target not found。
+
+  ┌─ #42 [P2] SC-6 standard 验证会误通过
+  │  SC: ['SC-6']
+  │  证据: `plans/gd/2026-06-09-l3-review-fusion/packets/t2-bridge-lens-conformance.md:81` 要求新增判定；`:116` 仅 `grep -q 'degraded' prompts/gd-review-standard.md`；当前 `prompts/gd-review-standard.md:20` 已含 `degraded`。
+  │  影响: 实现者只添加「一次列全所有可发现 finding」而漏掉 degraded 判定时，`standard/PASS` 仍会通过，生成链路继续缺失穷举强制 gate。
+  │  修复: 将 SC-6 standard 验证收紧为检查新增 §10 内的完整判定，例如匹配 `明知多处只报一条.*degraded`，并保留标题与「一次列全所有可发现 finding」检查。
+  └─ 验证: 删除或遗漏该判定时命令失败；补齐 §10 后命令输出 `standard/PASS`。
+
+
+  t3  REQUIRES_CHANGES (2 findings, status=completed)
+  ┌─ #43 [P1] bridge r2/lens 入参没有可调用契约
+  │  SC: ['SC-2']
+  │  证据: `plans/gd/2026-06-09-l3-review-fusion/packets/t3-review-plan-convergence.md:177`；`plans/gd/2026-06-09-l3-review-fusion/packets/t2-bridge-lens-conformance.md:137`、`:139`；`grep` bridge env consumer 无输出。
+  │  影响: 执行后两路 Codex 可能都是 neutral/full-scope，SC-2/SC-3 目标失败，后续 baseline 会基于错误 review 输入。
+  │  修复: 在 t3 明确依赖的 t2 契约中加入 runner 级入参，例如 `run-bridge --lens-emphasis --review-round --baseline-findings --delta-scope --scope-constraint` 或已实现的等价 env consumer，并把 t3 调用改为该真实接口。
+  └─ 验证: `run-bridge` 生成两份 capsule，分别含 `REVIEW_LENS_EMPHASIS: codex_A/codex_B`；r2 capsule 同时含四字段。
+
+  ┌─ #44 [P1] SC-3 只用 grep 验证，不能判断 bridge 行为
+  │  SC: ['SC-3']
+  │  证据: `plans/gd/2026-06-09-l3-review-fusion/packets/t3-review-plan-convergence.md:89`、`:112`、`:122`-`:130`；t5 已规划 `r2_scope_constrained_dual_codex` 行为 fixture。
+  │  影响: 死代码或未接线代码也能过关，生成链路继续产出错误 scope 的 review，成功无法判断。
+  │  修复: 将 SC-3 verify 增加或替换为 `python3 -m pytest tests/review-fusion -k 'r2_scope_constrained_dual_codex' -q 2>&1 | tail -1`，断言两路 capsule 均含四字段且 scope constrained。
+  └─ 验证: t5 fixture 落地后，上述 pytest 返回 passed；删掉任一字段或单路 Codex 时测试失败。
+
+
+  t4  REQUIRES_CHANGES (2 findings, status=completed)
+  ┌─ #45 [P1] SC-1 验证命令与期望相反
+  │  SC: ['SC-1']
+  │  证据: `plans/gd/2026-06-09-l3-review-fusion/packets/t4-code-path-quality-conformance.md:130`, `:136-137`
+  │  影响: 执行后无法判断 fail-closed 是否真实存在，核心成功标准可能被错误验收。
+  │  修复: 将 SC-1 verify 改成真实 subprocess 场景：模拟 `/code-review` 不可用，断言 router `exit!=0`、route_report 非 `APPROVED`、含 `fail_closed` 与 failure_code。静态 grep 可保留但期望应为 `PASS`。
+  └─ 验证: 修改后运行该 verify，缺失质量门实现时失败，正确 fail-closed 实现时通过。
+
+  ┌─ #46 [P2] 上游质量门调用契约未定
+  │  SC: ['SC-2']
+  │  证据: `plans/gd/2026-06-09-l3-review-fusion/packets/t4-code-path-quality-conformance.md:116`
+  │  影响: 子 agent 会被迫猜测如何调用 slash command；实现可能在 active path 永远不可用而 fail-closed，或静默伪造质量门结果。
+  │  修复: 在 packet 中补明确切 CLI 契约：命令路径或 env 变量、参数、成功/失败退出码、stdout/hash 落盘规则；若当前无 launcher，则明确要求 deterministic unavailable fail-closed，并对应更新 verify。
+  └─ 验证: 用 fake launcher 成功/失败两组命令验证 route_report 中 `upstream_quality_gate.steps[]`、output_ref/hash、conformance 后置顺序均可观测。
+
+
+  t5  FAILED (0 findings, status=degraded)
+
+  t6  REQUIRES_CHANGES (2 findings, status=completed)
+  ┌─ #47 [P1] SC-1 manifest verify accepts incomplete artifact set
+  │  SC: ['SC-1']
+  │  证据: `plans/gd/2026-06-09-l3-review-fusion/packets/t6-deploy-manifest.md:83` 列出 6 个指定 artifact；`:155` 只断言 `len(scripts)>=6`。
+  │  影响: 现有 manifest 已有 sync 条目时，少追加部分目标也可能通过，部署清单可不完整。
+  │  修复: 在 SC-1 verify 中断言 6 个精确 `(source,target,method,ledger_scope)` 均存在，并校验 gd.md 条目的 target/method/installer/ledger_scope。
+  └─ 验证: 故意移除任一 required artifact 条目时，SC-1 verify 必须失败；补齐后输出 `MANIFEST_ENTRIES_OK`。
+
+  ┌─ #48 [P1] SC-2 ledger verify does not bind target_path
+  │  SC: ['SC-2']
+  │  证据: `plans/gd/2026-06-09-l3-review-fusion/packets/t6-deploy-manifest.md:84` 要求具体 `target_path`；`:167` 的 `match` 未包含 `target_path` 条件。
+  │  影响: 写入错误 runtime target 的授权记录也可能通过，后续 deploy-live 使用的授权 ledger 会失真。
+  │  修复: 在 SC-2 verify 的 `match` 条件中加入 `target_path == "/Users/praise/.claude/commands/gd.md"`，并保留 placeholder 检查。
+  └─ 验证: 将 ledger 新增行 `target_path` 改成任意其他路径时 verify 失败；恢复后输出 `LEDGER_OK`。
+
+
+============================================================
+  l3-fusion-packets-suite
+============================================================
+
+  t1  FAILED (2 findings, status=degraded)
+  ┌─ #49 [P1] SC-1 未验证 controller 接入点
+  │  SC: ['SC-1']
+  │  证据: `/Users/praise/AI-Agent/Claude/projects/Project GD/plans/gd/2026-06-09-l3-review-fusion/packets/t1-transport-guard.md:78`；接入要求见 `:128-131`。
+  │  影响: 实现者可只创建 guard 文件让 SC-1 PASS，但 `/gd` 实际 live dispatch 仍绕过 preflight，transport guard 目标失败。
+  │  修复: 在 SC-1 verify 增加对 `scripts/gd-review-suite-controller.py` 中 `ensure_codex_available` 调用位置的确定性断言。
+  └─ 验证: 删除 controller 调用时 SC-1 命令失败；恢复调用后输出 `PASS`。
+
+  ┌─ #50 [P1] SC-5 verify 依赖未声明外部测试
+  │  SC: ['SC-5']
+  │  证据: `.../t1-transport-guard.md:40-47`、`:79`、`:101`、`:109-112`。
+  │  影响: t1 packet 不能单独完成验收；调度到 t5 之前会因测试不存在失败，或跳过 fail-closed/retry 核心验证。
+  │  修复: 为 SC-5 增加一个不写测试目录的自包含 verify 命令，直接导入 guard 并模拟 fail_closed 与 retry_recover；t5 pytest 保留为集成验证。
+  └─ 验证: 在 `tests/review-fusion` 不存在时，自包含 SC-5 命令仍能验证两种分支并输出 `PASS`。
+
+
+  t2  REQUIRES_CHANGES (3 findings, status=completed)
+  ┌─ #51 [P2] SC-2 未验证双视角唯一差异
+  │  SC: ['SC-2']
+  │  证据: `/Users/praise/AI-Agent/Claude/projects/Project GD/plans/gd/2026-06-09-l3-review-fusion/packets/t2-bridge-lens-conformance.md:82` 声明唯一差异要求；`:110` 仅 `grep -qE 'REVIEW_LENS_EMPHASIS'`。
+  │  影响: 实现只加死 token 或产生额外差异也会通过，后续双 reviewer lens 生成链路可继续产出错误 capsule。
+  │  修复: 在 SC-2/verify 增加确定性测试：分别构造 codex_A/codex_B capsule，并断言 diff 白名单仅包含 `REVIEW_LENS_EMPHASIS` 行和对应 instruction 行。
+  └─ 验证: 运行新增命令，输出包含 `SC-2 lens diff whitelist PASS`，且现有 self-test 仍 `EXIT=0`。
+
+  ┌─ #52 [P2] SC-6 grep 不能证明两文件都落地
+  │  SC: ['SC-6']
+  │  证据: `/Users/praise/AI-Agent/Claude/projects/Project GD/plans/gd/2026-06-09-l3-review-fusion/packets/t2-bridge-lens-conformance.md:83` 要求两处文本；`:114` 使用单条 `grep ... file1 file2`。
+  │  影响: bridge Reviewer Instructions 未加 conformance scoping 时仍可能验收通过，用户目标未完成。
+  │  修复: 拆成两个文件级断言，并分别校验 bridge 含 `conformance` 与「顺带」，standard 含「一次列全所有可发现 finding」与 `degraded` 判定。
+  └─ 验证: 两条 grep/脚本断言分别输出 bridge/pass 与 standard/pass。
+
+  ┌─ #53 [P2] required_context 与 owned_paths 重叠
+  │  SC: ['SC-2']
+  │  证据: `/Users/praise/AI-Agent/Claude/projects/Project GD/plans/gd/2026-06-09-l3-review-fusion/packets/t2-bridge-lens-conformance.md:47-48`；`:56-58`。
+  │  影响: 后续 packet 合规审查会把该任务视为循环依赖/结构不合规，影响 L3 review fusion 的基线一致性。
+  │  修复: 从 `required_context` 移除两个 owned 文件，并在读写权限分层中明确 owned_paths 可读可写、required_context 仅列外部依赖。
+  └─ 验证: 复查 `required_context ∩ owned_paths == ∅`，且实现者仍能读取 owned 文件完成修改。
+
+
+  t3  REQUIRES_CHANGES (1 findings, status=completed)
+  ┌─ #54 [P2] SC-3 四字段校验只检查任一字段
+  │  SC: ['SC-3']
+  │  证据: `/Users/praise/AI-Agent/Claude/projects/Project GD/plans/gd/2026-06-09-l3-review-fusion/packets/t3-review-plan-convergence.md:88` 与 `:119-122`
+  │  影响: 实现只写入一个字段也会通过 SC-3，r2+ 收窄契约可能继续缺字段，后续 bridge review 判断范围会漂移。
+  │  修复: 把 SC-3 verify 改为逐项断言四个字段都存在，例如四个 `grep -q` 串联，并加入 `SCOPE_CONSTRAINT`。
+  └─ 验证: 删除任一字段时 SC-3 命令失败；四字段全部存在时输出 `PASS`。
+
+
+  t4  REQUIRES_CHANGES (1 findings, status=completed)
+  ┌─ #55 [P1] 核心 SC 缺少可执行行为验收
+  │  SC: ['SC-1']
+  │  证据: `plans/gd/2026-06-09-l3-review-fusion/packets/t4-code-path-quality-conformance.md:90`、`:91` 定义核心行为；`:130` 承认 grep 可误 PASS；`:134-153` verify 仅 grep/self-test。
+  │  影响: 子 agent 可能只补 `fail_closed` / `conformance` 字面量就通过验收；上游质量门不可用或失败时仍可能进入 Codex 或静默放行，成功无法判断。
+  │  修复: 在 verify 增加至少一个可执行场景：模拟 `/code-review` 或 `/simplify` 不可用/非 0，运行 router，断言 `exit≠0`、`route_report.decision != APPROVED`、`failure_code` 命中、无 Codex bridge 调用、`output_ref/output_hash` 存在；另加顺序断言质量门成功后才进入 conformance。
+  └─ 验证: 新增命令实际运行并用 `jq`/断言检查上述 route_report 字段全部命中。
+
+
+  t5  REQUIRES_CHANGES (2 findings, status=completed)
+  ┌─ #56 [P1] pytest 权威验证期望不可达
+  │  SC: ['SC-4', 'SC-5']
+  │  证据: `plans/gd/2026-06-09-l3-review-fusion/packets/t5-regression-fixtures.md:90`, `:91`, `:164-169`
+  │  影响: SC-4/SC-5 的 active 验收路径会失败，或被执行器误判为未完成。
+  │  修复: 将 SC-4/SC-5 的 `expect` 改为 `passed`，或把两个 pytest 命令改成成功后显式 `&& echo PASS`。
+  └─ 验证: 运行两条更新后的 `verify` 命令，断言 exit 0 且实际输出匹配 `expect`。
+
+  ┌─ #57 [P1] SC-7 权威验证未覆盖三件治理 fixture
+  │  SC: ['SC-7']
+  │  证据: `plans/gd/2026-06-09-l3-review-fusion/packets/t5-regression-fixtures.md:92`, `:170-173`, `:176-181`
+  │  影响: 无效的 `regression-ledger.json` 或 `regression-batch.json` 仍可能通过主验收，治理零破坏回归无法判断。
+  │  修复: 将 ledger、dispatch、execution-batch validator 命令加入 SC-7 的权威 `verify`，并保留明确输出断言。
+  └─ 验证: SC-7 的单个权威验证链同时跑通 controller、ledger、dispatch、batch validator，全部 exit 0 并输出预期 VALID/PASS。
+
+
+  t6  REQUIRES_CHANGES (1 findings, status=completed)
+  ┌─ #58 [P1] gd.md 部署授权无法通过现有安装器
+  │  SC: ['SC-1', 'SC-2', 'SC-2']
+  │  证据: `plans/gd/2026-06-09-l3-review-fusion/packets/t6-deploy-manifest.md:83` 要 gd.md `install_script`；`:114` 又允许无 installer 时 `direct_cp`；`:127-128` 授权示例不含 `new_source_hash`。现有安装器 `scripts/install-gd-comma
+  │  影响: t6 执行后会产出看似 READY 的 manifest/ledger，但 Plan E / deploy-live 运行 gd.md 安装时无法匹配授权；若按 `direct_cp` 执行则绕开既有双锁安装契约，破坏 runtime 写入治理。
+  │  修复: 在 t6 计划中明确 gd.md manifest 条目使用现有 `scripts/install-gd-command.sh`，例如 `method=install_script`、`installer=scripts/install-gd-command.sh`、`installer_args=["--install"]`；SC-2/§7.4 授权条目必须包含 `new_source_hash=<shasum -a 256 commands/gd.md>`。
+  └─ 验证: 执行校验：解析 `.deploy-manifest.jsonl` 确认 gd.md 条目含上述 installer；解析 `baselines/gd-v7-runtime-write-authorizations.jsonl` 确认存在 `target_path=/Users/praise/.claude/commands/gd.md`、`scope=install_claude_command`
+
+
+============================================================
+  总计 58 条 finding（6 轮 × 6 packet）
+============================================================

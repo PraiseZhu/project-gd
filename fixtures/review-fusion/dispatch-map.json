@@ -1,0 +1,64 @@
+{
+  "dispatch_id": "rf-reg-dispatch",
+  "source_master_plan": "plans/gd/2026-06-09-l3-review-fusion/packets/t5-regression-fixtures.md",
+  "goal_chain": {
+    "PROJECT_GOAL": "Goal-Driven Anti-Fill Lab — regression fixture validation",
+    "CHAIN_GOAL": "Validate review-fusion regression suite fixtures",
+    "PHASE_GOAL": "Ensure governance validators accept well-formed fixture inputs"
+  },
+  "max_parallel_planning": 1,
+  "max_parallel_execution": 1,
+  "max_parallel_review": 1,
+  "max_parallel_validation": 1,
+  "tracks": [
+    {
+      "track_id": "rf-t1",
+      "mode": "execute",
+      "agent_role": "child_executor",
+      "owned_paths": [
+        "fixtures/review-fusion/_regwork"
+      ],
+      "forbidden_paths": [
+        "/Users/praise/.claude/**"
+      ],
+      "required_context": [
+        "docs/gd-v7-multi-agent-dispatch.md"
+      ],
+      "deliverables": [
+        {
+          "path": "fixtures/review-fusion/_regwork/result.json",
+          "kind": "file",
+          "must_exist": true
+        }
+      ],
+      "blocked_by": [],
+      "can_parallel_with": [],
+      "sc_refs": [
+        "SC-7"
+      ],
+      "verify": [
+        {
+          "sc_ref": "SC-7",
+          "method": "command",
+          "cmd": "test -f fixtures/review-fusion/_regwork/result.json",
+          "expect": "exit 0"
+        }
+      ]
+    }
+  ],
+  "waves": [
+    {
+      "wave_id": "w1",
+      "track_ids": [
+        "rf-t1"
+      ],
+      "description": "regression fixture execution"
+    }
+  ],
+  "merge_gates": [
+    {
+      "gate_id": "G1",
+      "description": "deliverable output format compliant"
+    }
+  ]
+}

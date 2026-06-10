@@ -46,6 +46,22 @@ def _extract_sc_ids(text: str) -> set[str]:
     return set(_SC_ID_RE.findall(text))
 
 
+# Lenient SC-ID variants accepted ONLY inside the Scope Checked section, to
+# tolerate reviewer formatting drift like "SC1" (missing dash), "sc-1" (lower
+# case) or "SC 1" (space) that the canonical SC_ID_RE rejects. Kept local to
+# scope-coverage so the shared SC_ID_RE stays strict everywhere else (finding /
+# line-ref / bogus checks), avoiding false positives outside this small section.
+_SC_ID_LENIENT_RE = re.compile(r"\bSC[\s\-]?0*(\d+)\b", re.IGNORECASE)
+
+
+def _extract_sc_ids_lenient(text: str) -> set[str]:
+    """Canonical SC-IDs plus normalized common variants (SC1 / sc-1 / SC 1 → SC-N)."""
+    ids = set(_extract_sc_ids(text))
+    for num in _SC_ID_LENIENT_RE.findall(text):
+        ids.add(f"SC-{int(num)}")
+    return ids
+
+
 def _extract_line_count(target_text: str) -> int:
     return len(target_text.splitlines())
 
@@ -148,7 +164,7 @@ def _check_scope_coverage(
         # All target SC-IDs are missing because the section doesn't exist
         return set(target_sc_ids)
     scope_text = scope_match.group(0)
-    scope_sc_ids = _extract_sc_ids(scope_text)
+    scope_sc_ids = _extract_sc_ids_lenient(scope_text)
     if not scope_sc_ids:
         errors.append(
             "FAKE_EVIDENCE_DETECTED: APPROVED verdict — SCOPE_CHECKED section has no SC-IDs"

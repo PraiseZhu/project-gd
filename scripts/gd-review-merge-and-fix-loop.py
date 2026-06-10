@@ -57,10 +57,12 @@ import os
 import re
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 
-MAX_AUTO_FIX_ROUNDS = 3
+MAX_AUTO_FIX_ROUNDS = 3  # legacy: kept for fixture handler backward-compat
+MAX_REVIEW_ROUNDS = 5    # SC-4: production convergence loop hard ceiling
 LOCK_REVISION = 3  # H2a contract revision; bump when contract semantics change
 
 # Plan 8 v4.1 Step 7: this script remains plan-only. Non-plan v2 review kinds
@@ -339,6 +341,230 @@ def run_four_rounds_required(fx: dict) -> int:
         return rc
 
     return 0
+
+
+# ---------------------------------------------------------------------------
+# L2 convergence helpers (SC-2 / SC-3 / SC-4)
+# ---------------------------------------------------------------------------
+
+LINE_DEDUP_WINDOW = 3
+
+
+def _severity_rank(s: object) -> int:
+    return {"P1": 2, "P2": 1}.get(str(s).strip(), 0)
+
+
+def _finding_filecat(f: dict) -> tuple[str, str]:
+    return (
+        str(f.get("file", "")).strip().lower(),
+        str(f.get("category", "")).strip().lower(),
+    )
+
+
+def _lines_within_window(a: object, b: object) -> bool:
+    if a is None and b is None:
+        return True
+    if a is None or b is None:
+        return False
+    try:
+        return abs(int(a) - int(b)) <= LINE_DEDUP_WINDOW
+    except (TypeError, ValueError):
+        return False
+
+
+def merge_findings_union(
+    codex_a: list[dict] | None,
+    codex_b: list[dict] | None,
+    claude: list[dict] | None,
+) -> list[dict]:
+    """三方并集去重。去重键=(file归一化小写, category归一化小写, line±3)。severity取高。
+    首报方记 source，其余记 also_reported_by。
+    """
+    sources = [
+        ("codex_a", codex_a or []),
+        ("codex_b", codex_b or []),
+        ("claude", claude or []),
+    ]
+    merged: list[dict] = []
+    counter = [0]
+
+    def _get_id() -> str:
+        counter[0] += 1
+        return f"F{counter[0]:03d}"
+
+    for src_name, findings in sources:
+        for f in findings:
+            fc = _finding_filecat(f)
+            line = f.get("line")
+            matched: dict | None = None
+            for m in merged:
+                if _finding_filecat(m) == fc and _lines_within_window(m.get("line"), line):
+                    matched = m
+                    break
+            if matched is None:
+                merged.append(
+                    {
+                        "id": _get_id(),
+                        "file": f.get("file", ""),
+                        "line": line,
+                        "category": f.get("category", ""),
+                        "severity": f.get("severity", ""),
+                        "description": f.get("description", f.get("desc", "")),
+                        "status": "unresolved",
+                        "source": src_name,
+                        "also_reported_by": [],
+                        "resolved_in_round": None,
+                        "round_history": [{"round": 1, "status": "unresolved"}],
+                    }
+                )
+            else:
+                # severity 取高
+                if _severity_rank(f.get("severity", "")) > _severity_rank(matched.get("severity", "")):
+                    matched["severity"] = f.get("severity", "")
+                if src_name not in matched["also_reported_by"] and src_name != matched["source"]:
+                    matched["also_reported_by"].append(src_name)
+    return merged
+
+
+def _write_baseline(
+    output_dir: Path,
+    findings: list[dict],
+    invocation_id: str | None = None,
+) -> Path:
+    """Write baseline_findings.json to output_dir. Returns the written path."""
+    baseline = {
+        "schema_version": "1.0",
+        "baseline_round": 1,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "controller_invocation_id": invocation_id or "unknown",
+        "branch": "plan",
+        "baseline_unresolved_count": len(
+            [f for f in findings if f.get("status") == "unresolved"]
+        ),
+        "findings": findings,
+    }
+    path = output_dir / "baseline_findings.json"
+    path.write_text(json.dumps(baseline, ensure_ascii=False, indent=2), encoding="utf-8")
+    return path
+
+
+def update_baseline_statuses(
+    baseline_findings: list[dict],
+    round_findings: list[dict],
+    round_num: int,
+) -> tuple[int, list[dict]]:
+    """用本轮 finding 更新 baseline 状态。
+    仅当本轮 codex 不再报该 symptom (±3窗口不命中) 才标 resolved。
+    delta 中不在 baseline 的 finding 追加为新 unresolved。
+    返回 (baseline_unresolved_count, new_in_delta_findings)。
+    """
+    new_in_delta: list[dict] = []
+
+    for bf in baseline_findings:
+        if bf.get("status") == "resolved":
+            bf.setdefault("round_history", []).append(
+                {"round": round_num, "status": "resolved"}
+            )
+            continue
+        fc = _finding_filecat(bf)
+        line = bf.get("line")
+        still_reported = any(
+            _finding_filecat(rf) == fc and _lines_within_window(line, rf.get("line"))
+            for rf in round_findings
+        )
+        if not still_reported:
+            bf["status"] = "resolved"
+            bf["resolved_in_round"] = round_num
+        bf.setdefault("round_history", []).append(
+            {"round": round_num, "status": bf["status"]}
+        )
+
+    # Append delta findings not in baseline
+    counter = len(baseline_findings)
+    for rf in round_findings:
+        fc = _finding_filecat(rf)
+        line = rf.get("line")
+        in_baseline = any(
+            _finding_filecat(bf) == fc and _lines_within_window(bf.get("line"), line)
+            for bf in baseline_findings
+        )
+        if not in_baseline:
+            counter += 1
+            entry: dict = {
+                "id": f"F{counter:03d}",
+                "file": rf.get("file", ""),
+                "line": line,
+                "category": rf.get("category", ""),
+                "severity": rf.get("severity", ""),
+                "description": rf.get("description", rf.get("desc", "")),
+                "status": "unresolved",
+                "source": "delta",
+                "also_reported_by": [],
+                "resolved_in_round": None,
+                "round_history": [{"round": round_num, "status": "unresolved"}],
+                "new_in_delta": True,
+            }
+            baseline_findings.append(entry)
+            new_in_delta.append(entry)
+
+    baseline_unresolved = len(
+        [f for f in baseline_findings if f.get("status") == "unresolved"]
+    )
+    return baseline_unresolved, new_in_delta
+
+
+def _run_bridge_job(
+    plan_path: Path,
+    cwd: Path,
+    output_dir: Path,
+    round_num: int,
+    lens: str,
+    env: dict,
+) -> list[dict]:
+    """Run bridge run-bridge + parse-transport; return findings list.
+    Fails open (returns []) on any error so a single-lens failure doesn't
+    APPROVED the full loop — caller handles fail-closed logic at merge level.
+    """
+    out_log = output_dir / f"bridge-r{round_num}-{lens}.log"
+    mapped_out = output_dir / f"bridge-r{round_num}-{lens}-mapped.json"
+    try:
+        subprocess.run(
+            [
+                sys.executable,
+                "scripts/gd-codex-bridge-review.py",
+                "run-bridge",
+                "--kind", "plan",
+                "--target", str(plan_path),
+                "--cwd", str(cwd),
+                "--out", str(out_log),
+                "--live-transport",
+            ],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
+        subprocess.run(
+            [
+                sys.executable,
+                "scripts/gd-codex-bridge-review.py",
+                "parse-transport",
+                "--kind", "plan",
+                "--target", str(plan_path),
+                "--raw-result", str(out_log),
+                "--out", str(mapped_out),
+            ],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if mapped_out.exists():
+            mapped = json.loads(mapped_out.read_text(encoding="utf-8"))
+            return mapped.get("findings", [])
+    except Exception:
+        pass
+    return []
 
 
 # ---------------------------------------------------------------------------
@@ -657,10 +883,11 @@ def run_production_plan(
     print(f"output_dir : {output_dir}")
     print()
 
-    # Plan 1: if Claude review JSON is supplied, we can consume existing raw results.
-    # This bypasses the codex-bridge-status.json gate (which was a stub gate,
-    # not a true transport check) and goes directly to consumption + merge.
-    if claude_review_path is not None or codex_raw_result_path is not None or codex_mapped_result_path is not None:
+    # Plan 1 (legacy): if pre-computed raw/mapped results are supplied, consume
+    # them directly via the existing merge matrix. This path is preserved for
+    # back-compat with callers that pre-compute the codex result outside this
+    # script (e.g. manual / CI one-shot invocations).
+    if codex_raw_result_path is not None or codex_mapped_result_path is not None:
         return _consume_and_merge(
             plan_path=plan_path,
             output_dir=output_dir,
@@ -673,7 +900,7 @@ def run_production_plan(
 
     # Production closure does not depend on passive ~/.claude/handoff probe; use GD_ENABLE_HANDOFF_PROBE=1 for legacy debug only.
     # The passive probe is only executed when GD_ENABLE_HANDOFF_PROBE=1 is explicitly set.
-    # Without the env var, skip the probe and proceed directly to the NOT_IMPLEMENTED path.
+    # Without the env var, skip the probe and proceed directly to the live L2 convergence loop.
     if os.environ.get("GD_ENABLE_HANDOFF_PROBE") == "1":
         bridge_status, bridge_error = probe_codex_bridge()
         print(f"Codex bridge probe: status={bridge_status}")
@@ -701,13 +928,159 @@ def run_production_plan(
                 bridge_error or "Codex bridge not reachable",
             )
 
-    # Bridge available but no review inputs supplied — still not implemented via live writer.
+    # -----------------------------------------------------------------------
+    # L2 Convergence loop (SC-2 / SC-3 / SC-4)
+    # Round 1: dual-codex (codex_A / codex_B, lens differs) + Claude self-review
+    #          → merge_findings_union → baseline_findings.json
+    # Round 2+: inject REVIEW_ROUND / BASELINE_FINDINGS / DELTA_SCOPE /
+    #           SCOPE_CONSTRAINT, dual-codex only, update baseline each round.
+    # Hard ceiling: MAX_REVIEW_ROUNDS = 5. Stagnant 2+ rounds → CONVERGENCE_TIMEOUT.
+    # -----------------------------------------------------------------------
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    cwd = Path.cwd()
+    invocation_id = os.environ.get(INVOCATION_ID_ENV, "direct")
+
+    # --- Round 1: dual-codex + Claude self-review ---
+    print(f"=== Round 1 / {MAX_REVIEW_ROUNDS}: dual-codex (codex_A + codex_B) + Claude self-review ===")
+
+    # Build per-lens env blocks. lens_emphasis name must match what bridge reads.
+    env_r1_a = {**os.environ, "GD_REVIEW_LENS_EMPHASIS": "codex_A"}
+    env_r1_b = {**os.environ, "GD_REVIEW_LENS_EMPHASIS": "codex_B"}
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        fut_a = executor.submit(_run_bridge_job, plan_path, cwd, output_dir, 1, "codex_A", env_r1_a)
+        fut_b = executor.submit(_run_bridge_job, plan_path, cwd, output_dir, 1, "codex_B", env_r1_b)
+        findings_codex_a = fut_a.result()
+        findings_codex_b = fut_b.result()
+
+    # Claude self-review findings: load from --claude-review if supplied.
+    findings_claude: list[dict] = []
+    if claude_review_path is not None:
+        cp = Path(claude_review_path)
+        if cp.exists():
+            try:
+                cr = json.loads(cp.read_text(encoding="utf-8"))
+                findings_claude = cr.get("findings", [])
+            except (OSError, json.JSONDecodeError):
+                findings_claude = []
+
+    baseline_findings = merge_findings_union(findings_codex_a, findings_codex_b, findings_claude)
+    _write_baseline(output_dir, baseline_findings, invocation_id=invocation_id)
     print(
-        "ERROR: NOT_IMPLEMENTED: Codex-available live writer path is FW-H2A-3a. "
-        "Supply --claude-review and --codex-raw-result to use existing results.",
-        file=sys.stderr,
+        f"Round 1 baseline: {len(baseline_findings)} findings total, "
+        f"{len([f for f in baseline_findings if f.get('status')=='unresolved'])} unresolved"
     )
-    return 1
+
+    # Early exit: no findings at all after round 1.
+    if not baseline_findings:
+        print("APPROVED", flush=True)
+        return 0
+
+    # --- Rounds 2–MAX_REVIEW_ROUNDS: SC-3 scope-constrained dual-codex loop ---
+    prev_unresolved: int | None = None
+    stagnant_rounds = 0
+    SCOPE_CONSTRAINT = (
+        "Only verify whether baseline findings have been fixed and check delta "
+        "for newly introduced issues. Do NOT re-judge baseline findings. "
+        "Do NOT re-audit unchanged content outside the delta."
+    )
+
+    for round_num in range(2, MAX_REVIEW_ROUNDS + 1):
+        # --- Capture delta ---
+        diff_text = ""
+        delta_lines = 0
+        delta_files = 0
+        try:
+            # delta = working-tree diff against HEAD (plan-file version delta).
+            # No git history is written; the stash-create tree-ish is not needed
+            # because we read the diff text directly.
+            diff_result = subprocess.run(
+                ["git", "diff", "HEAD"],
+                capture_output=True, text=True, timeout=30,
+            )
+            diff_text = diff_result.stdout[:4000]
+            delta_lines = diff_text.count("\n+") + diff_text.count("\n-")
+            delta_files = len(
+                {
+                    ln[4:]
+                    for ln in diff_text.splitlines()
+                    if ln.startswith("--- a/") or ln.startswith("+++ b/")
+                }
+            )
+        except Exception:
+            pass
+
+        REVIEW_ROUND = round_num
+        DELTA_SCOPE = f"{delta_lines} lines changed across {delta_files} files\n--- diff ---\n{diff_text}"
+        BASELINE_FINDINGS = json.dumps({"findings": baseline_findings}, ensure_ascii=False)
+
+        print(
+            f"=== Round {REVIEW_ROUND} / {MAX_REVIEW_ROUNDS}: "
+            f"dual-codex (codex_A + codex_B), delta={delta_lines} lines ===",
+            flush=True,
+        )
+
+        # Build env for this round (SC-3 four-field injection)
+        base_env = {
+            **os.environ,
+            "GD_REVIEW_ROUND": str(REVIEW_ROUND),
+            "GD_BASELINE_FINDINGS": BASELINE_FINDINGS,
+            "GD_DELTA_SCOPE": DELTA_SCOPE,
+            "GD_SCOPE_CONSTRAINT": SCOPE_CONSTRAINT,
+        }
+        round_env_a = {**base_env, "GD_REVIEW_LENS_EMPHASIS": "codex_A"}
+        round_env_b = {**base_env, "GD_REVIEW_LENS_EMPHASIS": "codex_B"}
+
+        # Every round is dual-codex (FR-004); large-delta upgrade condition removed per spec.
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            fut_a = executor.submit(
+                _run_bridge_job, plan_path, cwd, output_dir, round_num, "codex_A", round_env_a
+            )
+            fut_b = executor.submit(
+                _run_bridge_job, plan_path, cwd, output_dir, round_num, "codex_B", round_env_b
+            )
+            round_findings_a = fut_a.result()
+            round_findings_b = fut_b.result()
+
+        round_findings = round_findings_a + round_findings_b
+        baseline_unresolved, new_in_delta = update_baseline_statuses(
+            baseline_findings, round_findings, round_num
+        )
+
+        # --- SC-4 stagnation check ---
+        if prev_unresolved is not None:
+            if baseline_unresolved >= prev_unresolved:
+                stagnant_rounds += 1
+            else:
+                stagnant_rounds = 0
+        prev_unresolved = baseline_unresolved
+
+        print(
+            f"Round {round_num}: baseline_unresolved={baseline_unresolved}, "
+            f"new_in_delta={len(new_in_delta)}, stagnant_rounds={stagnant_rounds}",
+            flush=True,
+        )
+
+        if stagnant_rounds >= 2:
+            print(
+                f"CONVERGENCE_TIMEOUT: stagnant_rounds={stagnant_rounds}, "
+                f"unresolved={baseline_unresolved}",
+                flush=True,
+            )
+            sys.exit(1)
+
+        if baseline_unresolved == 0 and len(new_in_delta) == 0:
+            print("APPROVED", flush=True)
+            return 0
+
+    # Exhausted MAX_REVIEW_ROUNDS without converging
+    print(
+        f"CONVERGENCE_TIMEOUT: exhausted {MAX_REVIEW_ROUNDS} rounds, "
+        f"unresolved={prev_unresolved}",
+        flush=True,
+    )
+    sys.exit(1)
 
 
 def main() -> None:

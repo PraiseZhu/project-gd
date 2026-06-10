@@ -18,3 +18,10 @@
 {"source":"scripts/gd-review2-preflight.sh","target":"~/.claude/scripts/gd-review2-preflight.sh","method":"direct_cp","ledger_scope":"sync_script_to_live"}
 {"source":"scripts/gd-review2-package-deliverable.sh","target":"~/.claude/scripts/gd-review2-package-deliverable.sh","method":"direct_cp","ledger_scope":"sync_script_to_live"}
 {"source":"scripts/gd-review-router.py","target":"~/.claude/scripts/gd-review-router.py","method":"direct_cp","ledger_scope":"sync_script_to_live"}
+{"source":"commands/gd.md","target":"~/.claude/commands/gd.md","method":"install_script","installer":"scripts/install-gd-command.sh","installer_args":["--install"],"ledger_scope":"install_claude_command","note":"runtime write deferred to Plan E / deploy-live; dispatch-only preparation"}
+{"source":"scripts/gd-codex-transport-guard.py","target":"~/.claude/scripts/gd-codex-transport-guard.py","method":"direct_cp","ledger_scope":"sync_script_to_live","note":"sync deferred to Plan E / deploy-live"}
+{"source":"scripts/gd-review-suite-controller.py","target":"~/.claude/scripts/gd-review-suite-controller.py","method":"direct_cp","ledger_scope":"sync_script_to_live","note":"sync deferred to Plan E / deploy-live"}
+{"source":"scripts/gd-codex-bridge-review.py","target":"~/.claude/scripts/gd-codex-bridge-review.py","method":"direct_cp","ledger_scope":"sync_script_to_live","note":"sync deferred to Plan E / deploy-live"}
+{"source":"scripts/gd-review-merge-and-fix-loop.py","target":"~/.claude/scripts/gd-review-merge-and-fix-loop.py","method":"direct_cp","ledger_scope":"sync_script_to_live","note":"sync deferred to Plan E / deploy-live"}
+{"source":"scripts/gd-review-router.py","target":"~/.claude/scripts/gd-review-router.py","method":"direct_cp","ledger_scope":"sync_script_to_live","note":"sync deferred to Plan E / deploy-live"}
+{"source":"prompts/gd-review-standard.md","target":"~/.claude/prompts/gd-review-standard.md","method":"direct_cp","ledger_scope":"sync_script_to_live","note":"sync deferred to Plan E / deploy-live"}
