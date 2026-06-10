@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "stage": "review_execution_code",
+  "parent_run_id": "rf-reg-run-001",
+  "batch_id": "rf-reg-ledger-batch",
+  "recorded_at": "2026-06-09T00:00:00Z",
+  "child_agent_count": 1,
+  "max_parallel": 1,
+  "child_jobs": [
+    {
+      "job_id": "rf-reg-run-001-outcome",
+      "result_path": "fixtures/review-fusion/_regwork/result.json",
+      "result_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "status": "completed"
+    }
+  ],
+  "main_agent_merge": {
+    "merge_report_path": "fixtures/review-fusion/regression-ledger.json",
+    "merge_report_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "final_decision": "REQUIRES_CHANGES",
+    "blocking_buckets": []
+  }
+}

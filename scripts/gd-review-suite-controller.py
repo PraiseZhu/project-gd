@@ -194,7 +194,13 @@ def _primary_gate(summary: dict) -> tuple[str, list[str]]:
     for bucket in BLOCKING_BUCKETS:
         ids = summary.get(bucket, [])
         if ids:
-            blocked.extend([f"{bucket}:{jid}" for jid in ids])
+            # aggregate_summary stores bucket values as int counts;
+            # synthetic summary stores them as lists of job IDs.
+            if isinstance(ids, int):
+                if ids > 0:
+                    blocked.append(f"{bucket}:{ids}_jobs")
+            else:
+                blocked.extend([f"{bucket}:{jid}" for jid in ids])
     verdict = "FAILED" if blocked else "APPROVED"
     return verdict, blocked
 
@@ -207,7 +213,12 @@ def _secondary_gate(aggregate_path: Path) -> tuple[str, list[str]]:
         agg = json.loads(aggregate_path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as e:
         return "FAILED", [f"AGGREGATE_READ_ERROR: {e}"]
-    summary = agg.get("summary", {})
+    summary = agg.get("aggregate_summary", {})
+    # Check aggregate closure model (closure_eligible + closure_blockers)
+    if not summary.get("closure_eligible", True):
+        blockers = summary.get("closure_blockers", [])
+        if blockers:
+            return "FAILED", blockers
     return _primary_gate(summary)
 
 
@@ -318,6 +329,7 @@ def _dispatch_one_bridge(
         "primary_target": str(target),
         "expected_target_hash": target_hash,
         "codex_raw_result_path": raw_path,
+        "mapped_result_path": str(mapped_out),
         "raw_contract": "v1" if args.compat_v1 else "auto",
         "bridge_exit": rc_bridge,
         "bridge_stderr_path": str(err_out),
@@ -347,6 +359,68 @@ def _run_live_targets(args: argparse.Namespace, out_dir: Path) -> tuple[int, dic
     stderr_dir.mkdir(parents=True, exist_ok=True)
 
     max_workers = getattr(args, "max_parallel", 1)
+
+    # ── Transport prevention guard (four-layer fail-closed gate) ──────────────
+    # Runs preflight probe + bounded retry + healthcheck before any Codex bridge
+    def _emit_guard_block(stderr_summary: str, git_gate_status: str, blocker_code: str) -> tuple[int, dict]:
+        """Write a transport-guard fail-closed controller report and return (1, {})."""
+        _job = {
+            "queue_job_id": f"{getattr(args, 'target_set_id', 'unknown')}-transport-guard",
+            "target_role": "transport_guard",
+            "primary_target": "n/a",
+            "bridge_exit": -1,
+            "bridge_stderr_path": None,
+            "bridge_stderr_summary": stderr_summary,
+            "raw_verdict": "FAILED",
+            "mapped_status": "transport_failed",
+            "aggregate_bucket": "transport_failed",
+            "target_hash": None,
+            "raw_path": None,
+            "git_gate_status": git_gate_status,
+        }
+        _write_controller_report(
+            out_dir, [_job],
+            "FAILED", [blocker_code],
+            "FAILED", [blocker_code],
+            True, False,
+            out_dir / "aggregate-final.json",
+            out_dir / "manifest-final.json",
+            _now_iso(),
+            run_mode="live",
+        )
+        return 1, {}
+
+    # is dispatched. fixture_mode bypasses the guard (preserves fixture test behaviour).
+    if not getattr(args, "fixture", None):
+        try:
+            import importlib.util as _ilu
+            _tg_spec = _ilu.spec_from_file_location(
+                "transport_guard",
+                str(Path(__file__).parent / "gd-codex-transport-guard.py"),
+            )
+            transport_guard = _ilu.module_from_spec(_tg_spec)
+            _tg_spec.loader.exec_module(transport_guard)  # type: ignore[union-attr]
+        except Exception as _tg_err:
+            # Guard module failed to load — fail-closed rather than silently proceeding
+            print(f"TRANSPORT_GUARD_LOAD_FAILED: {_tg_err}", file=sys.stderr)
+            return _emit_guard_block(
+                f"transport_guard module load failed: {_tg_err}",
+                "skipped_transport_guard_failed",
+                "TRANSPORT_GUARD_LOAD_FAILED",
+            )
+
+        guard_result = transport_guard.ensure_codex_available()
+        if guard_result.get("fail_closed"):
+            print(
+                f"TRANSPORT_GUARD_FAIL_CLOSED: outcome={guard_result.get('outcome')} — "
+                "Codex transport unavailable; blocking dispatch (no Claude-only fallback).",
+                file=sys.stderr,
+            )
+            return _emit_guard_block(
+                f"transport_guard fail_closed: {guard_result.get('outcome')}",
+                "skipped_transport_failed",
+                "TRANSPORT_GUARD_FAIL_CLOSED",
+            )
 
     jobs: list[dict] = []
     dirty_detected = False
@@ -474,6 +548,8 @@ def _build_manifest(jobs: list[dict], target_set_id: str, kind: str, compat_v1: 
                 "review_kind": kind,
                 "expected_target_hash": j["expected_target_hash"],
                 "codex_raw_result_path": j["codex_raw_result_path"],
+                "mapped_result_path": j.get("mapped_result_path", ""),
+                "raw_verdict": j.get("raw_verdict", "FAILED"),
                 "raw_contract": j["raw_contract"],
             }
             for j in jobs
@@ -969,7 +1045,8 @@ def main(argv: list[str]) -> int:
         sys.executable, str(AGGREGATE_SCRIPT),
         "--manifest", str(manifest_path),
         "--out", str(aggregate_path),
-        "--consume-existing-results",
+        "--contract-sources",
+        "commands/gd.md:prompts/gd-review-standard.md:templates/gd-plan-review-template.md:templates/gd-plan-review-loop-report-template.md",
     ]
     rc_agg, out_agg, err_agg = _run_subprocess(agg_cmd, "aggregate")
     if rc_agg != 0:
@@ -990,7 +1067,7 @@ def main(argv: list[str]) -> int:
     if aggregate_path.exists():
         try:
             agg_data = json.loads(aggregate_path.read_text(encoding="utf-8"))
-            summary = agg_data.get("summary", {})
+            summary = agg_data.get("aggregate_summary", {})
         except (json.JSONDecodeError, OSError):
             pass
     else:
@@ -1106,7 +1183,7 @@ def main(argv: list[str]) -> int:
         )
         batch_ledger_hash = _sha256_file(batch_ledger_path)
         batch_ledger_paths.append(batch_ledger_path)
-        batch_ledgers_meta.append({"path": str(batch_ledger_path), "hash": batch_ledger_hash})
+        batch_ledgers_meta.append({"path": batch_ledger_path.name, "hash": batch_ledger_hash})
         ledger_path = batch_ledger_path  # last one for backward compat prints
 
     # ── Write controller-report.json (after batch ledgers exist) ──────────────

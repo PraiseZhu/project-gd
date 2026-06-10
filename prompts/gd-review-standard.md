@@ -258,3 +258,17 @@ Plan E 不得重新设计 bridge raw contract / mapped schema / merge matrix。
 - 本标准**不**触发旧 `~/.claude/commands/review.md` 链路
 - 本标准**不**引入裸 `VERDICT:` 字段
 - 本标准产出物路径：`Project GD/reports/gd-*-review.md` 或 `~/.claude/review-baselines/<key>/result-*.md`（Codex 走后者；Claude 内部 review 走前者）
+
+---
+
+## 10. 穷举强制（Exhaustive Finding Enumeration）
+
+reviewer MUST 一次扫完 target 内全部 SC / 模块 / fallback，并在**首轮一次列全所有可发现 finding**，MUST NOT 把可一次报全的 finding 分散到多轮。
+
+### 判定规则
+
+reviewer 若明知 target 有多处可发现 finding 却只报其中一条（**挑刺漂移**）→ 该 review `REVIEW_RUN_STATUS: degraded`、进入 Merge Matrix degraded 行（不得 APPROVED）。
+
+### 与其他原则的关联
+
+本节是宪法 P6 anti-fill 穷举条款在标准源的落地，服务 P5（收敛速度由首轮覆盖率决定），与现有 Merge Matrix「degraded → 不得 approved」一致。

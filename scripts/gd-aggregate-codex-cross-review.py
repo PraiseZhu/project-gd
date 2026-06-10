@@ -175,10 +175,25 @@ def build_aggregate_job(job: dict, gd_root: Path) -> dict:
             entry["raw_result_hash"] = raw_hash
             entry["codex_review_status"] = "completed"
             entry["gd_review_decision"] = parsed["gd_review_decision"]
-            entry["codex_requires_changes"] = parsed["gd_review_decision"] in (
-                "REQUIRES_CHANGES",
-                "FAILED",
-            )
+
+    # ── Mapped result (authoritative for gd_review_decision) ──────────────
+    mapped_path_str = job.get("mapped_result_path")
+    if mapped_path_str:
+        mp = Path(mapped_path_str)
+        if mp.exists():
+            try:
+                md = json.loads(mp.read_text(encoding="utf-8"))
+                if "gd_review_decision" in md:
+                    entry["gd_review_decision"] = md["gd_review_decision"]
+                    entry["mapped_result_path"] = str(mp)
+                    entry["mapped_result_hash"] = sha256_file(mp)
+            except (json.JSONDecodeError, OSError):
+                pass
+
+    entry["codex_requires_changes"] = entry["gd_review_decision"] in (
+        "REQUIRES_CHANGES",
+        "FAILED",
+    )
 
     return entry
 

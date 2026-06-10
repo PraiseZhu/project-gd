@@ -56,14 +56,18 @@ __pycache__/
 *.pyo
 *.pyd
 
-# === review2 / release-evidence run artifacts ===
-# raw capsule runs and review route split artifacts are local-only by default
-results/review-route-split/*/raw-*
-results/review-route-split/*/codex-output-*
-# run-manifest.json and curated evidence under release-evidence/ should be committed explicitly
-# results/release-evidence/ is NOT gitignored — commit run-manifest.json + approved artifacts
+# === results/ + reports/ run artifacts (local-only by default) ===
+# Execution runs, route reports, smoke/dogfood dumps, capsule outputs, and
+# deployment backups under results/ and reports/ are local-only run artifacts.
+# NOTE: .gitignore does NOT untrack files already committed under these dirs;
+# this only stops NEW untracked artifacts from entering the index.
+results/*
+reports/*
+# Curated release evidence stays committable (run-manifest.json + approved artifacts).
+!results/release-evidence/
 
-# === install-gd-command.sh deployment backups (pre-overwrite snapshots) ===
-# install-gd-command.sh writes the previous live gd.md to this dir before atomic overwrite.
-# These are pure deployment artifacts — recoverable from prior installs, not project source.
-reports/_selftest_runtime_evidence/installed-backup/
+# === scratch work dirs (underscore-prefixed, local-only) ===
+_regwork/
+
+# pytest sandbox fallback temp dir (conftest _ensure_writable_tmpdir)
+.pytest-tmp/

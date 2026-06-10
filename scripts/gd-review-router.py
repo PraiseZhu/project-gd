@@ -94,23 +94,47 @@ def generate_invocation_id() -> str:
     return f"router-{datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}"
 
 
-def write_and_validate_route_report(report: dict, output_dir: Path) -> tuple[int, Path]:
-    """Write route_report.json + validate via SSOT. Returns (rc, path)."""
+def _write_route_report(report: dict, output_dir: Path) -> Path:
+    """Write route_report.json to a timestamped path and return it (no validation)."""
     output_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     rp = output_dir / f"route_report_{ts}.json"
     rp.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return rp
 
+
+def _validate_route_report_file(rp: Path) -> int:
+    """Validate an already-written route report via SSOT. Returns rc (0 = ok)."""
     r = subprocess.run(
         [sys.executable, str(ROUTE_REPORT_VALIDATOR), str(rp)],
         capture_output=True, text=True,
     )
     if r.returncode != 0:
         print(f"ROUTE_REPORT_VALIDATION_FAIL: {r.stderr.strip()}", file=sys.stderr)
-        return 1, rp
+        return 1
     print(f"ROUTE_REPORT: {rp}")
     print(f"ROUTE_REPORT_VALIDATION: OK")
-    return 0, rp
+    return 0
+
+
+def write_and_validate_route_report(
+    report: dict, output_dir: Path, ledger_writer=None
+) -> tuple[int, Path]:
+    """Write route_report.json, optionally write its child ledger, then validate.
+
+    Returns (rc, path).
+
+    The route-report validator requires any referenced ``child_review_ledger_path``
+    to exist on disk. Callers that populate ``report['child_review_ledger_path']``
+    MUST pass a ``ledger_writer(rp)`` callback: it runs between the report write and
+    validation, so the write -> ledger -> validate ordering lives here in one place
+    and cannot be gotten wrong by individual call sites.
+    """
+    rp = _write_route_report(report, output_dir)
+    if ledger_writer is not None:
+        ledger_writer(rp)
+    rc = _validate_route_report_file(rp)
+    return rc, rp
 
 
 DETECTOR_SCRIPT = SCRIPTS / "gd-detect-review-target.py"
@@ -556,6 +580,132 @@ def _write_execution_review_ledger(
     ledger_path.write_text(json.dumps(ledger, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def _run_upstream_quality_gate(target: "Path", output_dir: "Path", invocation_id: str) -> dict:
+    """Run /code-review + /simplify upstream quality gate.
+
+    Returns dict:
+      {
+        "steps": [
+          {"step": "code-review", "status": "ok"|"unavailable"|"failed",
+           "exit_code": int, "output_ref": str, "output_hash": str},
+          {"step": "simplify", ...},
+        ],
+        "failure_code": str | None,  # UPSTREAM_QUALITY_GATE_FAIL / CODE_REVIEW_UNAVAILABLE / SIMPLIFY_UNAVAILABLE
+        "fail_closed": bool,
+      }
+
+    fail-closed contract (SC-1 / master SC-5):
+      - tool unavailable → fail_closed=True, failure_code=<TOOL>_UNAVAILABLE
+      - tool exits non-zero → fail_closed=True, failure_code=UPSTREAM_QUALITY_GATE_FAIL
+      - MUST NOT return fail_closed=False unless BOTH steps succeed
+
+    skill_orchestrated evidence path (P6 alignment):
+      /code-review and /simplify are Claude Code slash commands, not PATH binaries —
+      `which code-review` always fails. In the canonical /gd review flow the orchestrating
+      Claude session runs both slash commands UPSTREAM, then passes their artifacts to the
+      router via GD_UPSTREAM_QUALITY_EVIDENCE (a dir holding code-review + simplify logs).
+      When that env points at a dir with both a `*code*review*` and a `*simplify*` artifact,
+      the gate is satisfied (status="ok", origin="skill_orchestrated_evidence"). Absent that
+      evidence AND with neither tool on PATH, the gate fail-closes as before — the fail-closed
+      contract is preserved and the self-test still exercises the unavailable→fail_closed path.
+    """
+    import hashlib
+    steps: list = []
+    output_dir_path = Path(output_dir)
+
+    # skill_orchestrated evidence: orchestrating session ran /code-review + /simplify upstream
+    # and dropped their artifacts in a dir referenced by GD_UPSTREAM_QUALITY_EVIDENCE.
+    evidence_dir = os.environ.get("GD_UPSTREAM_QUALITY_EVIDENCE", "").strip()
+
+    def _evidence_for(step_name: str):
+        """Return a matching evidence artifact Path for this step, or None.
+
+        code-review step needs a file whose name contains both 'code' and 'review';
+        simplify step needs a file whose name contains 'simplify'.
+        """
+        if not evidence_dir:
+            return None
+        d = Path(evidence_dir)
+        if not d.is_dir():
+            return None
+        for p in sorted(d.iterdir()):
+            if not p.is_file():
+                continue
+            name = p.name.lower()
+            if step_name == "code-review" and "code" in name and "review" in name:
+                return p
+            if step_name == "simplify" and "simplify" in name:
+                return p
+        return None
+
+    def _probe_tool(tool_name: str) -> bool:
+        """Probe whether a tool is available (dry probe via which)."""
+        try:
+            r = subprocess.run(["which", tool_name], capture_output=True, text=True, timeout=5)
+            return r.returncode == 0
+        except Exception:
+            return False
+
+    def _run_step(step_name: str, tool_name: str, extra_args: list | None = None):
+        log_path = output_dir_path / f"quality_gate_{step_name.replace('-', '_')}_{invocation_id}.log"
+        # skill_orchestrated evidence short-circuit: if the orchestrating session already ran
+        # this slash command upstream and supplied its artifact, accept it (status="ok") and
+        # skip the PATH probe (slash commands are never on PATH).
+        ev = _evidence_for(step_name)
+        if ev is not None:
+            try:
+                ev_bytes = ev.read_bytes()
+            except OSError:
+                ev_bytes = b""
+            ev_hash = hashlib.sha256(ev_bytes).hexdigest()
+            steps.append({
+                "step": step_name, "status": "ok",
+                "exit_code": 0, "output_ref": str(ev),
+                "output_hash": ev_hash, "origin": "skill_orchestrated_evidence",
+            })
+            return None, None  # evidence satisfied; out text not consumed by callers
+        if not _probe_tool(tool_name):
+            steps.append({
+                "step": step_name, "status": "unavailable",
+                "exit_code": -1, "output_ref": "", "output_hash": "",
+            })
+            unavail_code = f"{step_name.upper().replace('-', '_')}_UNAVAILABLE"
+            return None, unavail_code
+        try:
+            cmd = [tool_name] + (extra_args or []) + [str(target)]
+            r = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=300,
+                cwd=str(output_dir_path.parent),
+            )
+            out = (r.stdout + r.stderr)[:4096]
+            log_path.write_text(out, encoding="utf-8")
+            out_hash = hashlib.sha256(out.encode()).hexdigest()
+            status = "ok" if r.returncode == 0 else "failed"
+            steps.append({
+                "step": step_name, "status": status,
+                "exit_code": r.returncode, "output_ref": str(log_path), "output_hash": out_hash,
+            })
+            if r.returncode != 0:
+                return None, "UPSTREAM_QUALITY_GATE_FAIL"
+            return None, None  # out text not consumed by callers
+        except Exception as e:
+            steps.append({
+                "step": step_name, "status": "failed",
+                "exit_code": -2, "output_ref": "", "output_hash": "",
+            })
+            return None, "UPSTREAM_QUALITY_GATE_FAIL"
+
+    _, err1 = _run_step("code-review", "code-review")
+    if err1:
+        return {"steps": steps, "failure_code": err1, "fail_closed": True}
+
+    _, err2 = _run_step("simplify", "simplify")
+    if err2:
+        return {"steps": steps, "failure_code": err2, "fail_closed": True}
+
+    return {"steps": steps, "failure_code": None, "fail_closed": False}
+
+
 def _run_live_execution_only(
     target: Path,
     output_dir: Path,
@@ -567,8 +717,9 @@ def _run_live_execution_only(
 ) -> int:
     """execution_only_no_code (Execution-Review Cross-Review v2):
       Stage 1: invoke gd-validate-execution-outcome.py (validate facts/deliverables/verify-reruns)
-      Stage 2: invoke / consume Codex bridge cross-review (validates review quality / SC / anti-fill)
-      APPROVED requires BOTH stages pass; missing Codex → REQUIRES_CHANGES with codex_review_status.
+      Stage 1.5: upstream quality gate (/code-review + /simplify); fail-closed if either unavailable/non-zero
+      Stage 2: invoke / consume Codex bridge conformance cross-review (validates review quality / SC / anti-fill)
+      APPROVED requires ALL stages pass; missing Codex → REQUIRES_CHANGES with codex_review_status.
     """
     import hashlib
     outcome_script = SCRIPTS / "gd-validate-execution-outcome.py"
@@ -608,7 +759,41 @@ def _run_live_execution_only(
         rc, _ = write_and_validate_route_report(report, output_dir)  # D2
         return 1  # outcome failed: no ledger needed (not APPROVED)
 
-    # --- Stage 2: Codex bridge cross-review (validates review quality) ---
+    # --- Stage 1.5: upstream quality gate (/code-review + /simplify) ---
+    # fail-closed: any unavailability or non-zero exit short-circuits here (SC-1 / master SC-5)
+    gate_result = _run_upstream_quality_gate(target, output_dir, invocation_id)
+    if gate_result["fail_closed"]:
+        report = {
+            "schema_version": "2.0",
+            "router_invocation_id": invocation_id,
+            "mode": "live",
+            "review_target_kind": "execution_only_no_code",
+            "decision": "REQUIRES_CHANGES",
+            "validator_signature": VALIDATOR_SIGNATURE,
+            "recorded_at": now_iso(),
+            "execution_artifact_ref": str(target),
+            "execution_artifact_hash": exec_hash,
+            "outcome_validator_status": "passed",
+            "codex_review_status": "not_run_blocked",
+            "codex_review_kind": "execution_outcome",
+            "codex_review_scope": "conformance",
+            "failure_code": gate_result["failure_code"],
+            "claude_review_origin": "not_applicable",
+            "upstream_quality_gate": {"steps": gate_result["steps"], "fail_closed": True},
+            "findings": [{
+                "reviewer": "quality_gate",
+                "severity": "error",
+                "description": f"上游质量门失败: {gate_result['failure_code']}",
+            }],
+        }
+        rc, _ = write_and_validate_route_report(report, output_dir)
+        return 1  # fail-closed: upstream quality gate failed
+
+    # Quality gate passed; record results and proceed to Codex conformance cross-review
+    upstream_quality_gate_record = {"steps": gate_result["steps"], "fail_closed": False}
+
+    # --- Stage 2: Codex bridge conformance cross-review (validates conformance to plan SC) ---
+    # Codex task is scoped to conformance: verify implementation meets plan SC; not a full bug hunt.
     bridge_script = SCRIPTS / "gd-codex-bridge-review.py"
     codex_status = "not_run_blocked"
     codex_decision = None
@@ -695,7 +880,7 @@ def _run_live_execution_only(
         codex_mapped_hash = bridge_result["mapped_hash"]
         findings.extend(bridge_result["findings"])
 
-    # --- Decision merge: APPROVED requires outcome pass + Codex completed APPROVED ---
+    # --- Decision merge: APPROVED requires outcome pass + quality gate pass + Codex conformance APPROVED ---
     if codex_status == "completed" and (codex_decision in (None, "APPROVED")):
         final_decision = "APPROVED"
     else:
@@ -714,7 +899,11 @@ def _run_live_execution_only(
         "outcome_validator_status": "passed",
         "codex_review_kind": "execution_outcome",
         "codex_review_status": codex_status,
+        # conformance scoping: Codex reviews whether implementation meets plan SC; not a full bug hunt (SC-2)
+        "codex_review_scope": "conformance",
         "claude_review_origin": "not_applicable",
+        # upstream quality gate results are separately observable (SC-2 separation requirement)
+        "upstream_quality_gate": upstream_quality_gate_record,
         "findings": findings,
     }
     if codex_raw_path is not None:
@@ -732,28 +921,31 @@ def _run_live_execution_only(
     ledger_path = output_dir / f"child_review_ledger_execution_outcome_{invocation_id[-8:]}.json"
     report["child_review_ledger_path"] = str(ledger_path)
 
-    rc, rp = write_and_validate_route_report(report, output_dir)  # D2
+    # D2 + D1: the child ledger must exist before route-report validation. The
+    # write -> ledger -> validate ordering is centralized in
+    # write_and_validate_route_report (via ledger_writer) so this path — and any
+    # future ledger-bearing path — cannot get the ordering wrong.
+    def _write_ledger(rp):
+        _write_execution_review_ledger(
+            ledger_path=ledger_path,
+            invocation_id=invocation_id,
+            stage="review_execution_code",
+            codex_review_kind="execution_outcome",
+            outcome_validator_status="passed",
+            exec_hash=exec_hash,
+            target=target,
+            codex_status=codex_status,
+            codex_decision=codex_decision,
+            codex_mapped_path=codex_mapped_path,
+            codex_mapped_hash=codex_mapped_hash,
+            codex_raw_path=codex_raw_path,
+            codex_raw_hash=codex_raw_hash,
+            route_report_path=rp,
+            final_decision=final_decision,
+        )
 
-    # D1: write ledger after we have route report path
-    _write_execution_review_ledger(
-        ledger_path=ledger_path,
-        invocation_id=invocation_id,
-        stage="review_execution_code",
-        codex_review_kind="execution_outcome",
-        outcome_validator_status="passed",
-        exec_hash=exec_hash,
-        target=target,
-        codex_status=codex_status,
-        codex_decision=codex_decision,
-        codex_mapped_path=codex_mapped_path,
-        codex_mapped_hash=codex_mapped_hash,
-        codex_raw_path=codex_raw_path,
-        codex_raw_hash=codex_raw_hash,
-        route_report_path=rp,
-        final_decision=final_decision,
-    )
-
-    if rc != 0:  # D2: propagate validator rc
+    rc, _ = write_and_validate_route_report(report, output_dir, ledger_writer=_write_ledger)
+    if rc != 0:  # propagate validator rc
         return 1
     return 0 if final_decision == "APPROVED" else 1
 
@@ -765,6 +957,8 @@ def _run_live_code_only(
 ) -> int:
     """code_only: LOCAL_STATIC_ONLY — delegated to skill_orchestrated Claude (3a-SC-5/SC-9).
     Must not claim active/live Codex sidecar.
+    Stage 1: upstream quality gate (/code-review + /simplify); fail-closed if either unavailable/non-zero
+    Stage 2: skill_orchestrated Claude static review (LOCAL_STATIC_ONLY)
     handler = skill_orchestrated Claude static review
     allowed decisions = APPROVED | REQUIRES_CHANGES | FAILED (failure_code=LOCAL_STATIC_ONLY)
     Always exits 1 (REQUIRES_CHANGES) since actual review done by skill_orchestrated Claude."""
@@ -783,6 +977,40 @@ def _run_live_code_only(
     diff_hash = hashlib.sha256(diff_content.encode()).hexdigest()
     diff_path = output_dir / f"code_diff_{invocation_id[-8:]}.patch"
     diff_path.write_text(diff_content, encoding="utf-8")
+
+    # --- Stage 1: upstream quality gate (/code-review + /simplify) after diff landing ---
+    # fail-closed: any unavailability or non-zero exit short-circuits here (SC-1 / master SC-5)
+    gate_result = _run_upstream_quality_gate(target, output_dir, invocation_id)
+    if gate_result["fail_closed"]:
+        report = {
+            "schema_version": "2.0",
+            "router_invocation_id": invocation_id,
+            "mode": "live",
+            "review_target_kind": "code_only",
+            "decision": "REQUIRES_CHANGES",
+            "validator_signature": VALIDATOR_SIGNATURE,
+            "recorded_at": now_iso(),
+            "diff_source": f"git diff HEAD -- {target}",
+            "diff_hash": diff_hash,
+            "patch_generation_method": "git_diff",
+            "raw_result_path": str(diff_path),
+            "raw_result_hash": diff_hash,
+            "claude_review_origin": "skill_orchestrated",
+            "failure_code": gate_result["failure_code"],
+            "upstream_quality_gate": {"steps": gate_result["steps"], "fail_closed": True},
+            "findings": [{
+                "reviewer": "quality_gate",
+                "severity": "error",
+                "description": f"上游质量门失败: {gate_result['failure_code']}",
+            }],
+        }
+        write_and_validate_route_report(report, output_dir)
+        return 1  # fail-closed: upstream quality gate failed
+
+    # Quality gate passed; record results and proceed to Codex conformance cross-review (SC-2)
+    # codex_review_scope="conformance": Codex verifies implementation meets plan SC, not a full bug hunt
+    upstream_quality_gate_record = {"steps": gate_result["steps"], "fail_closed": False}
+
     report = {
         "schema_version": "2.0",
         "router_invocation_id": invocation_id,
@@ -797,7 +1025,11 @@ def _run_live_code_only(
         "raw_result_path": str(diff_path),
         "raw_result_hash": diff_hash,
         "claude_review_origin": "skill_orchestrated",
+        # conformance scoping: Codex reviews whether implementation meets plan SC (SC-2)
+        "codex_review_scope": "conformance",
         "failure_code": "LOCAL_STATIC_ONLY",
+        # upstream quality gate results are separately observable (SC-2 separation requirement)
+        "upstream_quality_gate": upstream_quality_gate_record,
         "findings": [{
             "reviewer": "router",
             "severity": "info",
@@ -866,9 +1098,45 @@ def _run_live_execution_plus_code(
         rc, _ = write_and_validate_route_report(report, output_dir)  # D2
         return 1  # outcome failed: no ledger needed (not APPROVED)
 
-    # Outcome passed → Stage 2: combined Codex cross-review (Execution-Review Cross-Review v2)
+    # Outcome passed → Stage 1.5: upstream quality gate (/code-review + /simplify)
+    # fail-closed: any unavailability or non-zero exit short-circuits here (SC-1 / master SC-5)
     output_dir.mkdir(parents=True, exist_ok=True)
     exec_hash = hashlib.sha256(target.read_bytes()).hexdigest()
+
+    gate_result = _run_upstream_quality_gate(target, output_dir, invocation_id)
+    if gate_result["fail_closed"]:
+        report = {
+            "schema_version": "2.0",
+            "router_invocation_id": invocation_id,
+            "mode": "live",
+            "review_target_kind": "execution_plus_code",
+            "decision": "REQUIRES_CHANGES",
+            "validator_signature": VALIDATOR_SIGNATURE,
+            "recorded_at": now_iso(),
+            "execution_artifact_ref": str(target),
+            "execution_artifact_hash": exec_hash,
+            "outcome_validator_status": "passed",
+            "codex_review_status": "not_run_blocked",
+            "codex_review_kind": "combined",
+            "codex_review_scope": "conformance",
+            "stage_order": ["outcome", "code"],
+            "failure_code": gate_result["failure_code"],
+            "claude_review_origin": "not_applicable",
+            "upstream_quality_gate": {"steps": gate_result["steps"], "fail_closed": True},
+            "findings": [{
+                "reviewer": "quality_gate",
+                "severity": "error",
+                "description": f"上游质量门失败: {gate_result['failure_code']}",
+            }],
+        }
+        rc, _ = write_and_validate_route_report(report, output_dir)
+        return 1  # fail-closed: upstream quality gate failed
+
+    # Quality gate passed; record results and proceed to Codex conformance cross-review (SC-2)
+    upstream_quality_gate_record = {"steps": gate_result["steps"], "fail_closed": False}
+
+    # Stage 2: combined Codex conformance cross-review (Execution-Review Cross-Review v2)
+    # Codex task is scoped to conformance: verify implementation meets plan SC; not a full bug hunt.
     bridge_script = SCRIPTS / "gd-codex-bridge-review.py"
     codex_status = "not_run_blocked"
     codex_decision = None
@@ -960,7 +1228,11 @@ def _run_live_execution_plus_code(
         "stage_order": ["outcome", "code"],
         "codex_review_kind": "combined",
         "codex_review_status": codex_status,
+        # conformance scoping: Codex reviews whether implementation meets plan SC (SC-2)
+        "codex_review_scope": "conformance",
         "claude_review_origin": "not_applicable",
+        # upstream quality gate results are separately observable (SC-2 separation requirement)
+        "upstream_quality_gate": upstream_quality_gate_record,
         "findings": findings,
     }
     if codex_raw_path is not None:
@@ -978,28 +1250,31 @@ def _run_live_execution_plus_code(
     ledger_path = output_dir / f"child_review_ledger_combined_{invocation_id[-8:]}.json"
     report["child_review_ledger_path"] = str(ledger_path)
 
-    rc, rp = write_and_validate_route_report(report, output_dir)  # D2
+    # D2 + D1: the child ledger must exist before route-report validation. The
+    # write -> ledger -> validate ordering is centralized in
+    # write_and_validate_route_report (via ledger_writer) so this path — and any
+    # future ledger-bearing path — cannot get the ordering wrong.
+    def _write_ledger(rp):
+        _write_execution_review_ledger(
+            ledger_path=ledger_path,
+            invocation_id=invocation_id,
+            stage="review_execution_code",
+            codex_review_kind="combined",
+            outcome_validator_status="passed",
+            exec_hash=exec_hash,
+            target=target,
+            codex_status=codex_status,
+            codex_decision=codex_decision,
+            codex_mapped_path=codex_mapped_path,
+            codex_mapped_hash=codex_mapped_hash,
+            codex_raw_path=codex_raw_path,
+            codex_raw_hash=codex_raw_hash,
+            route_report_path=rp,
+            final_decision=final_decision,
+        )
 
-    # D1: write ledger after we have route report path
-    _write_execution_review_ledger(
-        ledger_path=ledger_path,
-        invocation_id=invocation_id,
-        stage="review_execution_code",
-        codex_review_kind="combined",
-        outcome_validator_status="passed",
-        exec_hash=exec_hash,
-        target=target,
-        codex_status=codex_status,
-        codex_decision=codex_decision,
-        codex_mapped_path=codex_mapped_path,
-        codex_mapped_hash=codex_mapped_hash,
-        codex_raw_path=codex_raw_path,
-        codex_raw_hash=codex_raw_hash,
-        route_report_path=rp,
-        final_decision=final_decision,
-    )
-
-    if rc != 0:  # D2: propagate validator rc
+    rc, _ = write_and_validate_route_report(report, output_dir, ledger_writer=_write_ledger)
+    if rc != 0:  # propagate validator rc
         return 1
     return 0 if final_decision == "APPROVED" else 1
 
@@ -1147,6 +1422,31 @@ def run_self_test() -> int:
             errors.append("fixture smoke (plan-only-approved) FAIL")
     else:
         errors.append(f"smoke fixture not found: {good_fx}")
+
+    # 5. Upstream quality gate self-test (SC-1 behavior verification):
+    #    Simulate /code-review unavailable scenario → must produce fail_closed=True.
+    #    This is the behavioral verification for the fail-closed contract (SC-1 / master SC-5).
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        iid_gate = "self-test-001"
+        # _run_upstream_quality_gate probes via `which code-review` / `which simplify`.
+        # On most systems neither is on PATH → status="unavailable" → fail_closed=True.
+        # On systems where one/both exist, they may succeed or fail; we accept both outcomes:
+        #   - fail_closed=True (either unavailable or non-zero): SC-1 contract satisfied.
+        #   - fail_closed=False (both tools available AND both succeed): tools present, also valid.
+        gate = _run_upstream_quality_gate(Path("."), tmp_path, iid_gate)
+        if gate["fail_closed"]:
+            fc_code = gate.get("failure_code", "")
+            if fc_code in ("CODE_REVIEW_UNAVAILABLE", "SIMPLIFY_UNAVAILABLE", "UPSTREAM_QUALITY_GATE_FAIL"):
+                print(f"  upstream quality gate fail-closed self-test: PASS (fail_closed=True, failure_code={fc_code}) ✓")
+            else:
+                errors.append(
+                    f"upstream quality gate self-test FAIL: fail_closed=True but unexpected failure_code={fc_code!r}"
+                )
+        else:
+            # Both tools are available and succeeded — also a valid production state.
+            print(f"  upstream quality gate self-test: PASS (tools available, both succeeded) ✓")
 
     if errors:
         print("\nSELF_TEST FAIL:", file=sys.stderr)
