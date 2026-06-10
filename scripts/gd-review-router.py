@@ -885,7 +885,6 @@ def _run_live_execution_only(
     # Path A: caller injected raw fixture → parse-transport (offline)
     if codex_raw_result is not None:
         mapped_out = output_dir / f"codex_mapped_{invocation_id[-8:]}.json"
-        mapped_out = output_dir / f"codex_mapped_{invocation_id[-8:]}.json"
         parse_args = [
             sys.executable, str(bridge_script), "parse-transport",
             "--kind", "execution_outcome",
@@ -1447,7 +1446,9 @@ def run_live(
             codex_mapped_result=(Path(codex_mapped_result) if codex_mapped_result else None),
             review_contract=review_contract,
             live_bridge_timeout_sec=live_bridge_timeout_sec,
-            use_controller=True,
+            # Injected raw/mapped (offline/fixture) → single-round consume (Path A/B).
+            # Only drive the T7 multi-round controller when no result was injected (true live).
+            use_controller=(codex_raw_result is None and codex_mapped_result is None),
         )
 
     if kind == "code_only" and target is not None:
@@ -1460,7 +1461,9 @@ def run_live(
             codex_mapped_result=(Path(codex_mapped_result) if codex_mapped_result else None),
             review_contract=review_contract,
             live_bridge_timeout_sec=live_bridge_timeout_sec,
-            use_controller=True,
+            # Injected raw/mapped (offline/fixture) → single-round consume (Path A/B).
+            # Only drive the T7 multi-round controller when no result was injected (true live).
+            use_controller=(codex_raw_result is None and codex_mapped_result is None),
         )
 
     # Fallback: target is None for a non-plan kind — fail-closed.
