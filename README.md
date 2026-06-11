@@ -1,84 +1,141 @@
-# Project GD — Goal-Driven Anti-Fill Lab
+# 目标驱动链（Project GD）
 
-> 状态：Phase 1 完成 | 技术栈：Bash + Markdown + JSON Schema
-> 项目目标：[`PROJECT_GOAL.md`](./PROJECT_GOAL.md) | 项目指引：[`CLAUDE.md`](./CLAUDE.md)
+> 底层通过claude bridge codex机制，在cli里实现两个agent通信，让目标在handof过程中不断被传递，避免模型漂移的情况。
 
-## 项目目的
+---
 
-实验验证：**Goal-Driven + Anti-Fill 长模板机制**能否减少"格式完整但计划不具体"的 AI 填表问题。
+## 三条链路，使用场景：
 
-现有 `/review` 链路的真实缺口：
-1. **作者层**：计划模板没有强制 SC-* 编号化 verify，AI 填出"优化/完善"等泛化步骤
-2. **追溯层**：baseline 无 goal chain，`/review code` 时审查者看不到原计划要什么
-3. **审查层**：`codex-watch build_review_prompt()` 硬编码 prompt，无 anti-generic 判定规则
+项目提供三个层级的审查入口，从轻到重。它们最终都会请 Codex 出一份独立意见。
 
-本项目在 `Project GD/` 内建设 lab-only `/rev` 同步 runner，旧 `/review` 完全保留做 A/B 对比。
+| 档位 | 命令 | 它是干嘛的 | 什么时候用 |
+|------|------|-----------|-----------|
+| **L1** | `/review1` | 最轻量的"第二意见". 场景：拿不准某个判断时，让 Codex 给一段独立分析；
+| **L2** | `/review2` | 中量级的 Codex 审查工作台. 场景：当有一份具体的计划，执行命令让claude和codex实现交叉审核，支持审核计划/审核代码/审核执行结果；
+| **L3** | `/gd` | 全链路：从写计划一路管到审代码，四个阶段、全程双模型把关、留全套证据 | 一个完整任务的生命周期管理| 场景：快速搓出mvp；计划产出的是一份完整的“计划包（Master Plan包含总计划+所有步骤的详细计划）”；4个阶段包含多agent编排；
 
-## 快速上手
+### L3 `/gd` 的四个阶段
+
+`/gd` 分四步走，中英文命令都行：
+
+| 中文 | 英文 | 这一步做什么 |
+|------|------|------------|
+| `/gd 计划` | `/gd plan` | 生成一套计划（总计划 + 分步计划 + 任务包），每份都钉上目标、圈定范围 |
+| `/gd 审计划` | `/gd review plan` | Claude 自审 + Codex 独立审 + 合并问题 + 自动修复（最多三轮），双方都点头才算过 |
+| `/gd 执行` | `/gd execute` | 把活派给 1-2 个分身并行做，每做完一批就查一次有没有越界 |
+| `/gd 审代码` | `/gd review code` | 对执行结果做审查，确认每条目标都有真凭实据，没碰不该碰的文件 |
+
+---
+
+## 六大机制：它到底靠什么做到的
+
+### 1. 为什么要两个 AI（Claude + Codex 协作）
+
+根子在模型架构：**人想一件事有很多层——直觉、反思、推翻重想；而当前大模型从想法到表达只有一层**，一次生成就是它的全部，没有内置的"第二层自我质疑"。让它自己审自己，等于让同一层想法给自己打分。再叠加客观因素——长对话里**上下文污染**会让模型性能下降，写计划时积累的偏见会原封不动带进自审。
+
+所以用第二个模型补上缺失的那一层：Codex 拿到的是干净的、与 Claude 思考过程隔离的输入，相当于一双没被污染的眼睛。Claude 写和统筹，Codex 只挑刺。
+
+**两个 AI 怎么交接（capsule 机制）**：Claude 不把对话历史丢给 Codex，而是打包一个 **capsule（审查胶囊）**——里面只装这次审查必需的东西：服务的目标、审查范围边界、用哪本审查标准、待审对象放在哪。胶囊经后台传话员排队送给 Codex；Codex 只看胶囊不看对话，审完把结果写成文件回传；Claude 读结果文件合并意见。一来一回全程落盘，可追溯。目标就是在这一次次 handoff 里被持续传递的——这正是开头说的"避免漂移"的底层实现。
+
+### 2. 怎么防止目标漂移
+
+目标钉成四层：项目总目标 → 链路目标 → 阶段目标 → 任务目标。顶上两层**任何后续步骤都不能私自改**，要改必须你本人点头。每份计划、审查、执行的开头都必须声明"我服务于哪个原始目标"，写不出来直接打回。任务再长，每一步都被拴在原点上。
+
+### 3. 怎么治模型"填表"（为过审写泛泛而谈）
+
+两道防线：**写时拦泛词**——"优化、完善、全面、增强"等空话进黑名单，出现即拦，逼它写具体动作；**审时要实据**——每条成功标准必须配可执行的验证手段（能跑的命令、能查的文件、明确的输出判断），"目视确认"不算数。另加一条：审查必须一次列全所有问题，挤牙膏即判不合格。
+
+### 4. 怎么让审查既不越界、又能收敛（双镜头 + 有界修复）
+
+边界和收敛本质是同一件事：**审查范围必须固定且有限，否则每轮都能"发现新大陆"，永远改不完。**
+
+- **范围先圈死**：每个任务开工前声明能碰哪些文件、不能碰哪些、资料在哪。越界自动拒绝；所有审查员只认同一本审查标准，不能自立规矩扩大范围。
+- **双镜头审查**：Codex 用两个固定视角同时看——一个盯结构与目标符合性，一个专挑边界条件和漏报风险。每个镜头的检查优先级顺序是写死的，审什么、先审什么不靠临场发挥。
+- **逐层下审，不翻旧账**：第一轮全量审；从第二轮起只对上一轮改动的部分逐层往下审，已通过的层不再重翻。
+- **三轮封顶**：自动修复最多三轮，过不了就停下标记"已用尽"交给人——说明计划有结构性毛病，不是再磨两轮能解决的。
+
+### 5. 怎么靠"分身"提效率（subagent 编排）
+
+主 AI 只做派活、汇总、把关三件事，实质工作派给 1-2 个分身并行干。每阶段必须留"派工记录"，没记录任务不算完成——防止主 AI 自己全干了假装分工。并行上限 2，再多协调成本反噬。
+
+### 6. 怎么省 token
+
+- 审结果、审代码环节先用 Claude 自带的 simplify / code review 机制过一遍，把明显问题先消化掉，再交 Codex 做交叉审——Codex 更多审核计划与结果的预期对齐问题，任务负担减轻。
+- **Codex“双镜头”设计，逐层下审**：镜头锁死了审核范围边界，逐层下审避免了"改一处、全量重审"的来回反复——每一轮浪费的 token 被结构性掐掉。
+- **执行阶段不挑模型**：计划和审查锁得够死，执行只是照单干活，sonnet、deepseek 这类便宜模型都能胜任，不必处处用最贵的。
+
+---
+
+## 插件目录结构
+
+装好后插件大致是这样组织的，每个目录干什么用人话标在后面：
+
+```
+目标驱动链/
+├── commands/          # 三条链路的命令入口（/gd、/review1、/review2）+ setup 向导
+├── scripts/           # 命令背后真正干活的逻辑（校验、编排、与 Codex 对接）
+├── schema/            # "数据格式合约"——跨 AI 传递的各种记录必须符合这里的规定
+├── templates/         # "输出格式模板"——计划、审查报告、执行结果长什么样
+├── prompts/           # 审查标准（所有审查员共用的唯一一本"宪法"）
+├── vendor/
+│   └── l3-transport/  # 与 Codex 通信的"传话员"全套：后台服务 + 部署脚本
+├── fixtures/          # 测试样例（正样本 + 反样本，用来自检流程没坏）
+└── docs/              # 设计文档与变更历史
+```
+
+
+---
+
+## 安装方法
+
+
+**0 · 前置依赖**
 
 ```bash
-# Phase 2 完成后可用
-bin/rev plan <plan-file>    # 对计划做 Goal-Driven review
-bin/rev code <result-file>  # 对执行结果做 SC-* 完整性 review
+command -v npm || brew install node        # Node.js（装 codex CLI 要用）
+npm i -g @openai/codex --prefix ~/.local   # Codex CLI
+command -v codex                           # 确认在 PATH（不在则把 ~/.local/bin 加进 PATH）
 ```
 
-review 结果以 `REV_VERDICT: APPROVED | REQUIRES_CHANGES | FAILED` 输出。
+**1 · 装插件**
 
-## 目录结构
-
-```
-Project GD/
-├── PROJECT_GOAL.md         # v6 总计划权威源（不覆盖）
-├── CLAUDE.md               # 项目指引（lab-only 约束）
-├── manifest.json           # Phase 输出清单 + 约束摘要
-├── bin/
-│   └── rev                 # /rev 同步 runner（Phase 2 实现）
-├── templates/
-│   └── plan-template.md    # Goal-Driven 计划模板（Phase 1 产出）
-├── prompts/
-│   └── rev-review-standard.md  # review 标准唯一真源（Phase 1 产出）
-├── schema/
-│   └── rev-baseline.schema.json  # 精简 baseline（Phase 2 产出）
-├── scripts/
-│   └── rev-result-writer.sh     # lab-local result writer（Phase 2 产出）
-├── baselines/              # rev baseline 持久化
-├── fixtures/
-│   ├── plans/              # A/B 历史计划（Phase 4 填充）
-│   ├── expected/           # 人工标注 expected verdict（Phase 4 填充）
-│   └── old-review-prompt-readonly.md  # 旧 review prompt 只读对照（Phase 4）
-├── results/                # bin/rev 输出结果
-├── reports/                # 阶段报告 / A/B / parity / final-validation
-└── history/                # ECC 会话数据（不入 git）
-    ├── checkpoints/
-    └── daily/
+```bash
+claude plugin marketplace add git@git.xindong.com:game-ui/project-gd.git
+claude plugin install project-gd
 ```
 
-## 核心约束
+重启 Claude Code（或 `/reload-plugins`），四个命令就位。
 
-| 约束 | 内容 |
-|------|------|
-| lab-only | 所有写入限制在 `Project GD/**` 内 |
-| 不动 live runtime | `/Users/praise/.claude/**` 一律不写 |
-| 不注册 slash command | `/rev` 是 Bash 入口，不创建 `commands/rev.md` |
-| 不新增 daemon | `bin/rev` 同步 runner，不新增 `rev-watch` |
-| REV_VERDICT | 用 `REV_VERDICT:` 代替裸 `VERDICT:`（避免触发 live hook） |
-| 全中文输出 | 所有面向用户的结论必须中文 |
+**2 · 配 key + 部署后台服务**
 
-## 阶段进度
-
-| 阶段 | 名称 | 状态 | 核心产出 |
-|------|------|------|---------|
-| Phase 1 | 模板与 setup 收口 | ✅ 完成 | `plan-template.md` / `rev-review-standard.md` |
-| Phase 2 | 同步 runner + 精简 baseline | ⏳ 待执行 | `bin/rev` / `schema/rev-baseline.schema.json` |
-| Phase 3 | execution result 1:1 conformance | ⏳ 待执行 | `templates/execution-result-template.md` |
-| Phase 4 | A/B + parity 最终验收 | ⏳ 待执行 | `reports/ab-comparison.md` / `reports/final-validation.md` |
-
-## review 标准引用
-
-所有计划和执行结果 review 均使用同一份标准：
-
-```
-REVIEW_STANDARD: Project GD/prompts/rev-review-standard.md
+```bash
+/gd-setup        # 在 Claude Code 里跑：选 key 类型（官方/第三方），填你自己的 key（不随插件分发）
 ```
 
-CLI runner 与 Codex 桌面端通过引用同一文件保证 parity。
+然后在 Claude Code 里说"部署 transport"（脚本会先预览再执行），最后注 key：
+
+```bash
+launchctl setenv TAPTAP_API_KEY <你的key>   # 后台服务不读 shell 配置；重启电脑后需重跑
+```
+
+**更新**
+
+```bash
+claude plugin marketplace update project-gd-marketplace
+claude plugin update project-gd@project-gd-marketplace   # 然后 /reload-plugins
+```
+
+> 排障细节见 [`.claude-plugin/README.md`](./.claude-plugin/README.md)。
+
+---
+
+## 使用心得：
+1.l2链路，如果是多步骤长任务建议配合pwf skill和goal命令一起使用，一般任务可以配合goal命令一起使用，模型可用sonnet、deepseek等；
+2.l3链路比较费token，一般opus和gpt5.5只在计划环节使用，执行阶段可以换便宜的模型，同上。建议配合token-optimizer、Caveman、RTK 几个插件一起使用；
+
+## 适合什么人使用：
+1.终端claude code用户，桌面端claude app是个沙盒，很多功能实现成本太高；
+2.支持Mac用户，暂不支持Windows和其他系统；
+3.l3链路较重，不适合对上下文污染有洁癖者使用；
+
+

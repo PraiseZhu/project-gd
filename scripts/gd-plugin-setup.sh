@@ -49,8 +49,8 @@ fi
 # --- 解析持久化目录（fail-closed，不静默写 ~）-------------------------------
 if [ -z "${CLAUDE_PLUGIN_DATA:-}" ]; then
   echo "错误：环境变量 \$CLAUDE_PLUGIN_DATA 未设置。" >&2
-  echo "本脚本必须由 Claude Code 插件机制（/setup 命令）调用，以拿到更新安全的数据目录。" >&2
-  echo "请通过插件命令 /setup 运行，而不要直接手动执行；不会静默写入 \$HOME。" >&2
+  echo "本脚本必须由 Claude Code 插件机制（/gd-setup 命令）调用，以拿到更新安全的数据目录。" >&2
+  echo "请通过插件命令 /gd-setup 运行，而不要直接手动执行；不会静默写入 \$HOME。" >&2
   exit 2
 fi
 

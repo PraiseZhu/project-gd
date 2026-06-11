@@ -78,7 +78,7 @@ require_nonempty_dir "commands"
 require_file "commands/gd.md"
 require_file "commands/review1.md"
 require_file "commands/review2.md"
-require_file "commands/setup.md"
+require_file "commands/gd-setup.md"
 
 # ── 插件清单（plugin.json 丢失 → claude plugin install 完全失败）──
 require_file ".claude-plugin/plugin.json"
