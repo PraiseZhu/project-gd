@@ -2,7 +2,7 @@
 description: Project GD 插件预设配置命令（与三链路 /review1 /review2 /gd 并列）。以选项菜单采集 4 个安装者预设字段——审查产物输出位置 / codex key（官方·第三方两类）/ codex 模型 / 模型强度 effort，持久化到 ${CLAUDE_PLUGIN_DATA}，可随时重跑单独改任一项，零内置默认 key。
 ---
 
-# /setup Command
+# /gd-setup Command
 
 > **作用**：配置本插件的安装者预设。与三条链路命令（`/review1` / `/review2` / `/gd`）并列分发。
 > **可重跑**：本命令**非一次性**——你可以随时再次运行进入配置、单独修改任意一项，无需重装插件、不丢其他项。

@@ -6,7 +6,7 @@
 - `/review2`（L2）：profile-aware Codex 工作台
 - `/gd`（L3）：四阶段（计划 → 审计划 → 执行 → 审代码）多 Agent 链
 
-外加一个与三链路并列的 `/setup` 命令，用来配置安装者预设（审查产物输出位置 / codex key / codex 模型 / 模型强度）。
+外加一个与三链路并列的 `/gd-setup` 命令，用来配置安装者预设（审查产物输出位置 / codex key / codex 模型 / 模型强度）。
 
 > **真实交付是两段式，不是一步到位。** 装插件是一行命令（下方「安装」段）；但链路的 cross-review 完整功能额外依赖 codex 传输栈——外部 codex CLI、安装者自己的认证 key、codex-watch daemon 部署——这部分插件装不了、密钥也不能随插件分发。所以请把「安装」与「codex 传输栈前置」分两段分别完成。
 
@@ -29,7 +29,7 @@
 claude plugin marketplace add git@git.xindong.com:game-ui/project-gd.git && claude plugin install project-gd@project-gd-marketplace
 ```
 
-然后在 Claude Code 里 reload 一次（命令面板执行 `/reload-plugins`，或重启 Claude Code）。reload 之后，`/review1`、`/review2`、`/gd`、`/setup` 会出现在可用命令列表并可触发。
+然后在 Claude Code 里 reload 一次（命令面板执行 `/reload-plugins`，或重启 Claude Code）。reload 之后，`/review1`、`/review2`、`/gd`、`/gd-setup` 会出现在可用命令列表并可触发。
 
 - 本段交付的是**插件命令 + 框架内文件**。命令能不能跑出真实的 cross-review 结论，取决于下一段的 codex 传输栈前置。
 - 本段**无需**手动编辑任何路径或配置文件，**无需** `pip install` 任何包。
@@ -55,7 +55,7 @@ command -v codex   # 确认在 PATH
 
 ### ② 自备 codex 认证 key（官方 key 或第三方代理 key 两类，密钥不随插件分发）
 
-这正是**单行安装命令无法直接交付 cross-review 全部能力的根本原因**——key 是你自己的凭据，分发物里绝不内置任何 key。请通过 `/setup` 命令选择 key 类型（官方 / 第三方代理）并填入你自己的 key 值；两类 key 对应不同的 codex provider / base_url / env_key。`/setup` 可随时重跑，单独改 key 不影响其他配置。
+这正是**单行安装命令无法直接交付 cross-review 全部能力的根本原因**——key 是你自己的凭据，分发物里绝不内置任何 key。请通过 `/gd-setup` 命令选择 key 类型（官方 / 第三方代理）并填入你自己的 key 值；两类 key 对应不同的 codex provider / base_url / env_key。`/gd-setup` 可随时重跑，单独改 key 不影响其他配置。
 
 ### ③ 部署 codex-watch daemon
 
@@ -94,4 +94,4 @@ claude plugin update project-gd@project-gd-marketplace
 
 ## 配置预设（可随时重跑）
 
-安装并备齐前置后，跑 `/setup` 配置安装者预设——审查产物输出位置、codex key（官方 / 第三方两类）、codex 模型、模型强度（effort）。四项全部以选项呈现，不让你自由填路径/值；预设存于更新安全位置，插件 `update` 不会清除；可随时重跑 `/setup` 单独修改任一项，不丢其他配置。
+安装并备齐前置后，跑 `/gd-setup` 配置安装者预设——审查产物输出位置、codex key（官方 / 第三方两类）、codex 模型、模型强度（effort）。四项全部以选项呈现，不让你自由填路径/值；预设存于更新安全位置，插件 `update` 不会清除；可随时重跑 `/gd-setup` 单独修改任一项，不丢其他配置。
