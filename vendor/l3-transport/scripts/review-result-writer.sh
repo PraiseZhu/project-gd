@@ -61,7 +61,7 @@ fi
 # install dir. --out-dir lets the caller override the baselines root entirely.
 BASELINE_ROOT="${OUT_DIR:-${CLAUDE_PLUGIN_DATA:-$HOME/.claude}/gd-review-baselines}"
 BASELINE_DIR="${BASELINE_ROOT}/${BASELINE_KEY}"
-mkdir -p "$BASELINE_DIR"
+mkdir -p "$BASELINE_DIR" || { echo "[REVIEW] ✗ FAILED — 无法创建产物目录: $BASELINE_DIR" >&2; exit 1; }
 
 TIMESTAMP=$(date -u +%Y%m%dT%H%M%SZ)
 LAST_ERROR_PATH=""

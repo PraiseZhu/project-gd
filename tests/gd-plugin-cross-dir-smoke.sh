@@ -178,6 +178,13 @@ case "$MODE" in
       "$CLAUDE_PLUGIN_DATA"/*) : ;;
       *) fail "happy 产物不在 CLAUDE_PLUGIN_DATA 内（自检脱钩失败）" ;;
     esac
+    # ── setup.sh --self-check：验证预设摘要元数据符合规格 ──
+    SC_OUT="$(bash "$PLUGIN_ROOT/scripts/gd-plugin-setup.sh" --self-check 2>/dev/null)"
+    echo "$SC_OUT" | grep -q 'FIELDS=4'      || fail "--self-check FIELDS 不符"
+    echo "$SC_OUT" | grep -q 'FREEFORM=0'    || fail "--self-check FREEFORM 不符"
+    echo "$SC_OUT" | grep -q 'KEY_TYPES=2'   || fail "--self-check KEY_TYPES 不符"
+    echo "$SC_OUT" | grep -q 'BUILTIN_KEY=0' || fail "--self-check BUILTIN_KEY 不符"
+    echo "[smoke] ✓ self-check — FIELDS=4 FREEFORM=0 KEY_TYPES=2 BUILTIN_KEY=0"
     exit 0
     ;;
 
