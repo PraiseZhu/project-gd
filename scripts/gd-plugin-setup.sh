@@ -164,12 +164,16 @@ choose_option "d · 模型强度（effort）" "$cur_effort" \
 EFFORT="$CHOSEN"
 
 # --- 写入 JSON（python3 stdlib，保留未改动的 key 值）------------------------
-GD_OUTPUT_LOCATION="$OUTPUT_LOCATION" \
-GD_KEY_TYPE="$KEY_TYPE" \
-GD_KEY_VALUE="$KEY_VALUE" \
-GD_CODEX_MODEL="$CODEX_MODEL" \
-GD_EFFORT="$EFFORT" \
-python3 - "$CONFIG_FILE" <<'PYEOF'
+# fail-visibly：python3 写入失败时 if 分支捕获非零退出，明确报错并 exit 1，
+# 绝不在写入失败时打印"完成"（否则 key 丢失却报成功）。
+# key 经 GD_KEY_VALUE 环境变量传给子进程（单用户 macOS 场景；脚本由 heredoc 作
+# stdin，无法再用 stdin 传 key）。
+if ! GD_OUTPUT_LOCATION="$OUTPUT_LOCATION" \
+     GD_KEY_TYPE="$KEY_TYPE" \
+     GD_KEY_VALUE="$KEY_VALUE" \
+     GD_CODEX_MODEL="$CODEX_MODEL" \
+     GD_EFFORT="$EFFORT" \
+     python3 - "$CONFIG_FILE" <<'PYEOF'
 import json, os, sys
 path = sys.argv[1]
 
@@ -195,12 +199,19 @@ if new_key:
 elif "key_value" in existing:
     cfg["key_value"] = existing["key_value"]
 
-with open(path, "w") as f:
+# 以 0o600 原子创建（O_CREAT|O_TRUNC + mode），避免先 open(0o644) 再 chmod 的
+# 明文短暂可读窗口。
+fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+with os.fdopen(fd, "w") as f:
     json.dump(cfg, f, ensure_ascii=False, indent=2)
     f.write("\n")
-os.chmod(path, 0o600)
+os.chmod(path, 0o600)  # 幂等收紧（若文件已存在且权限更宽）
 print("已写入预设：" + path)
 PYEOF
+then
+  echo "错误：预设写入失败（${CLAUDE_PLUGIN_DATA:-未设置} 不可写 / 磁盘问题）。预设未保存。" >&2
+  exit 1
+fi
 
 echo ""
 echo "完成。预设已持久化到更新安全目录；重跑本命令可单独修改任一项。"

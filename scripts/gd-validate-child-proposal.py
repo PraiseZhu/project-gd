@@ -21,7 +21,24 @@ import json
 import os
 import re
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+
+
+def _under_home_claude(p: str) -> bool:
+    """p 是否落在安装者 ~/.claude 下（按 / 边界，禁纯前缀误判 ~/.claudebar）。
+    与 gd-validate-dispatch.py 的 PurePosixPath 守卫模式一致（规则 11 约定优先）。"""
+    if not isinstance(p, str):
+        return False
+    base = PurePosixPath(os.path.expanduser("~/.claude"))
+    pn = PurePosixPath(p)
+    if pn == base:
+        return True
+    try:
+        pn.relative_to(base)
+        return True
+    except ValueError:
+        return False
+
 
 PROPOSAL_BLOCK_RE = re.compile(
     r"<!--\s*gd-child-plan-proposal-json:start\s*-->(.*?)<!--\s*gd-child-plan-proposal-json:end\s*-->",
@@ -106,9 +123,7 @@ def validate(d: dict) -> list[str]:
                     for p in tp["owned_paths"]:
                         if not isinstance(p, str) or not p:
                             errs.append(f"task_packets[{i}].owned_paths 含非法路径")
-                        elif p.startswith(
-                            os.path.expanduser("~/.claude")
-                        ) or ".." in p.split("/"):
+                        elif _under_home_claude(p) or ".." in p.split("/"):
                             errs.append(f"task_packets[{i}].owned_paths 含越界 / 穿越路径: {p!r}")
 
     # sc_refs

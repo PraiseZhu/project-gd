@@ -89,14 +89,21 @@ done
 # the SAME state-paths.sh-resolved HANDOFF_* values so daemon ProgramArguments /
 # log paths match the client's lookup. Rendered file becomes the deploy source.
 HANDOFF_STATE_RESOLVED="${HANDOFF_STATE:-$HANDOFF_ROOT/state}"
+# sed 用 '|' 作分隔符：若任一替换值含 '|' 会破坏 sed 表达式、产生畸形 plist。
+# 正常路径不含 '|'；对 CI/自动化注入的异常路径 fail-closed，而非渲染坏文件。
+for _v in "$HANDOFF_BIN" "$HANDOFF_STATE_RESOLVED" "$HANDOFF_ROOT" "$HOME"; do
+  case "$_v" in
+    *"|"*) echo "ERROR: 路径含 '|' 无法安全渲染 plist: $_v" >&2; exit 1 ;;
+  esac
+done
 RENDERED_PLIST="$(mktemp "${TMPDIR:-/tmp}/codex-watch-plist-XXXXXX")"
+trap 'rm -f "$RENDERED_PLIST"' EXIT   # mktemp 后立即注册 trap，消除临时文件泄漏窗口
 sed \
   -e "s|__HANDOFF_BIN__|${HANDOFF_BIN}|g" \
   -e "s|__HANDOFF_STATE__|${HANDOFF_STATE_RESOLVED}|g" \
   -e "s|__HANDOFF_ROOT__|${HANDOFF_ROOT}|g" \
   -e "s|__HOME__|${HOME}|g" \
   "$SRC_PLIST" > "$RENDERED_PLIST"
-trap 'rm -f "$RENDERED_PLIST"' EXIT
 SRC_PLIST="$RENDERED_PLIST"
 log "Rendered plist placeholders → HANDOFF_BIN=$HANDOFF_BIN"
 log ""
