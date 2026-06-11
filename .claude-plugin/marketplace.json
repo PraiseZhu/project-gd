@@ -1,0 +1,13 @@
+{
+  "name": "project-gd-marketplace",
+  "owner": {
+    "name": "Project GD maintainer"
+  },
+  "plugins": [
+    {
+      "name": "project-gd",
+      "source": "./",
+      "description": "GD 三条 review 链路（/review1 · /review2 · /gd）+ setup 预设命令。git-subdir 同仓布局，分发源为私有 GitLab，版本即 git SHA。"
+    }
+  ]
+}

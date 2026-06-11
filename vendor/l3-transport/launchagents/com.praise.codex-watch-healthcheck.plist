@@ -1,13 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Placeholders (__HOME__ / __HANDOFF_BIN__ / __HANDOFF_STATE__) are rendered by
+     install-transport.sh against state-paths.sh-resolved values at deploy time.
+     This bundle file MUST NOT contain any developer-machine absolute path.
+     TAPTAP_API_KEY stays REDACTED; injected by installer via launchctl setenv. -->
 <plist version="1.0">
 <dict>
 	<key>EnvironmentVariables</key>
 	<dict>
 		<key>HOME</key>
-		<string>/Users/praise</string>
+		<string>__HOME__</string>
 		<key>PATH</key>
-		<string>/Users/praise/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+		<string>__HOME__/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
 		<key>TAPTAP_API_KEY</key>
 		<string>&lt;REDACTED-set-via-install-or-launchctl-setenv&gt;</string>
 	</dict>
@@ -15,12 +19,12 @@
 	<string>com.praise.codex-watch-healthcheck</string>
 	<key>ProgramArguments</key>
 	<array>
-		<string>/Users/praise/.claude/handoff/bin/codex-watch-healthcheck</string>
+		<string>__HANDOFF_BIN__/codex-watch-healthcheck</string>
 	</array>
 	<key>StandardErrorPath</key>
-	<string>/Users/praise/.claude/handoff/state/codex-watch-launchd.log</string>
+	<string>__HANDOFF_STATE__/codex-watch-launchd.log</string>
 	<key>StandardOutPath</key>
-	<string>/Users/praise/.claude/handoff/state/codex-watch-launchd.log</string>
+	<string>__HANDOFF_STATE__/codex-watch-launchd.log</string>
 	<key>StartInterval</key>
 	<integer>60</integer>
 </dict>

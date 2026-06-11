@@ -33,11 +33,14 @@ from typing import Optional
 # ---------------------------------------------------------------------------
 
 # Paths under these prefixes are protected runtime — ordinary steps must not own them.
+# HOME resolved at runtime (脱开发者用户名) so the guard fires on the installer's
+# own ~/.claude, not a hardcoded developer path that never matches on their machine.
+_CLAUDE_HOME = PurePosixPath(Path.home().as_posix()) / ".claude"
 _PROTECTED_PREFIXES = [
-    PurePosixPath("/Users/praise/.claude/scripts"),
-    PurePosixPath("/Users/praise/.claude/commands"),
-    PurePosixPath("/Users/praise/.claude/handoff"),
-    PurePosixPath("/Users/praise/.claude/history"),
+    _CLAUDE_HOME / "scripts",
+    _CLAUDE_HOME / "commands",
+    _CLAUDE_HOME / "handoff",
+    _CLAUDE_HOME / "history",
 ]
 
 

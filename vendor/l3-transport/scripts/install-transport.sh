@@ -24,9 +24,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GD_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 VENDOR_DIR="$GD_ROOT/vendor/l3-transport"
 
-LIVE_HANDOFF="$HOME/.claude/handoff"
-LIVE_BIN="$LIVE_HANDOFF/bin"
-LIVE_LIB="$LIVE_HANDOFF/lib"
+# HANDOFF root resolved from the SAME state-paths.sh the client (codex-send-wait)
+# sources, so daemon deploy target == client lookup path (no silent drift).
+# shellcheck source=../handoff/lib/state-paths.sh
+. "$VENDOR_DIR/handoff/lib/state-paths.sh"
+
+LIVE_HANDOFF="$HANDOFF_ROOT"
+LIVE_BIN="$HANDOFF_BIN"
+LIVE_LIB="$HANDOFF_LIB"
 LIVE_LAUNCHAGENTS="$HOME/Library/LaunchAgents"
 PLIST_NAME="com.praise.codex-watch.plist"
 
@@ -78,6 +83,23 @@ for src in "$SRC_BIN" "$SRC_LIB" "$SRC_PLIST"; do
     exit 1
   fi
 done
+
+# ─── Render plist placeholders → resolved runtime values ───
+# bundle plist is placeholder-ized (no /Users/<dev> literals). Substitute against
+# the SAME state-paths.sh-resolved HANDOFF_* values so daemon ProgramArguments /
+# log paths match the client's lookup. Rendered file becomes the deploy source.
+HANDOFF_STATE_RESOLVED="${HANDOFF_STATE:-$HANDOFF_ROOT/state}"
+RENDERED_PLIST="$(mktemp "${TMPDIR:-/tmp}/codex-watch-plist-XXXXXX")"
+sed \
+  -e "s|__HANDOFF_BIN__|${HANDOFF_BIN}|g" \
+  -e "s|__HANDOFF_STATE__|${HANDOFF_STATE_RESOLVED}|g" \
+  -e "s|__HANDOFF_ROOT__|${HANDOFF_ROOT}|g" \
+  -e "s|__HOME__|${HOME}|g" \
+  "$SRC_PLIST" > "$RENDERED_PLIST"
+trap 'rm -f "$RENDERED_PLIST"' EXIT
+SRC_PLIST="$RENDERED_PLIST"
+log "Rendered plist placeholders → HANDOFF_BIN=$HANDOFF_BIN"
+log ""
 
 # ─── Deploy plan ───
 log "=== Deploy Plan ==="

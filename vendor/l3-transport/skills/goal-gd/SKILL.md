@@ -32,7 +32,7 @@ trigger: goal gd
 |---------|------|
 | `<PLAN_REF>` | 计划文件绝对路径，或「当前会话 plan mode 输出」 |
 | `<TARGET_PROJECT_ROOT>` | 计划目标项目根目录（不一定是 Project GD） |
-| `<GD_PROJECT_ROOT>` | Project GD 根目录（固定：`/Users/praise/AI-Agent/Claude/projects/Project GD`） |
+| `<GD_PROJECT_ROOT>` | 框架根目录（经 `${CLAUDE_PLUGIN_ROOT}` 解析） |
 | `<TURN_LIMIT>` | Step 总数 × 2，上限 30，默认 14 |
 | SC 清单 | 所有 `SC-*` / `PLAN*-SC-*` ID 及标题 |
 | `<NON_GOALS>` | 非目标章节的条目列表 |
@@ -79,7 +79,7 @@ agent_exec 模式额外检查：
 Fail-closed 规则：
 - 任一 validator exit ≠ 0 → 输出 stderr，停止，不自行修补
 - agent_exec 模式 capability unavailable → 停止，不得降级 human_exec
-- deliverables 路径指向 /Users/praise/.claude/** → 拒绝（path-traversal 防护）
+- deliverables 路径指向 ${HOME}/.claude/** → 拒绝（path-traversal 防护）
 - 遇到 hard_stop 条件 → 停止并报 blocker
 
 硬边界：
@@ -88,7 +88,7 @@ Fail-closed 规则：
 - forbidden_paths：<FORBIDDEN_PATHS>
 - hard_stop：<HARD_STOP>
 - 不重写计划，不扩大 scope
-- 不写 /Users/praise/.claude/**（除非计划明确声明）
+- 不写 ${HOME}/.claude/**（除非计划明确声明）
 
 输出要求（goal 达成或 turn 用尽时）：
 - SC 验收表：逐条 SC-ID → PASS/FAIL + 证据

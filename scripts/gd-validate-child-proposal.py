@@ -106,7 +106,9 @@ def validate(d: dict) -> list[str]:
                     for p in tp["owned_paths"]:
                         if not isinstance(p, str) or not p:
                             errs.append(f"task_packets[{i}].owned_paths 含非法路径")
-                        elif p.startswith("/Users/praise/.claude") or ".." in p.split("/"):
+                        elif p.startswith(
+                            os.path.expanduser("~/.claude")
+                        ) or ".." in p.split("/"):
                             errs.append(f"task_packets[{i}].owned_paths 含越界 / 穿越路径: {p!r}")
 
     # sc_refs

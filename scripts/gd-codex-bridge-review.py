@@ -69,8 +69,18 @@ TEMPLATE_BY_KIND_V2 = {
 }
 # Back-compat alias (kept so any legacy reference still resolves to v1 map).
 TEMPLATE_BY_KIND = TEMPLATE_BY_KIND_V1
-WRITER_PATH = Path(os.environ.get("GD_WRITER_PATH_OVERRIDE", "/Users/praise/.claude/scripts/review-result-writer.sh"))
-SEND_WAIT_PATH = Path("/Users/praise/.claude/handoff/bin/codex-send-wait")
+# HOME resolved at runtime (脱开发者用户名) so these guards/runtime refs work on the
+# installer's machine. WRITER_PATH keeps its explicit env override; SEND_WAIT_PATH
+# honors ${HANDOFF_BIN} (set by handoff/lib/state-paths.sh) before falling back.
+WRITER_PATH = Path(
+    os.environ.get(
+        "GD_WRITER_PATH_OVERRIDE",
+        os.path.expanduser("~/.claude/scripts/review-result-writer.sh"),
+    )
+)
+SEND_WAIT_PATH = Path(
+    os.environ.get("HANDOFF_BIN", os.path.expanduser("~/.claude/handoff/bin"))
+) / "codex-send-wait"
 
 FIXTURES_DIR = GD_PROJECT_ROOT / "fixtures" / "review-bridge"
 SIDECAR_FIXTURES_DIR = GD_PROJECT_ROOT / "fixtures" / "review-sidecar"

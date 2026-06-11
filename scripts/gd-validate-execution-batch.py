@@ -332,7 +332,9 @@ def check_batch_semantic(
                         f"task_results[{tid}].deliverables_produced 路径含 '..' "
                         f"路径穿越: {p!r}"
                     )
-                if isinstance(p, str) and p.startswith("/Users/praise/.claude"):
+                if isinstance(p, str) and p.startswith(
+                    os.path.expanduser("~/.claude")
+                ):
                     errs.append(
                         f"task_results[{tid}].deliverables_produced 路径指向 "
                         f"protected runtime ~/.claude/**"

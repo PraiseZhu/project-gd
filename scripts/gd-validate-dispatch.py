@@ -55,10 +55,10 @@ def overlaps(a: str, b: str) -> bool:
 
 
 def is_under_protected_runtime(p: str) -> bool:
-    """检查路径是否落在 /Users/praise/.claude/** 内。"""
+    """检查路径是否落在安装者 ${HOME}/.claude/** 内（运行时解析 HOME，脱开发者用户名）。"""
     pn = normalize(p)
     try:
-        pn.relative_to(PurePosixPath("/Users/praise/.claude"))
+        pn.relative_to(PurePosixPath(os.path.expanduser("~/.claude")))
         return True
     except ValueError:
         return False

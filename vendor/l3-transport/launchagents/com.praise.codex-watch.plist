@@ -1,13 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Placeholders (__HOME__ / __HANDOFF_BIN__ / __HANDOFF_STATE__) are rendered by
+     install-transport.sh against state-paths.sh-resolved values at deploy time.
+     This bundle file MUST NOT contain any developer-machine absolute path. -->
 <plist version="1.0">
 <dict>
 	<key>EnvironmentVariables</key>
 	<dict>
 		<key>HOME</key>
-		<string>/Users/praise</string>
+		<string>__HOME__</string>
 		<key>PATH</key>
-		<string>/Users/praise/.npm-global/bin:/Users/praise/.bun/bin:/Users/praise/.pyenv/shims:/Users/praise/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin</string>
+		<string>__HOME__/.npm-global/bin:__HOME__/.bun/bin:__HOME__/.pyenv/shims:__HOME__/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin</string>
 		<key>CODEX_PROVIDER_CHAIN</key>
 		<string>tapsvc</string>
 		<key>CODEX_RETRY_BACKOFF</key>
@@ -21,15 +24,15 @@
 	<string>com.praise.codex-watch</string>
 	<key>ProgramArguments</key>
 	<array>
-		<string>/Users/praise/.claude/handoff/bin/codex-watch</string>
+		<string>__HANDOFF_BIN__/codex-watch</string>
 		<string>run</string>
 	</array>
 	<key>RunAtLoad</key>
 	<true/>
 	<key>StandardErrorPath</key>
-	<string>/Users/praise/.claude/handoff/state/codex-watch-launchd.log</string>
+	<string>__HANDOFF_STATE__/codex-watch-launchd.log</string>
 	<key>StandardOutPath</key>
-	<string>/Users/praise/.claude/handoff/state/codex-watch-launchd.log</string>
+	<string>__HANDOFF_STATE__/codex-watch-launchd.log</string>
 	<key>ThrottleInterval</key>
 	<integer>5</integer>
 </dict>
