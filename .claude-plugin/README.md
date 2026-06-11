@@ -1,6 +1,6 @@
-# Project GD 插件 — 安装与前置
+# 目标驱动链（Project GD）插件 — 安装与前置
 
-本插件把 Project GD 的**三条 review 链路**封装为可分发的 Claude Code 插件：
+本插件把**目标驱动链**（Project GD）的**三条 review 链路**封装为可分发的 Claude Code 插件：
 
 - `/review1`（L1）：codex 交叉讨论 + 轻量审核
 - `/review2`（L2）：profile-aware Codex 工作台
