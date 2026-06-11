@@ -5,10 +5,5 @@
     "name": "Project GD maintainer"
   },
   "homepage": "https://git.xindong.com/game-ui/project-gd",
-  "commands": [
-    "${CLAUDE_PLUGIN_ROOT}/commands/review1.md",
-    "${CLAUDE_PLUGIN_ROOT}/commands/review2.md",
-    "${CLAUDE_PLUGIN_ROOT}/commands/gd.md",
-    "${CLAUDE_PLUGIN_ROOT}/commands/setup.md"
-  ]
+  "commands": "./commands/"
 }
