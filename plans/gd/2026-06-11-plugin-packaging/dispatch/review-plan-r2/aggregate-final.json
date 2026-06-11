@@ -1,0 +1,76 @@
+{
+  "aggregate_version": "2.0",
+  "target_set_id": "gd-plugin-packaging-plan-review-r2",
+  "generated_at": "2026-06-10T20:54:33.963756+00:00",
+  "manifest_path": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/dispatch/review-plan-r2/manifest-final.json",
+  "manifest_hash": "ad88792194a9e8a9c699a1fbe1bf3b80e9b965b8a09ae2efd3dc4206ea0f6803",
+  "review_contract_hash": "f3e177e87c91e439fe89b2f99b52ee0eae2b941e98ac00438cd00835966f9daf",
+  "stale_review_contract": false,
+  "ambiguous_raw_result": true,
+  "jobs": [
+    {
+      "queue_job_id": "gd-plugin-packaging-plan-review-r2-master-plan",
+      "target_role": "master_plan",
+      "primary_target": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/master-plan.md",
+      "review_kind": "plan",
+      "transport_status": "transport_ok",
+      "raw_result_path": "/Users/praise/.claude/review-baselines/gd-plan-master-plan-md-426349177aba/result-20260610T205045Z.md",
+      "raw_result_hash": "0bc20d5dc4028e4607b542f79df028221d3506fbdd54e7e560180469608a4958",
+      "mapped_result_path": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/dispatch/review-plan-r2/mapped/gd-plugin-packaging-plan-review-r2-master-plan.json",
+      "mapped_result_hash": "6b7ec23d0b6ab70ac7c12af2fea0bad206596247d3fe2e2272dfadab7add9309",
+      "codex_review_status": "completed",
+      "codex_review_kind": "plan",
+      "gd_review_decision": "FAILED",
+      "codex_requires_changes": true,
+      "missing_primary_target": false
+    },
+    {
+      "queue_job_id": "gd-plugin-packaging-plan-review-r2-subplan-track-a",
+      "target_role": "subplan_track_a",
+      "primary_target": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/track-a/step-plan.md",
+      "review_kind": "plan",
+      "transport_status": "transport_ok",
+      "raw_result_path": "/Users/praise/.claude/review-baselines/gd-plan-step-plan-md-9f29a2f4f66c/result-20260610T205045Z.md",
+      "raw_result_hash": "fafabc7c241786f59a2067dbb1c243eb0bb409a3ba1e49d2a731d68b3ce2583e",
+      "mapped_result_path": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/dispatch/review-plan-r2/mapped/gd-plugin-packaging-plan-review-r2-subplan-track-a.json",
+      "mapped_result_hash": "9fb15aaccffbf023f91ff20facaf37096e3828efbd64829116bfcee7efca946f",
+      "codex_review_status": "completed",
+      "codex_review_kind": "plan",
+      "gd_review_decision": "FAILED",
+      "codex_requires_changes": true,
+      "missing_primary_target": false
+    },
+    {
+      "queue_job_id": "gd-plugin-packaging-plan-review-r2-subplan-track-b",
+      "target_role": "subplan_track_b",
+      "primary_target": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/track-b/step-plan.md",
+      "review_kind": "plan",
+      "transport_status": "transport_ok",
+      "raw_result_path": "/Users/praise/.claude/review-baselines/gd-plan-step-plan-md-1aef778e55e3/result-20260610T205146Z.md",
+      "raw_result_hash": "953f97bc4bd790b6f1041d7f14ba97ed830e4032117cf329159ceed7b77168c5",
+      "mapped_result_path": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/dispatch/review-plan-r2/mapped/gd-plugin-packaging-plan-review-r2-subplan-track-b.json",
+      "mapped_result_hash": "0b262e5880321ca54942f0d19b361093b3a3378e74ebb9c9f93d25e69bfdb6a3",
+      "codex_review_status": "completed",
+      "codex_review_kind": "plan",
+      "gd_review_decision": "REQUIRES_CHANGES",
+      "codex_requires_changes": true,
+      "missing_primary_target": false
+    }
+  ],
+  "aggregate_summary": {
+    "total_jobs": 3,
+    "transport_ok": 3,
+    "transport_failed": 0,
+    "wrapper_schema_fail": 0,
+    "approved": 0,
+    "requires_changes": 1,
+    "failed": 2,
+    "missing_primary_target_count": 0,
+    "codex_requires_changes_count": 3,
+    "closure_eligible": false,
+    "closure_blockers": [
+      "codex_requires_changes: 3 job(s)",
+      "ambiguous_raw_result"
+    ]
+  }
+}

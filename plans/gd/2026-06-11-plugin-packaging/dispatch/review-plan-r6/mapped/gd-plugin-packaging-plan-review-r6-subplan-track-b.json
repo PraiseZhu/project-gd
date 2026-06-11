@@ -1,0 +1,33 @@
+{
+  "template_kind": "gd-plan-review",
+  "reviewer": "codex",
+  "review_target": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/track-b/step-plan.md",
+  "review_kind": "plan",
+  "review_run_status": "completed",
+  "gd_review_decision": "REQUIRES_CHANGES",
+  "scope_checked": [
+    {
+      "facet": "raw markdown structure",
+      "result": "pass",
+      "evidence": "writer-validated; verdict=REQUIRES_CHANGES"
+    }
+  ],
+  "findings": [
+    {
+      "severity": "P1",
+      "title": "SC-007 清单、扫描命令与 owned_paths 不闭环",
+      "sc_refs": [
+        "SC-007"
+      ],
+      "evidence": "`/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/track-b/step-plan.md:64-68`、`:173`、`:212-214`；只读核对显示 `vendor/l3-transport/skills/goal-gd/SKILL.md:35` 仍含开发者绝对路径，但该路径未在 `:153-157` 的 t2 owned_paths 中。",
+      "impact": "按计划执行后，SC-007 可能因未 owned 的 vendor skills 继续失败，或因测试计划漏扫 plist/extensionless bin 而误判通过，核心成功标准无法可信判断。",
+      "required_fix": "把 SC-007 的所有 grep 命令统一为同一份显式 runtime path list：`commands`、`scripts`、`vendor/l3-transport/scripts`、`vendor/l3-transport/handoff/bin`、`vendor/l3-transport/handoff/lib`、`vendor/l3-transport/launchagents`；移除会漏掉 plist/bin 的 `--include` 写法。若 `vendor/l3-transport/skills/**` 要纳入分发运行时，则必须把它加入 DIST_RUNTIME_PATHS 并分配 owned task。",
+      "verify": "执行修正后的 SC-007 grep 返回 `SC007_BUNDLE_CLEAN/NO_DEV_ABS`，且命令实际覆盖 `handoff/bin/*` extensionless 文件与 `launchagents/*.plist`；未纳入 owned_paths 的 `vendor/l3-transport/skills/**` 不再影响该 SC。"
+    }
+  ],
+  "merge_notes": {
+    "conflict_with_other_reviewer": false
+  },
+  "residual_risk": [],
+  "timestamp": "2026-06-11T05:59:02Z"
+}

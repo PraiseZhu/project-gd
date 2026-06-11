@@ -1,0 +1,23 @@
+{
+  "proposal_id": "gd-plugin-packaging-track-b-portability-isolation-001",
+  "parent_dispatch_id": "gd-plugin-packaging",
+  "parent_track_id": "track-b-portability-isolation",
+  "agent_role": "child_planner",
+  "output_status": "completed",
+  "summary_cn": "起草 Track B 可移植与写入隔离 step plan 加 3 个 task packet：三命令文件硬编码清零改 CLAUDE_PLUGIN_ROOT、HANDOFF_ROOT 与 writer 写产物隔离到插件管理目录、新建 bundle 完整性与跨目录冒烟校验脚本，覆盖 SC-002/003/004/006/007",
+  "task_packets": [
+    {"task_id": "zero-out-command-paths", "owned_paths": ["commands/gd.md", "commands/review1.md", "commands/review2.md"], "required_context": ["commands/gd.md", "commands/review1.md", "commands/review2.md", "docs/constitution-plugin.md", "specs/gd-plugin-packaging/spec.md"]},
+    {"task_id": "isolate-transport-and-writes", "owned_paths": ["vendor/l3-transport/handoff/lib/state-paths.sh", "vendor/l3-transport/scripts/review-result-writer.sh", "vendor/l3-transport/scripts/install-transport.sh", "vendor/l3-transport/scripts/codex-consult.sh", "vendor/l3-transport/launchagents/com.praise.codex-watch.plist", "vendor/l3-transport/launchagents/com.praise.codex-watch-healthcheck.plist"], "required_context": ["vendor/l3-transport/README.md", ".deploy-manifest.jsonl", "docs/constitution-plugin.md"]},
+    {"task_id": "deusername-script-guards", "owned_paths": ["scripts/gd-validate-dispatch.py", "scripts/gd-validate-execution-batch.py", "scripts/gd-validate-master-plan-consistency.py", "scripts/gd-validate-child-proposal.py", "scripts/gd-codex-bridge-review.py"], "required_context": ["docs/constitution-plugin.md", "specs/gd-plugin-packaging/spec.md"]},
+    {"task_id": "bundle-and-smoke-verifiers", "owned_paths": ["scripts/gd-bundle-completeness.sh", "tests/gd-plugin-cross-dir-smoke.sh"], "required_context": ["docs/constitution-plugin.md", "specs/gd-plugin-packaging/spec.md"]}
+  ],
+  "sc_refs": ["SC-002", "SC-003", "SC-004", "SC-006", "SC-007"],
+  "verify": [
+    {"sc_ref": "SC-002", "method": "command", "cmd": "bash scripts/gd-bundle-completeness.sh --check && echo PASS"},
+    {"sc_ref": "SC-003", "method": "command", "cmd": "bash tests/gd-plugin-cross-dir-smoke.sh && echo PASS"},
+    {"sc_ref": "SC-004", "method": "command", "cmd": "bash tests/gd-plugin-cross-dir-smoke.sh --no-codex && echo PASS"},
+    {"sc_ref": "SC-006", "method": "command", "cmd": "bash tests/gd-plugin-cross-dir-smoke.sh --assert-data-isolated && echo PASS"},
+    {"sc_ref": "SC-007", "method": "command", "cmd": "test \"$(grep -rho '/Users/praise/[A-Za-z]*' commands/gd.md commands/review1.md commands/review2.md | grep -v '/Users/praise/.claude' | wc -l | tr -d ' ')\" = \"0\" && echo PASS"}
+  ],
+  "blocked_reason": null
+}

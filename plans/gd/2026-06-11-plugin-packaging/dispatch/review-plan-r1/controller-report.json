@@ -1,0 +1,93 @@
+{
+  "schema_version": "1.1",
+  "run_mode": "live",
+  "started_at": "2026-06-10T20:32:51Z",
+  "finished_at": "2026-06-10T20:35:36Z",
+  "primary_gate": {
+    "verdict": "FAILED",
+    "blocking": [
+      "AGGREGATE_SCRIPT_FAILED_EXIT_1"
+    ]
+  },
+  "secondary_gate": {
+    "verdict": "FAILED",
+    "blocking": [
+      "codex_requires_changes: 3 job(s)"
+    ]
+  },
+  "gate_consistent": true,
+  "dirty_detected": false,
+  "aggregate_path": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/dispatch/review-plan-r1/aggregate-final.json",
+  "manifest_path": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/dispatch/review-plan-r1/manifest-final.json",
+  "jobs": [
+    {
+      "queue_job_id": "gd-plugin-packaging-plan-review-r1-master-plan",
+      "target_role": "master_plan",
+      "primary_target": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/master-plan.md",
+      "raw_verdict": "FAILED",
+      "mapped_status": "degraded",
+      "aggregate_bucket": "codex_failed",
+      "target_hash": "cae730a174adc196ce92a6069f1659b5824a12e0f71271025ce197eac5eae028",
+      "raw_path": "/Users/praise/.claude/review-baselines/gd-plan-master-plan-md-a56a409a9a73/result-20260610T203251Z.md",
+      "git_gate_status": "clean",
+      "bridge_exit": 1,
+      "bridge_stderr_path": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/dispatch/review-plan-r1/bridge-stderr/gd-plugin-packaging-plan-review-r1-master-plan.err",
+      "bridge_stderr_summary": "L3_RESULT: FAKE_EVIDENCE_DETECTED (1 error(s), verdict=APPROVED)"
+    },
+    {
+      "queue_job_id": "gd-plugin-packaging-plan-review-r1-subplan-track-a",
+      "target_role": "subplan_track_a",
+      "primary_target": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/track-a/step-plan.md",
+      "raw_verdict": "REQUIRES_CHANGES",
+      "mapped_status": "completed",
+      "aggregate_bucket": "codex_requires_changes",
+      "target_hash": "97ee787f936cb589ce77834002569990fe72f111a19af51f5905f6c538da2a46",
+      "raw_path": "/Users/praise/.claude/review-baselines/gd-plan-step-plan-md-6f8f2cf25d1d/result-20260610T203251Z.md",
+      "git_gate_status": "clean",
+      "bridge_exit": 0,
+      "bridge_stderr_path": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/dispatch/review-plan-r1/bridge-stderr/gd-plugin-packaging-plan-review-r1-subplan-track-a.err",
+      "bridge_stderr_summary": ""
+    },
+    {
+      "queue_job_id": "gd-plugin-packaging-plan-review-r1-subplan-track-b",
+      "target_role": "subplan_track_b",
+      "primary_target": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/track-b/step-plan.md",
+      "raw_verdict": "REQUIRES_CHANGES",
+      "mapped_status": "completed",
+      "aggregate_bucket": "codex_requires_changes",
+      "target_hash": "60e12cee7745ae2d9cb2773638e7623ab9cfc000e1b02c0fa0f8d6491c3388c4",
+      "raw_path": "/Users/praise/.claude/review-baselines/gd-plan-step-plan-md-0d38ae12cce5/result-20260610T203401Z.md",
+      "git_gate_status": "clean",
+      "bridge_exit": 0,
+      "bridge_stderr_path": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/dispatch/review-plan-r1/bridge-stderr/gd-plugin-packaging-plan-review-r1-subplan-track-b.err",
+      "bridge_stderr_summary": ""
+    }
+  ],
+  "batch_ledgers": [
+    {
+      "path": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/dispatch/review-plan-r1/stage-dispatch-ledger-batch-001.json",
+      "hash": "fd64e554f50d6e46e841ade2a2b342ff9dadb0700404869c88d56fa0f3bc6982"
+    },
+    {
+      "path": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/dispatch/review-plan-r1/stage-dispatch-ledger-batch-002.json",
+      "hash": "ad46122741185461152502ac39c46e3548818e13d51992632fe29580c499cb53"
+    }
+  ],
+  "suite_target_closure": [
+    {
+      "target_id": "gd-plugin-packaging-plan-review-r1-master-plan",
+      "mapped_status": "degraded",
+      "evidence_kind": "n_a"
+    },
+    {
+      "target_id": "gd-plugin-packaging-plan-review-r1-subplan-track-a",
+      "mapped_status": "completed",
+      "evidence_kind": "mapped_status_approved"
+    },
+    {
+      "target_id": "gd-plugin-packaging-plan-review-r1-subplan-track-b",
+      "mapped_status": "completed",
+      "evidence_kind": "mapped_status_approved"
+    }
+  ]
+}

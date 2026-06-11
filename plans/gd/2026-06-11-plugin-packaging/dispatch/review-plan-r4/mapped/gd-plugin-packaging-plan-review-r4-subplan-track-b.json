@@ -1,0 +1,44 @@
+{
+  "template_kind": "gd-plan-review",
+  "reviewer": "codex",
+  "review_target": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/track-b/step-plan.md",
+  "review_kind": "plan",
+  "review_run_status": "completed",
+  "gd_review_decision": "REQUIRES_CHANGES",
+  "scope_checked": [
+    {
+      "facet": "raw markdown structure",
+      "result": "pass",
+      "evidence": "writer-validated; verdict=REQUIRES_CHANGES"
+    }
+  ],
+  "findings": [
+    {
+      "severity": "P1",
+      "title": "SC-007 验证范围小于成功标准",
+      "sc_refs": [
+        "SC-007"
+      ],
+      "evidence": "plans/gd/2026-06-11-plugin-packaging/track-b/step-plan.md:64-68；bundle 范围见同文件:112",
+      "impact": "scripts/prompts/templates/schema/docs/fixtures/vendor 中残留开发者绝对路径时，SC-007 仍可能通过，无法判断分发物是否可移植。",
+      "required_fix": "在 SC-007 verify 和测试计划中加入明确的分发物路径清单，并对该清单整体执行零命中断言。",
+      "verify": "`grep` 扫描范围覆盖 SC-002 的 bundle 八类目标，且无 `/Users/praise/(AI-Agent|\\.claude)` 命中。"
+    },
+    {
+      "severity": "P2",
+      "title": "风险防护段保留了已废弃的排除式断言",
+      "sc_refs": [
+        "SC-007"
+      ],
+      "evidence": "plans/gd/2026-06-11-plugin-packaging/track-b/step-plan.md:184；正确约束见:65-68",
+      "impact": "执行者可能按风险段实现排除式检查，导致守卫里的开发者路径残留并误判通过。",
+      "required_fix": "将该风险防护改为“守卫必须改写为 `${HOME}/.claude`，不得用 grep -v 排除”。",
+      "verify": "`grep -n \"grep -v '/Users/praise/.claude'\" plans/gd/2026-06-11-plugin-packaging/track-b/step-plan.md` 无输出。"
+    }
+  ],
+  "merge_notes": {
+    "conflict_with_other_reviewer": false
+  },
+  "residual_risk": [],
+  "timestamp": "2026-06-10T21:14:59Z"
+}

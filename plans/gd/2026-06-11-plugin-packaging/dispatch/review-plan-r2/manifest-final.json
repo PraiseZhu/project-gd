@@ -1,0 +1,38 @@
+{
+  "target_set_id": "gd-plugin-packaging-plan-review-r2",
+  "required_jobs": [
+    {
+      "queue_job_id": "gd-plugin-packaging-plan-review-r2-master-plan",
+      "target_role": "master_plan",
+      "primary_target": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/master-plan.md",
+      "review_kind": "plan",
+      "expected_target_hash": "64e5942ea94abc93eb0da045f95dc6700a82c9e560abe9e96a32ba0b05f9920f",
+      "codex_raw_result_path": "/Users/praise/.claude/review-baselines/gd-plan-master-plan-md-426349177aba/result-20260610T205045Z.md",
+      "mapped_result_path": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/dispatch/review-plan-r2/mapped/gd-plugin-packaging-plan-review-r2-master-plan.json",
+      "raw_verdict": "FAILED",
+      "raw_contract": "v1"
+    },
+    {
+      "queue_job_id": "gd-plugin-packaging-plan-review-r2-subplan-track-a",
+      "target_role": "subplan_track_a",
+      "primary_target": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/track-a/step-plan.md",
+      "review_kind": "plan",
+      "expected_target_hash": "7b51b11ef959320d1b885b2b813f907e8980fdb6f4e0c040b927be39d5a1eef2",
+      "codex_raw_result_path": "/Users/praise/.claude/review-baselines/gd-plan-step-plan-md-9f29a2f4f66c/result-20260610T205045Z.md",
+      "mapped_result_path": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/dispatch/review-plan-r2/mapped/gd-plugin-packaging-plan-review-r2-subplan-track-a.json",
+      "raw_verdict": "FAILED",
+      "raw_contract": "v1"
+    },
+    {
+      "queue_job_id": "gd-plugin-packaging-plan-review-r2-subplan-track-b",
+      "target_role": "subplan_track_b",
+      "primary_target": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/track-b/step-plan.md",
+      "review_kind": "plan",
+      "expected_target_hash": "0cd3f6852f08d6c12c946b22598aa317376bcaefe9340477bb79ff6cac74deae",
+      "codex_raw_result_path": "/Users/praise/.claude/review-baselines/gd-plan-step-plan-md-1aef778e55e3/result-20260610T205146Z.md",
+      "mapped_result_path": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/dispatch/review-plan-r2/mapped/gd-plugin-packaging-plan-review-r2-subplan-track-b.json",
+      "raw_verdict": "REQUIRES_CHANGES",
+      "raw_contract": "v1"
+    }
+  ]
+}

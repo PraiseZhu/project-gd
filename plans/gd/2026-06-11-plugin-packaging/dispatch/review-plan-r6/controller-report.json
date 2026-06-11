@@ -1,0 +1,51 @@
+{
+  "schema_version": "1.1",
+  "run_mode": "live",
+  "started_at": "2026-06-11T05:56:00Z",
+  "finished_at": "2026-06-11T05:59:02Z",
+  "primary_gate": {
+    "verdict": "FAILED",
+    "blocking": [
+      "AGGREGATE_SCRIPT_FAILED_EXIT_1"
+    ]
+  },
+  "secondary_gate": {
+    "verdict": "FAILED",
+    "blocking": [
+      "codex_requires_changes: 1 job(s)"
+    ]
+  },
+  "gate_consistent": true,
+  "dirty_detected": false,
+  "aggregate_path": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/dispatch/review-plan-r6/aggregate-final.json",
+  "manifest_path": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/dispatch/review-plan-r6/manifest-final.json",
+  "jobs": [
+    {
+      "queue_job_id": "gd-plugin-packaging-plan-review-r6-subplan-track-b",
+      "target_role": "subplan_track_b",
+      "primary_target": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/track-b/step-plan.md",
+      "raw_verdict": "REQUIRES_CHANGES",
+      "mapped_status": "completed",
+      "aggregate_bucket": "codex_requires_changes",
+      "target_hash": "e0aa14063c923830060879718abc1419f383eec3b516c5dcdf06f1a3a45c0b82",
+      "raw_path": "/Users/praise/.claude/review-baselines/gd-plan-step-plan-md-6b52b61fd58e/result-20260611T055601Z.md",
+      "git_gate_status": "clean",
+      "bridge_exit": 0,
+      "bridge_stderr_path": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/dispatch/review-plan-r6/bridge-stderr/gd-plugin-packaging-plan-review-r6-subplan-track-b.err",
+      "bridge_stderr_summary": ""
+    }
+  ],
+  "batch_ledgers": [
+    {
+      "path": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/dispatch/review-plan-r6/stage-dispatch-ledger-batch-001.json",
+      "hash": "ebae910876782297888783bc1c6b9cf702d2ce2938623690223b86ccd498dc86"
+    }
+  ],
+  "suite_target_closure": [
+    {
+      "target_id": "gd-plugin-packaging-plan-review-r6-subplan-track-b",
+      "mapped_status": "completed",
+      "evidence_kind": "mapped_status_approved"
+    }
+  ]
+}

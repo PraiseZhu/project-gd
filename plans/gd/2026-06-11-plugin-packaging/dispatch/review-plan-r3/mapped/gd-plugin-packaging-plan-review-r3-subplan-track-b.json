@@ -1,0 +1,56 @@
+{
+  "template_kind": "gd-plan-review",
+  "reviewer": "codex",
+  "review_target": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/track-b/step-plan.md",
+  "review_kind": "plan",
+  "review_run_status": "completed",
+  "gd_review_decision": "REQUIRES_CHANGES",
+  "scope_checked": [
+    {
+      "facet": "raw markdown structure",
+      "result": "pass",
+      "evidence": "writer-validated; verdict=REQUIRES_CHANGES"
+    }
+  ],
+  "findings": [
+    {
+      "severity": "P1",
+      "title": "SC-007 校验排除了必须清零的 `.claude` 绝对路径",
+      "sc_refs": [
+        "SC-007"
+      ],
+      "evidence": "`plans/gd/2026-06-11-plugin-packaging/track-b/step-plan.md:32` 将 `/Users/praise/.claude/...` 列为清零对象；`:65` 和 `:137` 排除 `/Users/praise/.claude`；`:91` 又要求删除/改写 review2 的 `/Users/praise/.claude/commands/review2.md`。",
+      "impact": "执行后即使三命令文件仍残留 `/Users/praise/.claude/...`，SC-007 仍可能通过，用户目标“零硬编码路径”无法判断成功。",
+      "required_fix": "将 SC-007、t1 verify、测试计划里的清零命令改为直接 fail on `/Users/praise/(AI-Agent|\\.claude)`；另加断言确认安全守卫已改写为 `${HOME}/.claude`，不要用全局 `grep -v '/Users/praise/.claude'` 排除。",
+      "verify": "`grep -nE '/Users/praise/(AI-Agent|\\\\.claude)' commands/gd.md commands/review1.md commands/review2.md` 无输出；`commands/gd.md` 中仍有 `${HOME}/.claude` 守卫语义。"
+    },
+    {
+      "severity": "P2",
+      "title": "task packet 的 `required_context` 与 `owned_paths` 自循环",
+      "sc_refs": [
+        "SC-006",
+        "SC-007"
+      ],
+      "evidence": "`plans/gd/2026-06-11-plugin-packaging/track-b/step-plan.md:133` 与 `:135` 重叠三条 command 文件；`:141` 与 `:143` 重叠三条 vendor 文件。",
+      "impact": "后续 task packet 校验或 dispatch 若按契约执行，会把执行目标误判为外部依赖，导致 packet contract 不合格或任务上下文循环。",
+      "required_fix": "从 t1/t2 的 `required_context` 移除各自 owned files，仅保留外部上下文；owned files 继续只放在 `owned_paths`/`deliverables`。",
+      "verify": "t1/t2/t3 每个 packet 的 `owned_paths ∩ required_context = ∅`；t3 只引用 blocked_by 产物作为外部上下文。"
+    },
+    {
+      "severity": "P2",
+      "title": "`install-transport.sh` 归属在 Assumptions 中反向撤回",
+      "sc_refs": [
+        "SC-003"
+      ],
+      "evidence": "`plans/gd/2026-06-11-plugin-packaging/track-b/step-plan.md:98-100` 要求本轮修改并验证 `install-transport.sh`；`:141` 将其纳入 t2 owned_paths；`:221` 又把它描述为 track-a 范畴并 defer。",
+      "impact": "执行者可能按 §11 跳过关键修改，daemon/client HANDOFF 解析继续不一致，Step.3 的 `grep -q 'state-paths.sh' install-transport.sh` 验收失败。",
+      "required_fix": "改写 §11 assumption，明确 `install-transport.sh` 的 HANDOFF 解析改动属于本 step/t2；track-a 只承接 README/setup 文档或安装操作，不承接该代码改动。",
+      "verify": "`grep -nE 'track-a 范畴|不擅改 install-transport|需在 track-a 对齐' plans/gd/2026-06-11-plugin-packaging/track-b/step-plan.md` 无输出；t2 owned_paths 仍包含 `vendor/l3-transport/scripts/install-transport.sh`。"
+    }
+  ],
+  "merge_notes": {
+    "conflict_with_other_reviewer": false
+  },
+  "residual_risk": [],
+  "timestamp": "2026-06-10T21:08:16Z"
+}

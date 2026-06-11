@@ -1,0 +1,43 @@
+{
+  "aggregate_version": "2.0",
+  "target_set_id": "gd-plugin-packaging-plan-review-r4",
+  "generated_at": "2026-06-10T21:15:00.088324+00:00",
+  "manifest_path": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/dispatch/review-plan-r4/manifest-final.json",
+  "manifest_hash": "fb0940a6c4612dfde23b7273f9210bb390f154b4da8db32dc354749abcded5a0",
+  "review_contract_hash": "f3e177e87c91e439fe89b2f99b52ee0eae2b941e98ac00438cd00835966f9daf",
+  "stale_review_contract": false,
+  "ambiguous_raw_result": false,
+  "jobs": [
+    {
+      "queue_job_id": "gd-plugin-packaging-plan-review-r4-subplan-track-b",
+      "target_role": "subplan_track_b",
+      "primary_target": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/track-b/step-plan.md",
+      "review_kind": "plan",
+      "transport_status": "transport_ok",
+      "raw_result_path": "/Users/praise/.claude/review-baselines/gd-plan-step-plan-md-2ae340898b89/result-20260610T211342Z.md",
+      "raw_result_hash": "589687f5bf61959f1ce5d147125b75efe0f651f5e4c42c8705b978af8ce1c70e",
+      "mapped_result_path": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/dispatch/review-plan-r4/mapped/gd-plugin-packaging-plan-review-r4-subplan-track-b.json",
+      "mapped_result_hash": "499a6a2b3b102d760716966ae0672bd1e06e295ede9588769e011875eccf8277",
+      "codex_review_status": "completed",
+      "codex_review_kind": "plan",
+      "gd_review_decision": "REQUIRES_CHANGES",
+      "codex_requires_changes": true,
+      "missing_primary_target": false
+    }
+  ],
+  "aggregate_summary": {
+    "total_jobs": 1,
+    "transport_ok": 1,
+    "transport_failed": 0,
+    "wrapper_schema_fail": 0,
+    "approved": 0,
+    "requires_changes": 1,
+    "failed": 0,
+    "missing_primary_target_count": 0,
+    "codex_requires_changes_count": 1,
+    "closure_eligible": false,
+    "closure_blockers": [
+      "codex_requires_changes: 1 job(s)"
+    ]
+  }
+}

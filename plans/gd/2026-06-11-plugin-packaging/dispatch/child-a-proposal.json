@@ -1,0 +1,22 @@
+{
+  "proposal_id": "gd-plugin-packaging-track-a-plugin-surface-001",
+  "parent_dispatch_id": "gd-plugin-packaging",
+  "parent_track_id": "track-a-plugin-surface",
+  "agent_role": "child_planner",
+  "output_status": "completed",
+  "summary_cn": "起草 GD 插件面 Step Plan 与三个并行 task packet，覆盖 SC-001/005/008/009/010，落地 .claude-plugin 脚手架、两段式安装 README、选项制可重跑 setup 命令与持久化脚本。",
+  "task_packets": [
+    {"task_id": "gd-plugin-scaffold-manifests", "owned_paths": [".claude-plugin/plugin.json", ".claude-plugin/marketplace.json"], "required_context": ["specs/gd-plugin-packaging/spec.md", "docs/constitution-plugin.md", "commands/gd.md"]},
+    {"task_id": "gd-plugin-install-readme", "owned_paths": [".claude-plugin/README.md"], "required_context": ["specs/gd-plugin-packaging/spec.md", "docs/constitution-plugin.md", "vendor/l3-transport/README.md"]},
+    {"task_id": "gd-plugin-setup-command", "owned_paths": ["commands/setup.md", "scripts/gd-plugin-setup.sh"], "required_context": ["specs/gd-plugin-packaging/spec.md", "docs/constitution-plugin.md", "commands/gd.md"]}
+  ],
+  "sc_refs": ["SC-001", "SC-005", "SC-008", "SC-009", "SC-010"],
+  "verify": [
+    {"sc_ref": "SC-001", "method": "command", "cmd": "python3 -c \"import json;d=json.load(open('.claude-plugin/plugin.json'));assert 'version' not in d;print('NO_VERSION')\" && grep -Eq 'claude plugin marketplace add .+&&.+claude plugin install .+@' .claude-plugin/README.md && echo PASS"},
+    {"sc_ref": "SC-005", "method": "command", "cmd": "f=.claude-plugin/README.md; grep -q 'marketplace update' \"$f\" && grep -q 'plugin update' \"$f\" && grep -q 'install-transport.sh' \"$f\" && echo PASS"},
+    {"sc_ref": "SC-008", "method": "command", "cmd": "! grep -rEn 'pip install|pip3 install' scripts/gd-plugin-setup.sh commands/setup.md && ! grep -rEn 'sk-[A-Za-z0-9]{16,}' .claude-plugin scripts/gd-plugin-setup.sh && echo PASS"},
+    {"sc_ref": "SC-009", "method": "command", "cmd": "f=.claude-plugin/README.md; grep -q 'codex CLI' \"$f\" && grep -q 'install-transport.sh' \"$f\" && grep -Eq 'macOS' \"$f\" && grep -Eq 'GitLab' \"$f\" && ! grep -Eq '一条命令.*完整功能' \"$f\" && echo PASS"},
+    {"sc_ref": "SC-010", "method": "command", "cmd": "bash scripts/gd-plugin-setup.sh --self-check | grep -q 'FIELDS=4' && bash scripts/gd-plugin-setup.sh --self-check | grep -q 'FREEFORM=0' && bash scripts/gd-plugin-setup.sh --self-check | grep -q 'KEY_TYPES=2' && bash scripts/gd-plugin-setup.sh --self-check | grep -q 'BUILTIN_KEY=0' && echo PASS"}
+  ],
+  "blocked_reason": null
+}

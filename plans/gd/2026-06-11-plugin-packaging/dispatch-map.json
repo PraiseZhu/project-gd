@@ -1,0 +1,207 @@
+{
+  "dispatch_id": "gd-plugin-packaging",
+  "source_master_plan": "plans/gd/2026-06-11-plugin-packaging/master-plan.md",
+  "goal_chain": {
+    "PROJECT_GOAL": "在 Claude Code 中建设 /gd Goal-Driven 多 Agent 主链路，提升复杂任务的计划、审查、执行、验收效率，并通过 Codex 作为 cross-review sidecar 降低填表式计划与执行遗漏风险。（ref GOAL_SOURCE §1）",
+    "CHAIN_GOAL": "用 shared core 固定目标链、SC、任务包、review contract 和 anti-fill 标准，保证后续 /gd command、multi-agent dispatch、execution review、Codex cross-review 都引用同一套契约。（ref GOAL_SOURCE §1）",
+    "PHASE_GOAL": "把 /review1（L1）/ /review2（L2）/ /gd（L3）三个独立命令及其全部运行时依赖封装为可分发 macOS 插件：零开发者绝对路径、bundle 完整含 vendor/l3-transport、codex 传输栈前置分两段声明、setup 命令收 4 选项制预设、跨目录冒烟证明可用，满足 constitution-plugin.md P1–P6 与 spec SC-001~010。"
+  },
+  "max_parallel_planning": 2,
+  "max_parallel_execution": 2,
+  "max_parallel_review": 2,
+  "max_parallel_validation": 2,
+  "tracks": [
+    {
+      "track_id": "track-a-plugin-surface",
+      "mode": "plan",
+      "agent_role": "child_planner",
+      "owned_paths": [
+        "plans/gd/2026-06-11-plugin-packaging/track-a"
+      ],
+      "forbidden_paths": [
+        "/Users/praise/.claude/**",
+        "plans/gd/2026-06-11-plugin-packaging/track-b",
+        "commands",
+        "vendor",
+        "scripts"
+      ],
+      "required_context": [
+        "specs/gd-plugin-packaging/spec.md",
+        "docs/constitution-plugin.md",
+        "docs/gd-v7-project-goal.md",
+        "prompts/gd-review-standard.md",
+        "templates/gd-step-plan-template.md",
+        "templates/gd-task-packet-template.md",
+        "CLAUDE.md",
+        "vendor/l3-transport/README.md",
+        "commands/gd.md"
+      ],
+      "deliverables": [
+        {
+          "path": "plans/gd/2026-06-11-plugin-packaging/track-a/step-plan.md",
+          "kind": "file",
+          "must_exist": true
+        }
+      ],
+      "blocked_by": [],
+      "can_parallel_with": [
+        "track-b-portability-isolation"
+      ],
+      "sc_refs": [
+        "SC-001",
+        "SC-005",
+        "SC-008",
+        "SC-009",
+        "SC-010"
+      ],
+      "verify": [
+        {
+          "sc_ref": "SC-001",
+          "method": "command",
+          "cmd": "grep -q 'SC-001' plans/gd/2026-06-11-plugin-packaging/track-a/step-plan.md && echo PASS",
+          "expect": "PASS"
+        },
+        {
+          "sc_ref": "SC-005",
+          "method": "command",
+          "cmd": "grep -q 'SC-005' plans/gd/2026-06-11-plugin-packaging/track-a/step-plan.md && echo PASS",
+          "expect": "PASS"
+        },
+        {
+          "sc_ref": "SC-008",
+          "method": "command",
+          "cmd": "grep -q 'SC-008' plans/gd/2026-06-11-plugin-packaging/track-a/step-plan.md && echo PASS",
+          "expect": "PASS"
+        },
+        {
+          "sc_ref": "SC-009",
+          "method": "command",
+          "cmd": "grep -q 'SC-009' plans/gd/2026-06-11-plugin-packaging/track-a/step-plan.md && echo PASS",
+          "expect": "PASS"
+        },
+        {
+          "sc_ref": "SC-010",
+          "method": "command",
+          "cmd": "grep -q 'SC-010' plans/gd/2026-06-11-plugin-packaging/track-a/step-plan.md && echo PASS",
+          "expect": "PASS"
+        }
+      ]
+    },
+    {
+      "track_id": "track-b-portability-isolation",
+      "mode": "plan",
+      "agent_role": "child_planner",
+      "owned_paths": [
+        "plans/gd/2026-06-11-plugin-packaging/track-b"
+      ],
+      "forbidden_paths": [
+        "/Users/praise/.claude/**",
+        "plans/gd/2026-06-11-plugin-packaging/track-a",
+        "commands",
+        "vendor",
+        "scripts"
+      ],
+      "required_context": [
+        "specs/gd-plugin-packaging/spec.md",
+        "docs/constitution-plugin.md",
+        "docs/gd-v7-project-goal.md",
+        "prompts/gd-review-standard.md",
+        "templates/gd-step-plan-template.md",
+        "templates/gd-task-packet-template.md",
+        "CLAUDE.md",
+        "commands/gd.md",
+        "commands/review1.md",
+        "commands/review2.md",
+        "vendor/l3-transport/README.md",
+        "vendor/l3-transport/handoff/lib/state-paths.sh",
+        ".deploy-manifest.jsonl"
+      ],
+      "deliverables": [
+        {
+          "path": "plans/gd/2026-06-11-plugin-packaging/track-b/step-plan.md",
+          "kind": "file",
+          "must_exist": true
+        }
+      ],
+      "blocked_by": [],
+      "can_parallel_with": [
+        "track-a-plugin-surface"
+      ],
+      "sc_refs": [
+        "SC-002",
+        "SC-003",
+        "SC-004",
+        "SC-006",
+        "SC-007"
+      ],
+      "verify": [
+        {
+          "sc_ref": "SC-002",
+          "method": "command",
+          "cmd": "grep -q 'SC-002' plans/gd/2026-06-11-plugin-packaging/track-b/step-plan.md && echo PASS",
+          "expect": "PASS"
+        },
+        {
+          "sc_ref": "SC-003",
+          "method": "command",
+          "cmd": "grep -q 'SC-003' plans/gd/2026-06-11-plugin-packaging/track-b/step-plan.md && echo PASS",
+          "expect": "PASS"
+        },
+        {
+          "sc_ref": "SC-004",
+          "method": "command",
+          "cmd": "grep -q 'SC-004' plans/gd/2026-06-11-plugin-packaging/track-b/step-plan.md && echo PASS",
+          "expect": "PASS"
+        },
+        {
+          "sc_ref": "SC-006",
+          "method": "command",
+          "cmd": "grep -q 'SC-006' plans/gd/2026-06-11-plugin-packaging/track-b/step-plan.md && echo PASS",
+          "expect": "PASS"
+        },
+        {
+          "sc_ref": "SC-007",
+          "method": "command",
+          "cmd": "grep -q 'SC-007' plans/gd/2026-06-11-plugin-packaging/track-b/step-plan.md && echo PASS",
+          "expect": "PASS"
+        }
+      ]
+    }
+  ],
+  "waves": [
+    {
+      "wave_id": "w1",
+      "track_ids": [
+        "track-a-plugin-surface",
+        "track-b-portability-isolation"
+      ],
+      "description": "并行起草两簇 step plan + task packets：track-a 插件面（scaffolding+README+setup），track-b 可移植+隔离（命令清硬编码+HANDOFF_ROOT+写入隔离+冒烟）。owned_paths 写独立 plan 子目录，无重叠。"
+    }
+  ],
+  "merge_gates": [
+    {
+      "gate_id": "G1",
+      "description": "child planner 输出格式合规（按 gd-step-plan / gd-task-packet 模板 + child-plan-proposal block）"
+    },
+    {
+      "gate_id": "G2",
+      "description": "task packet owned_paths 不越界、两簇互不重叠、不写 ~/.claude/**"
+    },
+    {
+      "gate_id": "G3",
+      "description": "plan 草稿不含裸 VERDICT / REV_VERDICT / GD_REVIEW_DECISION 字段"
+    },
+    {
+      "gate_id": "G4",
+      "description": "每条 SC 绑定可执行 verify（命令/路径/断言/测试之一），无 anti-fill 规则 A 违规"
+    },
+    {
+      "gate_id": "G5",
+      "description": "wave 1 两 track 全完成后主 agent 才合并、写 ledger 与 controller report"
+    },
+    {
+      "gate_id": "G6",
+      "description": "两簇 plan 若对同一封装决策有冲突，主 agent 写仲裁理由，按更严格取值"
+    }
+  ]
+}

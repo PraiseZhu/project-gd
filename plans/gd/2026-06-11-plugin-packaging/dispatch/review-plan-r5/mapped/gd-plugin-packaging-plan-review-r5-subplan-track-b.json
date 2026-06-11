@@ -1,0 +1,55 @@
+{
+  "template_kind": "gd-plan-review",
+  "reviewer": "codex",
+  "review_target": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/track-b/step-plan.md",
+  "review_kind": "plan",
+  "review_run_status": "completed",
+  "gd_review_decision": "REQUIRES_CHANGES",
+  "scope_checked": [
+    {
+      "facet": "raw markdown structure",
+      "result": "pass",
+      "evidence": "writer-validated; verdict=REQUIRES_CHANGES"
+    }
+  ],
+  "findings": [
+    {
+      "severity": "P1",
+      "title": "SC-007 覆盖 scripts 但无清零任务",
+      "sc_refs": [
+        "SC-007"
+      ],
+      "evidence": "`plans/gd/2026-06-11-plugin-packaging/track-b/step-plan.md:67` 定义全量 grep；`step-plan.md:153-157` 的 t3 只拥有新建脚本。实测：`grep -RInE '/Users/praise/(AI-Agent|\\.claude)' commands scripts vendor/l3-transport --include='*.md' --include='*.sh' --include='*.py'` 命中 `scripts/gd-codex-bridge-review.py:72`、`scripts/install-gd-command.sh:21` 等。",
+      "impact": "按计划执行会在 SC-007 直接失败，或逼执行者越过 task packet owned_paths 修改未授权脚本。",
+      "required_fix": "要么把这些现有 `scripts/*` 从 DIST_RUNTIME_PATHS 明确移出并说明不分发；要么新增/扩展 owned_paths，逐个覆盖会被 SC-007 grep 命中的现有脚本并写明替换方式。",
+      "verify": "运行 `grep -RInE '/Users/praise/(AI-Agent|\\.claude)' commands scripts vendor/l3-transport --include='*.md' --include='*.sh' --include='*.py'` 无输出，且所有被改脚本都在 task packet owned_paths 内。"
+    },
+    {
+      "severity": "P1",
+      "title": "SC-007 漏扫 extensionless bin 与 plist",
+      "sc_refs": [
+        "SC-007"
+      ],
+      "evidence": "`step-plan.md:65` 列 `handoff/bin/*`，`step-plan.md:114` 列 launchagents plist，`step-plan.md:67` 的 verify 不包含它们。实测 `vendor/l3-transport/launchagents/com.praise.codex-watch.plist:24` 与 `vendor/l3-transport/handoff/bin/codex-watch:115` 含 `/Users/praise`。",
+      "impact": "SC-007 可假通过，但安装后的 daemon ProgramArguments、日志路径或 helper 仍指向开发者机器，非本机安装会失败。",
+      "required_fix": "将 `.plist` 与 `vendor/l3-transport/handoff/bin/*` 加入 SC-007 可执行扫描，并把这些文件纳入 t2 owned_paths 或独立 packet；明确 plist 由 `state-paths.sh`/安装脚本渲染或去用户名化。",
+      "verify": "`grep -RIn '/Users/praise' vendor/l3-transport/launchagents vendor/l3-transport/handoff/bin` 无输出，且 SC-007 verify 能覆盖这些文件类型。"
+    },
+    {
+      "severity": "P2",
+      "title": "/review1 discuss 仍未接入 HANDOFF_ROOT",
+      "sc_refs": [
+        "SC-003"
+      ],
+      "evidence": "`step-plan.md:108` 只描述 writer 改动；`step-plan.md:121` 只 real-call `review-result-writer.sh`。实测 `vendor/l3-transport/scripts/codex-consult.sh:54` 为 `$HOME/.claude/handoff/bin/codex-send-wait`。",
+      "impact": "review happy path 可能通过，但 `/review1` 默认 discuss 在 HANDOFF_ROOT 改到 `${CLAUDE_PLUGIN_DATA}/gd-handoff` 后仍找旧 daemon，三命令可分发目标不成立。",
+      "required_fix": "把 `vendor/l3-transport/scripts/codex-consult.sh` 加入 Step.4/t2 owned_paths，source `handoff/lib/state-paths.sh` 并使用 `${HANDOFF_BIN}/codex-send-wait`；跨目录 smoke 增加 discuss 子路径真调。",
+      "verify": "`grep -n '\\$HOME/.claude/handoff/bin' vendor/l3-transport/scripts/codex-consult.sh` 无输出；`tests/gd-plugin-cross-dir-smoke.sh` 覆盖 writer 与 codex-consult 两条路径。"
+    }
+  ],
+  "merge_notes": {
+    "conflict_with_other_reviewer": false
+  },
+  "residual_risk": [],
+  "timestamp": "2026-06-11T05:47:43Z"
+}
