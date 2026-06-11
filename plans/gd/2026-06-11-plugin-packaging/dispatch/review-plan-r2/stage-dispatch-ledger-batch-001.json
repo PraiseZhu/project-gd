@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "stage": "review_plan",
+  "parent_run_id": "gd-plugin-packaging-plan-review-r2",
+  "batch_id": "batch-001",
+  "recorded_at": "2026-06-10T20:54:34Z",
+  "child_agent_count": 2,
+  "max_parallel": 2,
+  "child_jobs": [
+    {
+      "job_id": "gd-plugin-packaging-plan-review-r2-master-plan",
+      "result_path": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/dispatch/review-plan-r2/mapped/gd-plugin-packaging-plan-review-r2-master-plan.json",
+      "result_hash": "6b7ec23d0b6ab70ac7c12af2fea0bad206596247d3fe2e2272dfadab7add9309",
+      "status": "failed"
+    },
+    {
+      "job_id": "gd-plugin-packaging-plan-review-r2-subplan-track-a",
+      "result_path": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/dispatch/review-plan-r2/mapped/gd-plugin-packaging-plan-review-r2-subplan-track-a.json",
+      "result_hash": "9fb15aaccffbf023f91ff20facaf37096e3828efbd64829116bfcee7efca946f",
+      "status": "failed"
+    }
+  ],
+  "main_agent_merge": {
+    "merge_report_path": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/dispatch/review-plan-r2/controller-report.json",
+    "merge_report_hash": "7b35957fee7882d5b931e5fed9a03a98470046a4b202d45ca8ea82e269b86b7c",
+    "final_decision": "REQUIRES_CHANGES",
+    "blocking_buckets": [
+      "gd-plugin-packaging-plan-review-r2-master-plan",
+      "gd-plugin-packaging-plan-review-r2-subplan-track-a",
+      "gd-plugin-packaging-plan-review-r2-subplan-track-b"
+    ]
+  }
+}

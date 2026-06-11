@@ -27,6 +27,12 @@
 
 set -euo pipefail
 
+# Resolve transport paths from the SAME state-paths.sh as the writer/daemon, so
+# the L1 discuss path and L3 review path share one HANDOFF_BIN (no drift).
+_CONSULT_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../handoff/lib/state-paths.sh
+. "$_CONSULT_SCRIPT_DIR/../handoff/lib/state-paths.sh"
+
 CAPSULE_FILE=""
 DISCUSS_CWD="${PWD}"
 
@@ -49,12 +55,15 @@ if [[ ! -f "$CAPSULE_FILE" ]]; then
 fi
 
 # Use live codex-send-wait (same daemon as review, different mode).
+# CODEX_BIN resolved via state-paths.sh ${HANDOFF_BIN} — same coordination root as
+# the writer/daemon, no $HOME/.claude/handoff hardcode.
 # CODEX_SEND_WAIT_TIMEOUT is read by codex-send-wait; no hardcoded --timeout here
 # so the single env var controls both discuss and review paths (SC-06).
-CODEX_BIN="$HOME/.claude/handoff/bin/codex-send-wait"
+CODEX_BIN="${HANDOFF_BIN}/codex-send-wait"
 
 if [[ ! -x "$CODEX_BIN" ]]; then
   echo "[DISCUSS] DEGRADED — watch unavailable, cannot get second opinion"
+  echo "[讨论] ⚠️ 缺 codex 传输栈：未找到可执行 codex-send-wait（路径 ${CODEX_BIN}）。fail-closed，不产出第二意见；请先按 README 部署传输栈后重试。" >&2
   exit 2
 fi
 

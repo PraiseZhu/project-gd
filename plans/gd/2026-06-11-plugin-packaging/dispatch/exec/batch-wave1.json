@@ -1,0 +1,59 @@
+{
+  "batch_id": "batch-gd-plugin-packaging-exec-wave1",
+  "dispatch_id": "gd-plugin-packaging-exec",
+  "wave_ref": "w1",
+  "batch_created_at": "2026-06-11T06:30:00Z",
+  "execution_mode": "agent_exec",
+  "task_results": [
+    {
+      "task_id": "track-a-exec",
+      "track_ref": "track-a-exec",
+      "exec_status": "completed",
+      "not_run_reason": null,
+      "deliverables_produced": [
+        {"path": ".claude-plugin/plugin.json", "kind": "file", "verified": true},
+        {"path": ".claude-plugin/marketplace.json", "kind": "file", "verified": true},
+        {"path": ".claude-plugin/README.md", "kind": "file", "verified": true},
+        {"path": "commands/setup.md", "kind": "file", "verified": true},
+        {"path": "scripts/gd-plugin-setup.sh", "kind": "file", "verified": true}
+      ],
+      "verify_results": [
+        {"sc_ref": "SC-001", "method": "command", "cmd": "python3 -c \"import json;d=json.load(open('.claude-plugin/plugin.json'));assert 'version' not in d;s=json.dumps(d);assert all(c in s for c in ['review1','review2','gd']);print('OK')\"", "result": "PASS", "exit_code": 0},
+        {"sc_ref": "SC-005", "method": "command", "cmd": "grep -q 'marketplace update' .claude-plugin/README.md && grep -q 'plugin update' .claude-plugin/README.md && grep -q 'install-transport.sh' .claude-plugin/README.md && echo PASS", "result": "PASS", "exit_code": 0},
+        {"sc_ref": "SC-008", "method": "command", "cmd": "! grep -rEn 'pip install|pip3 install' scripts/gd-plugin-setup.sh commands/setup.md && echo PASS", "result": "PASS", "exit_code": 0},
+        {"sc_ref": "SC-009", "method": "command", "cmd": "grep -q '<!-- gd-install-section -->' .claude-plugin/README.md && grep -q '<!-- gd-transport-prereq-section -->' .claude-plugin/README.md && grep -q 'codex CLI' .claude-plugin/README.md && echo PASS", "result": "PASS", "exit_code": 0},
+        {"sc_ref": "SC-010", "method": "command", "cmd": "bash scripts/gd-plugin-setup.sh --self-check | grep -q 'FIELDS=4' && bash scripts/gd-plugin-setup.sh --self-check | grep -q 'BUILTIN_KEY=0' && echo PASS", "result": "PASS", "exit_code": 0}
+      ],
+      "gd_execution_status_json": {
+        "task_id": "track-a-exec",
+        "exec_status": "completed",
+        "sc_results": {"SC-001": "pass", "SC-005": "pass", "SC-008": "pass", "SC-009": "pass", "SC-010": "pass"}
+      }
+    },
+    {
+      "task_id": "track-b-exec",
+      "track_ref": "track-b-exec",
+      "exec_status": "completed",
+      "not_run_reason": null,
+      "deliverables_produced": [
+        {"path": "scripts/gd-bundle-completeness.sh", "kind": "file", "verified": true},
+        {"path": "tests/gd-plugin-cross-dir-smoke.sh", "kind": "file", "verified": true},
+        {"path": "vendor/l3-transport/handoff/lib/state-paths.sh", "kind": "file", "verified": true},
+        {"path": "vendor/l3-transport/scripts/codex-consult.sh", "kind": "file", "verified": true},
+        {"path": "commands/gd.md", "kind": "file", "verified": true}
+      ],
+      "verify_results": [
+        {"sc_ref": "SC-002", "method": "command", "cmd": "bash scripts/gd-bundle-completeness.sh --check && echo PASS", "result": "PASS", "exit_code": 0},
+        {"sc_ref": "SC-003", "method": "command", "cmd": "bash tests/gd-plugin-cross-dir-smoke.sh && echo PASS", "result": "PASS", "exit_code": 0},
+        {"sc_ref": "SC-004", "method": "command", "cmd": "bash tests/gd-plugin-cross-dir-smoke.sh --no-codex && echo PASS", "result": "PASS", "exit_code": 0},
+        {"sc_ref": "SC-006", "method": "command", "cmd": "bash tests/gd-plugin-cross-dir-smoke.sh --assert-data-isolated && echo PASS", "result": "PASS", "exit_code": 0},
+        {"sc_ref": "SC-007", "method": "command", "cmd": "! grep -rEnI '/Users/praise/(AI-Agent|\\.claude)' commands scripts vendor/l3-transport --exclude='install-gd-command.sh' --exclude='uninstall-gd-command.sh' --exclude='install-review-route-command.sh' --exclude='check-gd-command-parity.sh' && grep -q '${HOME}/.claude' commands/gd.md && echo PASS", "result": "PASS", "exit_code": 0}
+      ],
+      "gd_execution_status_json": {
+        "task_id": "track-b-exec",
+        "exec_status": "completed",
+        "sc_results": {"SC-002": "pass", "SC-003": "pass", "SC-004": "pass", "SC-006": "pass", "SC-007": "pass"}
+      }
+    }
+  ]
+}

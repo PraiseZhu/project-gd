@@ -21,11 +21,18 @@
 
 set -euo pipefail
 
+# Resolve transport paths from the SAME state-paths.sh the daemon installer uses,
+# so CODEX_BIN (${HANDOFF_BIN}/codex-send-wait) and HANDOFF_ROOT stay in sync.
+_WRITER_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../handoff/lib/state-paths.sh
+. "$_WRITER_SCRIPT_DIR/../handoff/lib/state-paths.sh"
+
 CAPSULE_FILE=""
 BASELINE_KEY=""
 REVIEW_KIND=""
 REVIEW_CWD="${PWD}"
 NO_STOP_MARKER=0
+OUT_DIR=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -33,6 +40,7 @@ while [[ $# -gt 0 ]]; do
     --baseline-key) BASELINE_KEY="$2"; shift 2 ;;
     --review-kind) REVIEW_KIND="$2"; shift 2 ;;
     --cwd) REVIEW_CWD="$2"; shift 2 ;;
+    --out-dir) OUT_DIR="$2"; shift 2 ;;
     --no-stop-marker) NO_STOP_MARKER=1; shift ;;
     *) echo "[REVIEW] ✗ FAILED — unknown arg: $1" >&2; exit 1 ;;
   esac
@@ -48,8 +56,12 @@ if [[ ! -f "$CAPSULE_FILE" ]]; then
   exit 1
 fi
 
-BASELINE_DIR="$HOME/.claude/review-baselines/${BASELINE_KEY}"
-mkdir -p "$BASELINE_DIR"
+# Write isolation: baselines default to the update-safe plugin data dir
+# (${CLAUDE_PLUGIN_DATA}), falling back to ${HOME}/.claude — never the plugin
+# install dir. --out-dir lets the caller override the baselines root entirely.
+BASELINE_ROOT="${OUT_DIR:-${CLAUDE_PLUGIN_DATA:-$HOME/.claude}/gd-review-baselines}"
+BASELINE_DIR="${BASELINE_ROOT}/${BASELINE_KEY}"
+mkdir -p "$BASELINE_DIR" || { echo "[REVIEW] ✗ FAILED — 无法创建产物目录: $BASELINE_DIR" >&2; exit 1; }
 
 TIMESTAMP=$(date -u +%Y%m%dT%H%M%SZ)
 LAST_ERROR_PATH=""
@@ -57,7 +69,7 @@ LAST_ERROR_PATH=""
 # Writer-required gate: locate intent marker so we can mark it writer_called at end
 _SESSION_ID="${CLAUDE_SESSION_ID:-unknown}"
 _SESSION_ID_SAFE="$(printf '%s' "$_SESSION_ID" | tr -cd 'A-Za-z0-9_-' | cut -c1-64)"
-WRITER_MARKER_FILE="$HOME/.claude/state/review-writer-required/${_SESSION_ID_SAFE}.json"
+WRITER_MARKER_FILE="${CLAUDE_PLUGIN_DATA:-$HOME/.claude}/gd-state/review-writer-required/${_SESSION_ID_SAFE}.json"
 
 # Save capsule copy
 cp "$CAPSULE_FILE" "${BASELINE_DIR}/capsule-${TIMESTAMP}.txt"
@@ -84,8 +96,9 @@ _validate_finding_block() {
   echo "$block" | grep -q '验收:' || MISSING_FIELDS="${MISSING_FIELDS}${prefix}: 验收, "
 }
 
-# Send to Codex watch
-CODEX_BIN="$HOME/.claude/handoff/bin/codex-send-wait"
+# Send to Codex watch — CODEX_BIN resolved via state-paths.sh ${HANDOFF_BIN}
+# (same coordination root as the daemon), no $HOME/.claude/handoff hardcode.
+CODEX_BIN="${HANDOFF_BIN}/codex-send-wait"
 CODEX_OUTPUT=""
 CODEX_EXIT=0
 
@@ -103,6 +116,8 @@ RESULT_FILE=""
 if [[ $CODEX_EXIT -eq 127 ]]; then
   VERDICT_STATUS="degraded_unreviewed"
   echo "[REVIEW] ⚠️ DEGRADED — watch unavailable, capsule saved to ${BASELINE_DIR}/capsule-${TIMESTAMP}.txt"
+  echo "[审查] ⚠️ 缺 codex 传输栈：未找到可执行 codex-send-wait（路径 ${CODEX_BIN}）。" >&2
+  echo "[审查] 跨审 fail-closed，不产出通过结论；请先按 README 部署传输栈（codex CLI + 自备 key + install-transport.sh 部署 daemon）后重试。" >&2
 elif [[ $CODEX_EXIT -ne 0 ]]; then
   VERDICT_STATUS="failed"
   ERROR_LOG="${BASELINE_DIR}/error-${TIMESTAMP}.log"

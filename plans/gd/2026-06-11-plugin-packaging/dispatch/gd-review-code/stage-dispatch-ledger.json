@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "stage": "review_execution_code",
+  "parent_run_id": "gd-plugin-packaging-2026-06-11",
+  "batch_id": "review-code-wave1",
+  "recorded_at": "2026-06-11T10:00:00Z",
+  "child_agent_count": 2,
+  "max_parallel": 2,
+  "child_jobs": [
+    {
+      "job_id": "child-review-a",
+      "result_path": "plans/gd/2026-06-11-plugin-packaging/dispatch/gd-review-code/child-a/review-result.md",
+      "result_hash": "544d555ac1c4146d21e10632f34d1f2f87ac8e139dcfe5381894654eafcb21c7",
+      "status": "completed"
+    },
+    {
+      "job_id": "child-review-b",
+      "result_path": "plans/gd/2026-06-11-plugin-packaging/dispatch/gd-review-code/child-b/review-result.md",
+      "result_hash": "ce99db4b6082a8a45781316bd94bf9bc7d2b3616727c7a3ecc04470416dcb4d5",
+      "status": "completed"
+    }
+  ],
+  "main_agent_merge": {
+    "merge_report_path": "plans/gd/2026-06-11-plugin-packaging/dispatch/gd-review-code/merge-report.md",
+    "merge_report_hash": "e17f6655b5c612fecf3f0b690cd0298194d80ad2a4e569f18a7d0cdade341cc0",
+    "final_decision": "APPROVED",
+    "blocking_buckets": []
+  }
+}

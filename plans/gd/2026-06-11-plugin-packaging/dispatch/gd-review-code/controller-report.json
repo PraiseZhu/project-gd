@@ -1,0 +1,52 @@
+{
+  "schema_version": "1.1",
+  "run_mode": "live",
+  "started_at": "2026-06-11T10:00:00Z",
+  "finished_at": "2026-06-11T10:15:00Z",
+  "aggregate_path": "plans/gd/2026-06-11-plugin-packaging/dispatch/gd-review-code/merge-report.md",
+  "manifest_path": "plans/gd/2026-06-11-plugin-packaging/dispatch-map-exec.json",
+  "primary_gate": {
+    "verdict": "APPROVED",
+    "blocking": []
+  },
+  "secondary_gate": {
+    "verdict": "n_a",
+    "blocking": []
+  },
+  "gate_consistent": true,
+  "dirty_detected": false,
+  "jobs": [
+    {
+      "queue_job_id": "child-review-a",
+      "target_role": "security_path_correctness",
+      "primary_target": "feat/plugin-packaging security review",
+      "bridge_exit": 0,
+      "bridge_stderr_path": "",
+      "bridge_stderr_summary": "clean",
+      "raw_verdict": "APPROVED",
+      "mapped_status": "approved",
+      "aggregate_bucket": "approved"
+    },
+    {
+      "queue_job_id": "child-review-b",
+      "target_role": "architecture_plugin_completeness",
+      "primary_target": "feat/plugin-packaging architecture review",
+      "bridge_exit": 0,
+      "bridge_stderr_path": "",
+      "bridge_stderr_summary": "clean",
+      "raw_verdict": "APPROVED",
+      "mapped_status": "approved",
+      "aggregate_bucket": "approved"
+    }
+  ],
+  "batch_ledgers": [
+    {
+      "path": "stage-dispatch-ledger.json",
+      "hash": "035a612f4151020f1a266233a5f2ade13c9ca6f0bdd80b2192225317bbd9f8c7"
+    }
+  ],
+  "suite_target_closure": [
+    {"target_id": "child-review-a", "evidence_kind": "mapped_status_approved"},
+    {"target_id": "child-review-b", "evidence_kind": "mapped_status_approved"}
+  ]
+}

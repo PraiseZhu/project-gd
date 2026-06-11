@@ -4,21 +4,20 @@ description: Claude-first /gd Goal-Driven 多 Agent 主入口。Plan H lock_revi
 
 # /gd Command
 
-> **Source of truth**：本文件 `Project GD/commands/gd.md`。
-> **Installed copy**（仅授权后）：`/Users/praise/.claude/commands/gd.md`，必须 hash 一致（用 `Project GD/tools/check-gd-command-parity.sh` 验证）。
+> **Source of truth**：本文件 `${CLAUDE_PLUGIN_ROOT}/commands/gd.md`（随插件分发，无开发者机器命令副本）。
 > **Stage**：Plan H lock_revision=22 — **revision=22 execute agent_exec live（rev21 架构复用，零新建脚本）** ★ `/gd execute` agent_exec 子 agent 化已实装：capability probe fail-closed + stage=execute dispatch ledger + controller-report + batch owned_paths audit；human_exec 降为 emergency-only；batch validator 解除 agent_exec PENDING 拒绝；见 `docs/gd-changelog.md` §rev22。前置版本链：Plan H lock_revision=21 — 四阶段入口 + fail-closed。multi-agent planning dispatch（Plan 4 + H1，contract introduced at revision=2）★ dispatch map + capability probe + manual_packet fallback；/gd review plan dual review（H2a，contract introduced at revision=3；partial_completed — Codex unavailable fail-closed live, happy path pending W2）★ Claude self-review + Codex cross-review + merge + auto-fix loop；revision=4 anti-fill token externalization + runtime override footnote；revision=5 lock_revision metadata sync after Codex cross-review；**revision=6 /gd execute agent_exec contract (H3)** ★ capability probe + execution_dispatch_ledger + child prompt builder + path audit；**revision=7 /gd review unified router (H2b)** ★ 5 review target types + outcome-first ordering + reuse H2a loop + invoke H4b validator；revision=8 drift reconciliation；**revision=9 Plan 4 live dispatch contract v1.1** ★ runtime binding anchors + probe.json schema + proof_mode (live_child_dispatch|manual_packet_fallback|fail_closed_no_dispatch) + source_dispatch_map_hash cross-check；**revision=10 Plan 4 round 2 strict runtime binding** ★ execute-agent-exec anchor + --strict-live-proof on all runtime validator calls + cross-validation entries (strict-binding / fixture-matrix / live-dispatch-smoke)；**revision=11 Plan 4 round 3 hash+probe enforcement** ★ runtime_proof.probe_artifact_ref REQUIRED + SHA-256 hex format check + matrix smoke wired to live-dispatch-smoke (real hashes) + full probe schema validation；**revision=12 Plan 4 round 4 canonical probe + fail_closed semantics** ★ scripts/gd-validate-probe.py canonical schema validator + live smoke delegates probe enforcement (3 negative fixtures: bad-enum/extra-field/bad-types) + fail_closed_no_dispatch allows --dispatch-map omission + requires fallback_reason；**revision=13 Plan 5 v3 review-router hardening** (...); **revision=14 Plan 8 v4.1 review template split + v2 contract** ★ gd_review_contract.py SSOT + v2 schema (13 allOf) + handoff validator/emitter + combined review CVF enforcement + AST drift scanner + compat-v1 gate ★ gd-review-router.py unified state machine (4 modes: fixture/detect_only/live_dry_run/live) + gd-validate-route-report.py canonical SSOT + review-router runtime anchor + config-driven binding validator + Q1 singleton + Q3 side-door prevention；execution-only/plus-code cross-review 已在 revision=20 接入（compat-v1 enum 扩展为含 execution_outcome/combined）；code-only Codex sidecar 仍 pending Plan 6；**revision=15 Plan 10-lite live install** ★ Plan 9 closure gate `complete_with_live_parallelism` → `/gd review plan` 可由 `local_only` 升 `active`；terminal `/gd` live 接通；**revision=16 Plan 1 review-chain correctness** ★ router live plan path 打通（_consume_and_merge）；aggregate v2 manifest-driven batch；parent close gate 增加 stale/unbound/unconsumed/constrained blocking；`/gd review plan` via gd-codex-bridge-review.py --live-transport --compat-v1 消费 active raw result；**revision=17 Plan 3a live review activation** ★ router 5 target live routing 全部实现，无 NOT_IMPLEMENTED；no-artifact exit 2；exit code 语义规范化（0=APPROVED/1=REQUIRES_CHANGES/2=missing-input）；`claude_review_origin=skill_orchestrated` 字段引入；execution-only handler=gd-validate-execution-outcome.py；code-only handler=LOCAL_STATIC_ONLY（Codex sidecar 仍 pending Plan 6）；execution-plus-code outcome-first（outcome fail → code review blocked）；`/gd review plan` skill_orchestrated path：command orchestration 自产 Claude review JSON + 收集 Codex raw，router 作为 consumer（不 spawn Claude subprocess）；**revision=18 Plan GD-1 suite-mode serial review contract** ★ `/gd review plan` 多计划套件必须串行 single-controller 调度；禁止 Claude 子 agent 并发调用 Codex bridge（gd-codex-bridge-review.py 内置 lock sentinel，并发入口返回 SUITE_CONCURRENT_BRIDGE 并退出非 0）；最终状态只读 aggregate-final.json 不读 aggregate.json；aggregate 新增 review_contract_hash（sources: commands/gd.md + prompts/gd-review-standard.md + 2 templates）+ stale_review_contract + ambiguous_raw_result blocking；Claude self-review 与 Codex review 共用同一 task packet metadata 合规标准（forbidden_paths / required_context / deliverables / owned_paths）。**revision=19 Plan A review-chain 基础设施修复** ★ `/gd review plan` suite-mode 必须通过 `scripts/gd-review-suite-controller.py` 执行（禁止 Claude 子 agent 直接并发调用 bridge）；current live plan writer 输出 v1 raw（`# Plan Review Result`），bridge 调用必须显式 `--compat-v1`；manifest schema `review_kind` 枚举扩展为 `plan|code|code_diff|execution_outcome|combined`；controller 实现双 gate 一致性检查（primary + secondary re-read，不一致→PARENT_GATE_MISMATCH+exit 3）；target staged/worktree 不一致（AM/MM）必须阻断 final APPROVED（`--require-git-index-match`）；execution review 同样进入 aggregate/parent close gate，不单独旁路。**revision=20 Plan Execution-Review Cross-Review v2** ★ `/gd review` 对 `execution_only_no_code` / `execution_plus_code` target 必须经过三段闭环：local outcome validator（`gd-validate-execution-outcome.py` 验事实/deliverable/verify-rerun）+ Codex bridge cross-review（`gd-codex-bridge-review.py` kind=`execution_outcome` / `combined` 验 review 质量/SC 覆盖/anti-fill）+ route validator（`gd-validate-route-report.py` 校验三层证据分离）；route report 新增分层字段 `codex_raw_result_path` / `codex_raw_result_hash` / `codex_mapped_result_path` / `codex_mapped_result_hash` / `codex_review_status` / `codex_review_kind` / `execution_artifact_hash`；`raw_result_path == execution_artifact_ref` 直接被 validator 拒绝；缺 Codex result 时 `codex_review_status=transport_failed` + decision=`REQUIRES_CHANGES`，不得 APPROVED；`schema/gd-route-report.schema.json` 作为 route report SSOT（per-kind required fields via allOf if/then）；fixtures/review-bridge/v2/ 新增 `v2-execution-outcome-approved.md` 和 `v2-combined-requires-changes.md`；templates/ 新增 `gd-execution-outcome-review-template.md` 和 `gd-combined-review-template.md`；execution-review 不再写成 `LOCAL_STATIC_ONLY` 或 `pending Plan 6`——Codex sidecar 已 active for execution kinds（pure `code_only` 仍 LOCAL_STATIC_ONLY pending Plan 6）。**revision=21 Project GD Four-Stage Mandatory Subagent Contract** ★ 四阶段统一横向合同：每阶段必须发 1-2 个子 agent，0 child fail-closed，`max_parallel=2` 硬上限；`human_exec`/`local_only`/`manual_packet_fallback`/`pending_future_plan`/`LOCAL_STATIC_ONLY`/`failed_to_run`/`timeout`/`degraded`/`transport_failed`/`wrapper_schema_fail`/`fixture_mode`/`mock_only`/Claude-only/Codex-only 均为 `closure_ineligible`，任一出现在 final gate 路径时 `CLOSURE_INELIGIBLE: <reason>` exit 1；`/gd review plan` 从 single-controller serial-only 改为 bounded-parallel（1-2 review child，max_parallel=2，global bridge lock 废除）；`/gd review code` 从 pending_future_plan/LOCAL_STATIC_ONLY 改为 `review_execution_code` alias；stage dispatch ledger（`schema/gd-stage-dispatch-ledger.schema.json`）和 schema-validated controller-report（`schema/gd-controller-report.schema.json`）成为 final gate 必须证据；`fixture_mode`/`mock_only` controller report 被 final gate 显式拒绝；`failed_to_run`/`transport_failed` vocabulary 归一；`~/.claude/handoff/codex-bridge-status.json` passive gate 退出 production closure 路径。
 
 ---
 
-## Authoritative paths（绝对路径，installed command 在任意 cwd 触发都能找到）
+## Authoritative paths（框架内文件经 `${CLAUDE_PLUGIN_ROOT}` 解析，安装者任意 cwd 触发都能找到）
 
 ```text
-GD_PROJECT_ROOT: /Users/praise/AI-Agent/Claude/projects/Project GD
-GD_STANDARD:    /Users/praise/AI-Agent/Claude/projects/Project GD/prompts/gd-review-standard.md
-GOAL_SOURCE:    /Users/praise/AI-Agent/Claude/projects/Project GD/docs/gd-v7-project-goal.md
+GD_PROJECT_ROOT: ${CLAUDE_PLUGIN_ROOT}
+GD_STANDARD:    ${CLAUDE_PLUGIN_ROOT}/prompts/gd-review-standard.md
+GOAL_SOURCE:    ${CLAUDE_PLUGIN_ROOT}/docs/gd-v7-project-goal.md
 ```
 
-任何引用 shared core 的路径都从 `GD_PROJECT_ROOT` 拼接，绝不使用 `Project GD/...` 相对路径。
+任何引用 shared core 的路径都从 `${CLAUDE_PLUGIN_ROOT}` 拼接，绝不使用 `Project GD/...` 相对路径。
 
 ---
 
@@ -145,7 +144,7 @@ degraded                    # 运行时降级（如 Codex 网络故障）
 
 ```text
 GD_STAGE: <plan | review plan | execute | review code | help>
-GD_PROJECT_ROOT: /Users/praise/AI-Agent/Claude/projects/Project GD
+GD_PROJECT_ROOT: ${CLAUDE_PLUGIN_ROOT}
 TARGET_PROJECT_ROOT: <绝对路径 或 N/A（review plan / help）>
 CAPABILITY_STATUS: <按映射表枚举值>
 ```
@@ -431,7 +430,7 @@ CAPABILITY_STATUS: <按映射表枚举值>
 - **batch `execution_mode` 为 `dry_run`** → batch validator 返回 `EXECUTION_BATCH_PENDING_FUTURE_PLAN`，停止
 - `child_agent_count = 0` → `CLOSURE_INELIGIBLE: zero_child_closure`，停止
 - child 写越 `owned_paths` → batch fail，停止
-- batch deliverables_produced 路径指向 `/Users/praise/.claude/**` → 拒绝执行（path-traversal 防护）
+- batch deliverables_produced 路径指向 `${HOME}/.claude/**` → 拒绝执行（path-traversal 防护）
 - **缺 stage dispatch ledger** → `CLOSURE_INELIGIBLE: missing_stage_dispatch_ledger`，停止
 - **`scripts/gd-validate-stage-dispatch-ledger.py` exit ≠ 0** → `CLOSURE_INELIGIBLE: stage_dispatch_ledger_invalid`，停止
 - **缺 controller report** → `CLOSURE_INELIGIBLE: missing_controller_report`，停止
@@ -491,7 +490,7 @@ CAPABILITY_STATUS: <按映射表枚举值>
 2. 引用旧 `Project GD/prompts/rev-review-standard.md`（Plan 1 baseline 已标 `legacy_rev_standard`）
 3. 调用旧 `~/.claude/commands/review.md` 或 `/review plan` / `/review code`
 4. 输出含"行首裸 `VERDICT:`"的字段（旧 hook regex 会误触发；详见 Plan 2 v2 P1 教训）
-5. 写入 `~/.claude/**` 任何路径（必须走 `Project GD/baselines/gd-v7-runtime-write-authorizations.jsonl` ledger + `scripts/install-gd-command.sh --install`）
+5. 写入 `${HOME}/.claude/**` 任何路径（命令安装由 `/plugin` 机制接管；codex 传输 daemon 部署属安装者一次性前置，见 `vendor/l3-transport/scripts/install-transport.sh`，不由 `/gd` 写入）
 6. 启动 daemon / 注册 hook / 修改 cron / `LaunchAgent`
 7. 在 `CAPABILITY_STATUS` 上"主观选择"（必须按映射表）
 8. 跳过 `TARGET_PROJECT_ROOT` 解析协议（无法定位 → 必须停止）
@@ -514,19 +513,11 @@ CAPABILITY_STATUS: <按映射表枚举值>
 
 ---
 
-## Install / Uninstall / Parity
+## Install / Update
 
-本 source 文件需通过 `Project GD/scripts/install-gd-command.sh --install` 写入 `/Users/praise/.claude/commands/gd.md`，且必须先在 `Project GD/baselines/gd-v7-runtime-write-authorizations.jsonl` 中 append 一条授权记录，使用 Plan 1 baseline canonical 字段：
+命令安装与更新完全由 Claude Code `/plugin` 机制承担（注册 marketplace → `claude plugin install` → reload）；本文件作为框架内文件随插件分发，无开发者机器命令副本、无 `~/.claude/commands` 写入步骤。旧 `install-gd-command.sh` / `uninstall-gd-command.sh` / `check-gd-command-parity.sh`（写 `~/.claude/commands` 的模型）已作废，不进 bundle。
 
-```text
-ts / target_path / granted_by / scope / plan_ref / rationale
-```
-
-匹配键：`scope == "install_claude_command"` **且** `target_path == "/Users/praise/.claude/commands/gd.md"`。Install 脚本用 Python JSONL 解析，对 JSONL 空白不敏感。详见 `docs/gd-v7-claude-command.md` §5.3。
-
-回滚：`Project GD/scripts/uninstall-gd-command.sh`（hash 一致才删除）。
-
-Parity 检查：`Project GD/tools/check-gd-command-parity.sh`。
+cross-review 所需的 codex 传输栈为安装者一次性前置（codex CLI + 自备 key + `vendor/l3-transport/scripts/install-transport.sh` 部署 daemon），与插件命令安装分两段，详见安装 README。
 
 ---
 

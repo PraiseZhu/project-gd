@@ -1,0 +1,16 @@
+{
+  "target_set_id": "gd-plugin-packaging-plan-review-r3",
+  "required_jobs": [
+    {
+      "queue_job_id": "gd-plugin-packaging-plan-review-r3-subplan-track-b",
+      "target_role": "subplan_track_b",
+      "primary_target": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/track-b/step-plan.md",
+      "review_kind": "plan",
+      "expected_target_hash": "bb404649d979908372482262515cc4da47ab2b594556cbeef3bf4b61c41fde20",
+      "codex_raw_result_path": "/Users/praise/.claude/review-baselines/gd-plan-step-plan-md-657648374b56/result-20260610T210541Z.md",
+      "mapped_result_path": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/dispatch/review-plan-r3/mapped/gd-plugin-packaging-plan-review-r3-subplan-track-b.json",
+      "raw_verdict": "REQUIRES_CHANGES",
+      "raw_contract": "v1"
+    }
+  ]
+}

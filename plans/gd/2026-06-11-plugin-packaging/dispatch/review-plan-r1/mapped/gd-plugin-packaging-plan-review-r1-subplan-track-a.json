@@ -1,0 +1,66 @@
+{
+  "template_kind": "gd-plan-review",
+  "reviewer": "codex",
+  "review_target": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/track-a/step-plan.md",
+  "review_kind": "plan",
+  "review_run_status": "completed",
+  "gd_review_decision": "REQUIRES_CHANGES",
+  "scope_checked": [
+    {
+      "facet": "raw markdown structure",
+      "result": "pass",
+      "evidence": "writer-validated; verdict=REQUIRES_CHANGES"
+    }
+  ],
+  "findings": [
+    {
+      "severity": "P2",
+      "title": "SC-001 验证弱化为文档存在检查",
+      "sc_refs": [
+        "SC-001"
+      ],
+      "evidence": "`plans/gd/2026-06-11-plugin-packaging/track-a/step-plan.md:50`、`:51`；权威 SC 在 `specs/gd-plugin-packaging/spec.md:150`。",
+      "impact": "执行后可能通过本 step 验收，但安装者仍看不到三条链路命令。",
+      "required_fix": "给 SC-001 增加安装后命令列表/触发面的验证，或明确本 step 只覆盖 SC-001 的 manifest 子项并改用新子 SC。",
+      "verify": "SC-001 verify 能断言三命令安装后可见，或目标链不再声称覆盖完整 SC-001。"
+    },
+    {
+      "severity": "P2",
+      "title": "Task Packet 缺少强制字段",
+      "sc_refs": [
+        "SC-001"
+      ],
+      "evidence": "`plans/gd/2026-06-11-plugin-packaging/track-a/step-plan.md:123`、`:125`、`:126`、`:127`。",
+      "impact": "后续派发无法判断边界、输入上下文和每包完成标准，容易产生填表式执行。",
+      "required_fix": "为三个 packet 补齐缺失字段，并让每个 `verify` 指向对应 SC 命令或输出断言。",
+      "verify": "§7 每个 packet 均含六类字段，且 `required_context` 不落在自身 `owned_paths` 内。"
+    },
+    {
+      "severity": "P2",
+      "title": "SC-005 没有验证“≤3 条命令”",
+      "sc_refs": [
+        "SC-005"
+      ],
+      "evidence": "`plans/gd/2026-06-11-plugin-packaging/track-a/step-plan.md:54`、`:55`、`:171`、`:172`。",
+      "impact": "README 即使写出超过 3 条更新命令也会通过验收。",
+      "required_fix": "给更新命令块加稳定 marker，并在 verify 中统计该块内实际命令数 `<=3`。",
+      "verify": "人为加入第 4 条更新命令时 SC-005 verify 失败。"
+    },
+    {
+      "severity": "P2",
+      "title": "SC-009 未验证“两段式不混淆”",
+      "sc_refs": [
+        "SC-009"
+      ],
+      "evidence": "`plans/gd/2026-06-11-plugin-packaging/track-a/step-plan.md:62`、`:63`、`:178`、`:179`。",
+      "impact": "README 把安装命令和传输前置混在同一段时仍可通过，违背范围诚实目标。",
+      "required_fix": "要求 README 使用两个固定小节标题/marker，并在 verify 中同时断言两段存在且三件套只出现在前置段。",
+      "verify": "删除任一段 marker 或把三件套移入安装段时 SC-009 verify 失败。"
+    }
+  ],
+  "merge_notes": {
+    "conflict_with_other_reviewer": false
+  },
+  "residual_risk": [],
+  "timestamp": "2026-06-10T20:34:43Z"
+}

@@ -1,0 +1,124 @@
+{
+  "dispatch_id": "gd-plugin-packaging-exec",
+  "source_master_plan": "plans/gd/2026-06-11-plugin-packaging/master-plan.md",
+  "goal_chain": {
+    "PROJECT_GOAL": "在 Claude Code 中建设 /gd Goal-Driven 多 Agent 主链路，提升复杂任务的计划、审查、执行、验收效率，并通过 Codex 作为 cross-review sidecar 降低填表式计划与执行遗漏风险。（ref GOAL_SOURCE §1）",
+    "CHAIN_GOAL": "用 shared core 固定目标链、SC、任务包、review contract 和 anti-fill 标准，保证后续 /gd command、multi-agent dispatch、execution review、Codex cross-review 都引用同一套契约。（ref GOAL_SOURCE §1）",
+    "PHASE_GOAL": "执行三链路插件封装：track-a-exec 建 .claude-plugin 脚手架+README+setup；track-b-exec 清命令硬编码+vendor 传输隔离+脱 validator 守卫+bundle/冒烟脚本，满足 spec SC-001~010。"
+  },
+  "max_parallel_planning": 2,
+  "max_parallel_execution": 2,
+  "max_parallel_review": 2,
+  "max_parallel_validation": 2,
+  "tracks": [
+    {
+      "track_id": "track-a-exec",
+      "mode": "execute",
+      "agent_role": "child_executor",
+      "owned_paths": [
+        ".claude-plugin",
+        "commands/setup.md",
+        "scripts/gd-plugin-setup.sh"
+      ],
+      "forbidden_paths": [
+        "/Users/praise/.claude/**",
+        "commands/gd.md",
+        "commands/review1.md",
+        "commands/review2.md",
+        "vendor/l3-transport",
+        "scripts/gd-bundle-completeness.sh",
+        "tests/gd-plugin-cross-dir-smoke.sh"
+      ],
+      "required_context": [
+        "plans/gd/2026-06-11-plugin-packaging/track-a/step-plan.md",
+        "plans/gd/2026-06-11-plugin-packaging/track-a/task-packets/gd-plugin-scaffold-manifests.md",
+        "plans/gd/2026-06-11-plugin-packaging/track-a/task-packets/gd-plugin-install-readme.md",
+        "plans/gd/2026-06-11-plugin-packaging/track-a/task-packets/gd-plugin-setup-command.md",
+        "specs/gd-plugin-packaging/spec.md",
+        "docs/constitution-plugin.md"
+      ],
+      "deliverables": [
+        {"path": ".claude-plugin/plugin.json", "kind": "file", "must_exist": true},
+        {"path": ".claude-plugin/marketplace.json", "kind": "file", "must_exist": true},
+        {"path": ".claude-plugin/README.md", "kind": "file", "must_exist": true},
+        {"path": "commands/setup.md", "kind": "file", "must_exist": true},
+        {"path": "scripts/gd-plugin-setup.sh", "kind": "file", "must_exist": true}
+      ],
+      "blocked_by": [],
+      "can_parallel_with": ["track-b-exec"],
+      "sc_refs": ["SC-001", "SC-005", "SC-008", "SC-009", "SC-010"],
+      "verify": [
+        {"sc_ref": "SC-001", "method": "command", "cmd": "python3 -c \"import json;d=json.load(open('.claude-plugin/plugin.json'));assert 'version' not in d;s=json.dumps(d);assert all(c in s for c in ['review1','review2','gd']);print('OK')\"", "expect": "OK"},
+        {"sc_ref": "SC-005", "method": "command", "cmd": "f=.claude-plugin/README.md; grep -q 'marketplace update' \"$f\" && grep -q 'plugin update' \"$f\" && grep -q 'install-transport.sh' \"$f\" && echo PASS", "expect": "PASS"},
+        {"sc_ref": "SC-008", "method": "command", "cmd": "! grep -rEn 'pip install|pip3 install' scripts/gd-plugin-setup.sh commands/setup.md && echo PASS", "expect": "PASS"},
+        {"sc_ref": "SC-009", "method": "command", "cmd": "f=.claude-plugin/README.md; grep -q '<!-- gd-install-section -->' \"$f\" && grep -q '<!-- gd-transport-prereq-section -->' \"$f\" && grep -q 'codex CLI' \"$f\" && echo PASS", "expect": "PASS"},
+        {"sc_ref": "SC-010", "method": "command", "cmd": "bash scripts/gd-plugin-setup.sh --self-check | grep -q 'FIELDS=4' && bash scripts/gd-plugin-setup.sh --self-check | grep -q 'BUILTIN_KEY=0' && echo PASS", "expect": "PASS"}
+      ]
+    },
+    {
+      "track_id": "track-b-exec",
+      "mode": "execute",
+      "agent_role": "child_executor",
+      "owned_paths": [
+        "commands/gd.md",
+        "commands/review1.md",
+        "commands/review2.md",
+        "vendor/l3-transport",
+        "scripts/gd-bundle-completeness.sh",
+        "scripts/gd-validate-dispatch.py",
+        "scripts/gd-validate-execution-batch.py",
+        "scripts/gd-validate-master-plan-consistency.py",
+        "scripts/gd-validate-child-proposal.py",
+        "scripts/gd-codex-bridge-review.py",
+        "tests/gd-plugin-cross-dir-smoke.sh"
+      ],
+      "forbidden_paths": [
+        "/Users/praise/.claude/**",
+        ".claude-plugin",
+        "commands/setup.md",
+        "scripts/gd-plugin-setup.sh"
+      ],
+      "required_context": [
+        "plans/gd/2026-06-11-plugin-packaging/track-b/step-plan.md",
+        "plans/gd/2026-06-11-plugin-packaging/track-b/task-packets/zero-out-command-paths.md",
+        "plans/gd/2026-06-11-plugin-packaging/track-b/task-packets/isolate-transport-and-writes.md",
+        "plans/gd/2026-06-11-plugin-packaging/track-b/task-packets/deusername-script-guards.md",
+        "plans/gd/2026-06-11-plugin-packaging/track-b/task-packets/bundle-and-smoke-verifiers.md",
+        "specs/gd-plugin-packaging/spec.md",
+        "docs/constitution-plugin.md"
+      ],
+      "deliverables": [
+        {"path": "scripts/gd-bundle-completeness.sh", "kind": "file", "must_exist": true},
+        {"path": "tests/gd-plugin-cross-dir-smoke.sh", "kind": "file", "must_exist": true},
+        {"path": "vendor/l3-transport/handoff/lib/state-paths.sh", "kind": "file", "must_exist": true},
+        {"path": "vendor/l3-transport/scripts/codex-consult.sh", "kind": "file", "must_exist": true},
+        {"path": "commands/gd.md", "kind": "file", "must_exist": true}
+      ],
+      "blocked_by": [],
+      "can_parallel_with": ["track-a-exec"],
+      "sc_refs": ["SC-002", "SC-003", "SC-004", "SC-006", "SC-007"],
+      "verify": [
+        {"sc_ref": "SC-002", "method": "command", "cmd": "bash scripts/gd-bundle-completeness.sh --check && echo PASS", "expect": "PASS"},
+        {"sc_ref": "SC-003", "method": "command", "cmd": "bash tests/gd-plugin-cross-dir-smoke.sh && echo PASS", "expect": "PASS"},
+        {"sc_ref": "SC-004", "method": "command", "cmd": "bash tests/gd-plugin-cross-dir-smoke.sh --no-codex && echo PASS", "expect": "PASS"},
+        {"sc_ref": "SC-006", "method": "command", "cmd": "bash tests/gd-plugin-cross-dir-smoke.sh --assert-data-isolated && echo PASS", "expect": "PASS"},
+        {"sc_ref": "SC-007", "method": "command", "cmd": "! grep -rEnI '/Users/praise/(AI-Agent|\\.claude)' commands scripts vendor/l3-transport --exclude='install-gd-command.sh' --exclude='uninstall-gd-command.sh' --exclude='install-review-route-command.sh' --exclude='check-gd-command-parity.sh' && grep -q '${HOME}/.claude' commands/gd.md && echo PASS", "expect": "PASS"}
+      ]
+    }
+  ],
+  "waves": [
+    {
+      "wave_id": "w1",
+      "track_ids": ["track-a-exec", "track-b-exec"],
+      "description": "并行执行两 track:track-a-exec 建插件面 5 文件;track-b-exec 清硬编码+vendor 隔离+脱守卫+bundle/冒烟。owned_paths 互斥(.claude-plugin+setup vs commands+vendor+validators+tests),无重叠。"
+    }
+  ],
+  "merge_gates": [
+    {"gate_id": "G1", "description": "child executor 输出按 gd-execution-result-template 格式合规"},
+    {"gate_id": "G2", "description": "files_added/modified 全在 track owned_paths 内(post-wave path audit)"},
+    {"gate_id": "G3", "description": "execution result 用 exec_status,无 REV_VERDICT/GD_REVIEW_DECISION 字段"},
+    {"gate_id": "G4", "description": "每条 SC 有 evidence(pass/fail)或 not_run_reason(not_run/n_a)"},
+    {"gate_id": "G5", "description": "wave 1 两 track 完成后主 agent 才合并、写 ledger+controller+closure"},
+    {"gate_id": "G6", "description": "两 track 产物冲突时主 agent 写仲裁理由"}
+  ]
+}

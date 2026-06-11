@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "stage": "plan",
+  "parent_run_id": "gd-plugin-packaging-2026-06-11",
+  "batch_id": "batch-plan-001",
+  "recorded_at": "2026-06-11T03:45:00Z",
+  "child_agent_count": 2,
+  "max_parallel": 2,
+  "child_jobs": [
+    {
+      "job_id": "track-a-plugin-surface",
+      "result_path": "plans/gd/2026-06-11-plugin-packaging/track-a/step-plan.md",
+      "result_hash": "97ee787f936cb589ce77834002569990fe72f111a19af51f5905f6c538da2a46",
+      "status": "completed"
+    },
+    {
+      "job_id": "track-b-portability-isolation",
+      "result_path": "plans/gd/2026-06-11-plugin-packaging/track-b/step-plan.md",
+      "result_hash": "60e12cee7745ae2d9cb2773638e7623ab9cfc000e1b02c0fa0f8d6491c3388c4",
+      "status": "completed"
+    }
+  ],
+  "main_agent_merge": {
+    "merge_report_path": "plans/gd/2026-06-11-plugin-packaging/dispatch/merge-report.md",
+    "merge_report_hash": "1eda518f96847c70231bf6604816d63f9ff9cf53087d877a40ec1705420d1799",
+    "final_decision": "APPROVED",
+    "blocking_buckets": []
+  }
+}

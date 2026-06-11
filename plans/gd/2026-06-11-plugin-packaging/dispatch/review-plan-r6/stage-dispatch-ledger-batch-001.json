@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "stage": "review_plan",
+  "parent_run_id": "gd-plugin-packaging-plan-review-r6",
+  "batch_id": "batch-001",
+  "recorded_at": "2026-06-11T05:59:02Z",
+  "child_agent_count": 1,
+  "max_parallel": 1,
+  "child_jobs": [
+    {
+      "job_id": "gd-plugin-packaging-plan-review-r6-subplan-track-b",
+      "result_path": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/dispatch/review-plan-r6/mapped/gd-plugin-packaging-plan-review-r6-subplan-track-b.json",
+      "result_hash": "027cb7ec108bf05bb29bb9267eebc98d62658600b271a59add0b38d15b0b0886",
+      "status": "completed"
+    }
+  ],
+  "main_agent_merge": {
+    "merge_report_path": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/dispatch/review-plan-r6/controller-report.json",
+    "merge_report_hash": "d873efc5441b2076df5acd9940c853e8abaa6813c2cc8684b229c5b1d6319524",
+    "final_decision": "REQUIRES_CHANGES",
+    "blocking_buckets": [
+      "gd-plugin-packaging-plan-review-r6-subplan-track-b"
+    ]
+  }
+}

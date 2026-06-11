@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.1",
+  "run_mode": "live",
+  "started_at": "2026-06-11T03:30:00Z",
+  "finished_at": "2026-06-11T03:45:00Z",
+  "aggregate_path": "plans/gd/2026-06-11-plugin-packaging/dispatch/merge-report.md",
+  "manifest_path": "plans/gd/2026-06-11-plugin-packaging/dispatch-map.json",
+  "primary_gate": {
+    "verdict": "APPROVED",
+    "blocking": []
+  },
+  "secondary_gate": {
+    "verdict": "n_a",
+    "blocking": []
+  },
+  "gate_consistent": true,
+  "dirty_detected": false,
+  "jobs": [],
+  "batch_ledgers": [
+    {
+      "path": "stage-dispatch-ledger.json",
+      "hash": "4d1a9697040ee0f68117fde784153748f966713a6f005e23b5c188269b8d353a"
+    }
+  ],
+  "suite_target_closure": []
+}

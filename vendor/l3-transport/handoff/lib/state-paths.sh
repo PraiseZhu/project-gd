@@ -1,11 +1,20 @@
 #!/usr/bin/env bash
 # Shared path definitions for handoff system.
 #
+# HANDOFF_ROOT is the SINGLE daemon↔client coordination point: install-transport.sh
+# (daemon deploy target) and codex-send-wait (client lookup) MUST both source THIS
+# file so they resolve to the identical value — if the two ends disagree, transport
+# breaks silently. This is plugin-managed transport infrastructure, NOT an installer
+# setup preset (it must never be a free-fill field; a wrong value = broken chain).
+#
 # All variables use ${VAR:=default} so callers can override by exporting before
-# sourcing this file. This enables verifier isolated tests to inject a temporary
-# HANDOFF_ROOT without polluting the real runtime paths.
+# sourcing this file (e.g. `export HANDOFF_ROOT=/tmp/h`). This enables verifier
+# isolated tests to inject a temporary HANDOFF_ROOT without polluting real runtime.
+#
+# Default precedence: ${CLAUDE_PLUGIN_DATA} (update-safe plugin data dir) when set,
+# else ${HOME}/.claude as fallback; transport state lives under a `gd-handoff` subdir.
 
-: "${HANDOFF_ROOT:=${HOME}/.claude/handoff}"
+: "${HANDOFF_ROOT:=${CLAUDE_PLUGIN_DATA:-${HOME}/.claude}/gd-handoff}"
 : "${HANDOFF_BIN:=${HANDOFF_ROOT}/bin}"
 : "${HANDOFF_LIB:=${HANDOFF_ROOT}/lib}"
 : "${HANDOFF_ACTIVE:=${HANDOFF_ROOT}/active}"

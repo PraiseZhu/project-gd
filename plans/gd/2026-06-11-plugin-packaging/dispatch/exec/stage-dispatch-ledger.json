@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "stage": "execute",
+  "parent_run_id": "gd-plugin-packaging-exec-2026-06-11",
+  "batch_id": "batch-exec-001",
+  "recorded_at": "2026-06-11T06:35:00Z",
+  "child_agent_count": 2,
+  "max_parallel": 2,
+  "child_jobs": [
+    {
+      "job_id": "track-a-exec",
+      "result_path": "plans/gd/2026-06-11-plugin-packaging/dispatch/exec/track-a-exec-result.md",
+      "result_hash": "b8349774c6c02e67f65a865df384803d8991dfa26cc78f6d1185a34d122bcbf9",
+      "status": "completed"
+    },
+    {
+      "job_id": "track-b-exec",
+      "result_path": "plans/gd/2026-06-11-plugin-packaging/dispatch/exec/track-b-exec-result.md",
+      "result_hash": "182d7c4bc7f7065952605f5cdd32e30e4dce2ea594f349c6a96437504556104a",
+      "status": "completed"
+    }
+  ],
+  "main_agent_merge": {
+    "merge_report_path": "plans/gd/2026-06-11-plugin-packaging/dispatch/exec/merge-report.md",
+    "merge_report_hash": "c8dc854196ca2e73f77fbd4aadce9893dae527d14d3bfdedcdb258b50f1d1018",
+    "final_decision": "APPROVED",
+    "blocking_buckets": []
+  }
+}

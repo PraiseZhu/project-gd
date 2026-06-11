@@ -1,7 +1,6 @@
 # /review2 Command
 
-> **Source of truth**: `Project GD/commands/review2.md`
-> **Installed copy** (authorized only): `/Users/praise/.claude/commands/review2.md`
+> **Source of truth**: `${CLAUDE_PLUGIN_ROOT}/commands/review2.md`（随插件分发，命令安装由 `/plugin` 机制接管，无开发者机器命令副本）
 > **Authority**: L2 subcommand-aware Codex workbench wrapper. NOT a replacement for `/gd review` (L3 formal review-chain authority).
 
 ## Authority Boundary
@@ -401,8 +400,6 @@ python3 scripts/gd-codex-bridge-review.py run-bridge \
 
 ---
 
-## Install / Parity
+## Install / Update
 
-Install via `scripts/install-review-route-command.sh --route review2 --dry-run` (safe default).
-Live install requires explicit user authorization + ledger entry in `baselines/gd-v7-runtime-write-authorizations.jsonl`.
-Parity check: `tools/gd-parity-verify.sh --bundle review2_command` (after install).
+命令安装与更新由 Claude Code `/plugin` 机制承担；本文件作为框架内文件随插件分发，无 `~/.claude/commands` 写入步骤。旧 `install-review-route-command.sh`（写 `~/.claude/commands` 的模型）已作废，不进 bundle。

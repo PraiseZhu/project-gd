@@ -1,0 +1,44 @@
+{
+  "template_kind": "gd-plan-review",
+  "reviewer": "codex",
+  "review_target": "/Users/praise/AI-Agent/Claude/projects/Project GD/.claude/worktrees/plugin-packaging-plan/plans/gd/2026-06-11-plugin-packaging/track-b/step-plan.md",
+  "review_kind": "plan",
+  "review_run_status": "completed",
+  "gd_review_decision": "REQUIRES_CHANGES",
+  "scope_checked": [
+    {
+      "facet": "raw markdown structure",
+      "result": "pass",
+      "evidence": "writer-validated; verdict=REQUIRES_CHANGES"
+    }
+  ],
+  "findings": [
+    {
+      "severity": "P2",
+      "title": "HANDOFF daemon/client 一致性依赖了未成立前提",
+      "sc_refs": [
+        "SC-002"
+      ],
+      "evidence": "`plans/gd/2026-06-11-plugin-packaging/track-b/step-plan.md:167` 排除 `install-transport.sh`；`:180` 写“install-transport.sh 已 source state-paths.sh”；实际 `vendor/l3-transport/scripts/install-transport.sh:27` 仍硬编码 `LIVE_HANDOFF=\"$HOME/.claude/handoff\"`。",
+      "impact": "Step.3/4 执行后 writer 可能查 `${CLAUDE_PLUGIN_DATA}/gd-handoff/bin/codex-send-wait`，但安装脚本仍部署到 `~/.claude/handoff/bin`，跨目录/live transport 会找不到 transport。",
+      "required_fix": "在本 plan 中二选一写死：要么把 `vendor/l3-transport/scripts/install-transport.sh` 纳入 owned_paths 并改为 source 同一 `state-paths.sh`；要么将 Step.3/4 默认值保持与现有安装脚本一致，并把真正解耦明确 blocked_by track-a。",
+      "verify": "`grep -n 'source .*state-paths.sh' vendor/l3-transport/scripts/install-transport.sh` 命中，且一次 smoke 同时断言 install/client 的 `HANDOFF_BIN` 完全相同。"
+    },
+    {
+      "severity": "P2",
+      "title": "SC-003 的 smoke 允许用路径回显替代 happy path",
+      "sc_refs": [
+        "SC-003"
+      ],
+      "evidence": "`plans/gd/2026-06-11-plugin-packaging/track-b/step-plan.md:55-57` 定义端到端；`:115` 将 smoke 降为 `source state-paths.sh + writer --dry-run 或解析路径回显`。",
+      "impact": "实现可以只验证字符串/路径存在而通过 SC-003，后续真实 writer 调用、baseline 写入、codex-send-wait 缺失分支仍可能失败。",
+      "required_fix": "在 Step.6 明确 smoke 必须用临时 `HANDOFF_BIN/codex-send-wait` fixture 调用 `review-result-writer.sh`，生成 result/baseline 到 `${CLAUDE_PLUGIN_DATA}`，并禁止仅靠回显判定通过。",
+      "verify": "`bash tests/gd-plugin-cross-dir-smoke.sh && echo PASS` 后断言 `${CLAUDE_PLUGIN_DATA}` 下存在 writer 产物，且 stdout/stderr 不含 file-not-found 或 fallback-only marker。"
+    }
+  ],
+  "merge_notes": {
+    "conflict_with_other_reviewer": false
+  },
+  "residual_risk": [],
+  "timestamp": "2026-06-10T20:54:33Z"
+}

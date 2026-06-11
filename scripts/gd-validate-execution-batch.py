@@ -35,7 +35,23 @@ import os
 import re
 import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+
+
+def _under_home_claude(p) -> bool:
+    """p 是否落在安装者 ~/.claude 下（按 / 边界，禁纯前缀误判 ~/.claudebar）。
+    与 gd-validate-dispatch.py 的 PurePosixPath 守卫模式一致（规则 11 约定优先）。"""
+    if not isinstance(p, str):
+        return False
+    base = PurePosixPath(os.path.expanduser("~/.claude"))
+    pn = PurePosixPath(p)
+    if pn == base:
+        return True
+    try:
+        pn.relative_to(base)
+        return True
+    except ValueError:
+        return False
 
 
 # ----------------------------- Constants ----------------------------- #
@@ -332,7 +348,7 @@ def check_batch_semantic(
                         f"task_results[{tid}].deliverables_produced 路径含 '..' "
                         f"路径穿越: {p!r}"
                     )
-                if isinstance(p, str) and p.startswith("/Users/praise/.claude"):
+                if _under_home_claude(p):
                     errs.append(
                         f"task_results[{tid}].deliverables_produced 路径指向 "
                         f"protected runtime ~/.claude/**"
