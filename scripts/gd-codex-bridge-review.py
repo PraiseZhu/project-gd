@@ -307,6 +307,43 @@ def _new_run_id() -> str:
     return f"{ts}-{secrets.token_hex(3)}"
 
 
+# SC-1: count unique top-level SC-N IDs in a plan file for exhaustiveness gate.
+_PLAN_SC_ID_RE = re.compile(r"(?:^|\s)SC-(\d+)\b")
+
+
+def _count_sc_ids_in_target(target_path: str) -> int:
+    """Return number of unique SC-<N> IDs declared in target plan file."""
+    try:
+        text = Path(target_path).read_text(encoding="utf-8")
+        return len(set(_PLAN_SC_ID_RE.findall(text)))
+    except Exception:
+        return 0
+
+
+# SC-2: extract REVIEW_DOMAIN / REVIEW_FOCUS from plan §2 Review 对齐 section.
+_PLAN_DOMAIN_RE = re.compile(r"REVIEW_DOMAIN\s*:\s*`([^`]+)`")
+_PLAN_FOCUS_RE = re.compile(r"REVIEW_FOCUS\s*:\s*`([^`\n]+)`")
+
+
+def _extract_plan_review_meta(target: Path) -> tuple[str | None, str | None]:
+    """Return (domain, focus) from plan §2; (None, None) on failure/absence."""
+    try:
+        text = target.read_text(encoding="utf-8")
+        sec2 = re.search(r"## 2[.\s]", text)
+        if not sec2:
+            return None, None
+        snippet = text[sec2.start():]
+        nxt = re.search(r"\n## ", snippet[3:])
+        if nxt:
+            snippet = snippet[: nxt.start() + 3]
+        domain = _PLAN_DOMAIN_RE.search(snippet)
+        focus = _PLAN_FOCUS_RE.search(snippet)
+        return (domain.group(1).strip() if domain else None,
+                focus.group(1).strip() if focus else None)
+    except Exception:
+        return None, None
+
+
 def _failed_mapped(
     reviewer: str,
     kind: str,
@@ -682,6 +719,18 @@ def _parse_raw_to_mapped_v1(
         return _failed_mapped("codex", kind, target_str,
                               f"raw 含 {len(verdicts)} 个 VERDICT", "degraded", compat_v1=True), ["multiple VERDICT"]
     verdict = verdicts[0]
+
+    # SC-1: APPROVED exhaustiveness gate — Scope Checked rows must cover all SC-IDs in target.
+    if verdict == "APPROVED":
+        expected_sc_count = _count_sc_ids_in_target(target_str)
+        sc_rows_in_raw = len(re.findall(r"^\|\s*SC-\d+", raw_text, re.MULTILINE))
+        if expected_sc_count > 0 and sc_rows_in_raw < expected_sc_count:
+            reason = (
+                f"SHALLOW_REVIEW_APPROVED: Scope Checked 表仅 {sc_rows_in_raw} 行"
+                f" < 目标 SC 数 {expected_sc_count}，判 degraded"
+            )
+            return _failed_mapped("codex", kind, target_str, reason,
+                                  "degraded", compat_v1=True), [reason]
 
     # 2. findings 解析 + 5 中文字段 + SC-N 提取
     finding_blocks = _split_findings(raw_text)
@@ -1155,6 +1204,13 @@ def build_capsule_text(
             f"{template_path}. Use --compat-v1 until the template is delivered."
         )
     target_hash = _sha256_file(target)
+    # SC-2: extract REVIEW_DOMAIN / REVIEW_FOCUS from plan §2 when kind==plan.
+    _plan_domain, _plan_focus = (None, None)
+    if kind == "plan":
+        _plan_domain, _plan_focus = _extract_plan_review_meta(target)
+    review_domain_final = _plan_domain or "ai_infra"
+    review_focus_source = "plan_section_2" if _plan_focus else "kind_dynamic"
+    review_focus_final = _plan_focus or _review_focus_for_kind(kind)
     # L1: Target externalized — capsule no longer inlines target_text (47KB savings on
     # Sentinel-sized plans). Reviewer must Read the path; bridge enforces via L3
     # content-evidence validator (gd-validate-review-content-evidence.py).
@@ -1227,10 +1283,10 @@ def build_capsule_text(
 
     # writer 实际 grep 的 3 字段必须出现在行首
     capsule = (
-        f"REVIEW_DOMAIN: ai_infra\n"
+        f"REVIEW_DOMAIN: {review_domain_final}\n"
         + lens_emphasis_line
-        + f"REVIEW_FOCUS: {review_focus}\n"
-        f"REVIEW_FOCUS_SOURCE: kind_dynamic\n"
+        + f"REVIEW_FOCUS: {review_focus_final}\n"
+        f"REVIEW_FOCUS_SOURCE: {review_focus_source}\n"
         f"REVIEW_KIND: {kind}\n"
         f"REVIEW_ROUND: initial\n"
         f"REVIEW_DELTA_SCOPE: full_matrix\n"
@@ -1309,9 +1365,11 @@ def build_capsule_text(
         f"  | SC-2 | PASS | ... |\n"
         f"  （逐条覆盖 target 全部 SC-ID，SC-ID 必须在 target 中真实存在）\n"
         f"- **审查定位（conformance scoping）**：你的主目标是核对「执行结果 / 已实现功能是否符合已批准计划的 SC（conformance）」；代码本身顺带扫一眼，可指出明显问题，但 MUST NOT 把地毯式找 bug 当作职责——地毯式找 bug 由上游 `/code-review` 承担。\n"
-        f"- **穷举强制（一次列全）**：你必须扫完 PRIMARY_TARGET 内全部 SC、模块、fallback 路径，"
+        f"- **穷举强制**：见下方 §9.1——一次列全所有 finding，分轮挤牙膏 = degraded。\n"
+        f"\n### §9.1 穷举义务（强制）\n\n"
+        f"你必须扫完 PRIMARY_TARGET 内全部 SC、模块、fallback 路径，"
         f"**一次列全**所有可发现 finding，不得分批分轮透露；"
-        f"明知有多处问题却只报一条 = 协议违规，判定 degraded（见 §Review Standard §10）\n"
+        f"分轮挤牙膏 = 协议违规，判定 degraded（见 §Review Standard §10）。\n"
         + lens_detail_line
     )
     capsule_hash = _sha256_str(capsule)
