@@ -308,11 +308,13 @@ def _new_run_id() -> str:
 
 
 # SC-1: count unique top-level SC-N IDs in a plan file for exhaustiveness gate.
-_PLAN_SC_ID_RE = re.compile(r"(?:^|\s)SC-(\d+)\b")
+# Only checklist-style definitions (`- [ ] SC-N(...)` / `- [x] SC-N`) count —
+# prose mentions like `spec SC-003` must not inflate the expected row count.
+_PLAN_SC_ID_RE = re.compile(r"^- \[[ xX]\] SC-(\d+)\b", re.MULTILINE)
 
 
 def _count_sc_ids_in_target(target_path: str) -> int:
-    """Return number of unique SC-<N> IDs declared in target plan file."""
+    """Return number of unique SC-<N> checklist definitions in target plan."""
     try:
         text = Path(target_path).read_text(encoding="utf-8")
         return len(set(_PLAN_SC_ID_RE.findall(text)))
