@@ -93,10 +93,10 @@ GOAL_SOURCE:    ${CLAUDE_PLUGIN_ROOT}/docs/gd-v7-project-goal.md
 |-------|--------------------------------|------|
 | `/gd help` | `active` | 仅输出说明，不依赖未实现能力 |
 | `/gd plan` | `local_only` | Claude 本地生成 plan suite + dispatch contract（lock_revision=21）；dispatch 结果写入 stage dispatch ledger + controller report（Rev21 合同；planning_dispatch_log.json + Plan 4 strict-live-proof 已 superseded） |
-| `/gd review` | `active` | Plan 3a (lock_revision=17)：router 5 target 全部有 live/fail-closed 行为；无 NOT_IMPLEMENTED；plan-only → skill_orchestrated Claude review + Codex bridge；execution-only → gd-validate-execution-outcome.py；code-only → LOCAL_STATIC_ONLY（skill_orchestrated）；execution-plus-code → outcome-first；no-artifact → REVIEW_TARGET_MISSING exit 2 |
+| `/gd review` | `active` | Plan 3a 引入、rev20/21 升级：router 5 target 全部有 live/fail-closed 行为；无 NOT_IMPLEMENTED；plan-only → skill_orchestrated Claude review + Codex bridge；execution-only → 三段闭环（H4b validator + Codex bridge kind=execution_outcome + route validator，rev20）；code-only → 1-2 review child（Claude review；LOCAL_STATIC_ONLY 属 closure_ineligible，rev21）；execution-plus-code → outcome-first 三段闭环（Codex kind=combined，rev20）；no-artifact → REVIEW_TARGET_MISSING exit 2 |
 | `/gd review plan` | `active` | Plan 3a skill_orchestrated path：command orchestration 自产 Claude review JSON + 收集 Codex raw（gd-codex-bridge-review.py run-bridge --live-transport）→ router 作为 consumer（不 spawn Claude subprocess）；claude_review_origin=skill_orchestrated；transport 不可达时 fail-closed 降 `local_only`/`blocked_missing_artifact` |
 | `/gd execute` | `local_only` | rev22 live：agent_exec 子 agent 化已实装（rev21 架构复用，gd-validate-stage-dispatch-ledger(stage=execute) + controller-report；human_exec 降为 emergency-only；dry_run 仍 pending_future_plan）；final closure eligibility 由 gd-validate-parent-close-gate.py 在下游执行 |
-| `/gd review code` | `local_only` | Plan 3a：code-only target handler = LOCAL_STATIC_ONLY（skill_orchestrated Claude static review）；Codex code sidecar cross-review 仍 pending Plan 6；不得声称 active/live Codex sidecar（3a-SC-9）|
+| `/gd review code` | `active` | rev21：`review_execution_code` 入口别名，路由到 `/gd review` unified router 的 code-only 或 execution-plus-code target path（见下方 §`/gd review code` handler 段）；有 execution artifact → execution-plus-code 三段闭环（rev20，Codex bridge kind=combined active）；纯 code diff → code-only 路径（必须 1-2 review child；Codex code sidecar 仍 pending Plan 6；LOCAL_STATIC_ONLY 属 closure_ineligible，不得 APPROVED）|
 
 `CAPABILITY_STATUS` 完整枚举（schema）：
 
@@ -474,7 +474,7 @@ CAPABILITY_STATUS: <按映射表枚举值>
 | `/gd 计划` | `/gd plan` | 生成 master / step plan + task packets |
 | `/gd 审计划` | `/gd review plan` | Claude self-review + Codex cross-review + merge + auto-fix loop（Plan H2a lock_revision=3；W2 bridge 可达时升 active）|
 | `/gd 执行` | `/gd execute` | 子 agent 化执行 batch（agent_exec 默认；rev22）+ stage-dispatch-ledger + controller-report closure |
-| `/gd 审代码` | `/gd review code` | execution result 静态字段校验（Codex sidecar 在 Plan 6 接入）|
+| `/gd 审代码` | `/gd review code` | 路由到 unified router：有执行产物走三段闭环（Codex kind=combined，rev20）；纯 diff 走 code-only review child（Codex code sidecar 在 Plan 6 接入）|
 
 中文别名为严格白名单。未在表中的中文 token 一律降级到 help，不写任何文件。
 
@@ -495,7 +495,7 @@ CAPABILITY_STATUS: <按映射表枚举值>
 7. 在 `CAPABILITY_STATUS` 上"主观选择"（必须按映射表）
 8. 跳过 `TARGET_PROJECT_ROOT` 解析协议（无法定位 → 必须停止）
 9. 在 `/gd execute` 未经 agent_exec 合约 dispatch sub-agent（必须按 stage=execute dispatch ledger + `gd-child-execute-prompt-template.md` 合约，不得绕开 batch validator 直接手派）
-10. 在 `/gd review code` 声称已接 Codex cross-review（属 Plan 6）；在 `/gd review plan` 当 Codex transport 不可达时伪造 approval（必须 fail-closed 输出 `codex_transport_unavailable`）
+10. 在 `/gd review code` 的**纯 code diff（code-only）路径**声称已接 Codex cross-review（pure diff sidecar 属 Plan 6）——注意 execution-plus-code / execution-only 路径的 Codex 三段闭环已在 rev20 接入，不在此禁令内；在 `/gd review plan` 当 Codex transport 不可达时伪造 approval（必须 fail-closed 输出 `codex_transport_unavailable`）
 
 ---
 
