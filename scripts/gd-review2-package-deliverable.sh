@@ -161,11 +161,15 @@ fi
 # ── 全绿路径：产三件套 ─────────────────────────────────────────────────────────
 
 echo ""
+echo "[WARNING] /review2 非发布权威：tests-status 由调用方自报，以 /gd review (L3) 为准。"
+echo "    L3 三段闭环（outcome validator + Codex bridge + route validator）才是 release 判决源。"
+echo ""
 echo "DELIVERABLE_STATUS: READY_FOR_HANDOFF"
+echo "TESTS_STATUS_SOURCE: caller_supplied"
 echo ""
 echo "全部 gate 通过："
 echo "  ✓ conformance-status = APPROVED"
-echo "  ✓ tests-status = green"
+echo "  ✓ tests-status = green  [caller_supplied — 非 L2 自跑]"
 echo "  ✓ post-simplify-status = ${POST_SIMPLIFY_STATUS} (满足条件)"
 echo ""
 

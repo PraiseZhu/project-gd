@@ -755,6 +755,38 @@ def _run_upstream_quality_gate(target: "Path", output_dir: "Path", invocation_id
     return {"steps": steps, "failure_code": None, "fail_closed": False}
 
 
+def _get_plan_ref(outcome_path: Path) -> str | None:
+    """SC-2 接线辅助：从 outcome JSON 读取 plan_ref 字段（可选）。
+    存在且为字符串时返回路径；不存在或非字符串时返回 None（退回 Phase 1 纯格式校验）。
+    HIGH-4 fix: reject non-string plan_ref (dict/list/bool) to avoid nonsense --plan-file arg.
+    """
+    try:
+        data = json.loads(outcome_path.read_text(encoding="utf-8"))
+        ref = data.get("plan_ref")
+        if not ref:
+            return None
+        if not isinstance(ref, str):
+            print(
+                f"WARN: plan_ref in {outcome_path.name} is not a string "
+                f"(got {type(ref).__name__!r}) — ignoring, Phase 1 only",
+                file=sys.stderr,
+            )
+            return None
+        return ref
+    except Exception:
+        return None
+
+
+def _build_outcome_validator_cmd(
+    outcome_script: Path, target: Path, plan_ref: str | None
+) -> list[str]:
+    """构造 outcome validator 调用命令；有 plan_ref 时激活 Phase 2 verify-rerun。"""
+    cmd = [sys.executable, str(outcome_script), str(target)]
+    if plan_ref:
+        cmd += ["--plan-file", plan_ref]
+    return cmd
+
+
 def _run_live_execution_only(
     target: Path,
     output_dir: Path,
@@ -777,6 +809,7 @@ def _run_live_execution_only(
     import hashlib
     outcome_script = SCRIPTS / "gd-validate-execution-outcome.py"
     output_dir.mkdir(parents=True, exist_ok=True)
+    plan_ref = _get_plan_ref(target)  # SC-2: read plan_ref for Phase 2 verify-rerun
 
     # T7: controller multi-round path — used when /review2 code drives the full loop.
     # Single-round path (codex_raw_result / codex_mapped_result injection) is preserved
@@ -784,7 +817,7 @@ def _run_live_execution_only(
     if use_controller:
         # Stage 1: local outcome validator
         r_outcome = subprocess.run(
-            [sys.executable, str(outcome_script), str(target)],
+            _build_outcome_validator_cmd(outcome_script, target, plan_ref),
             capture_output=True, text=True,
             env={**os.environ, INVOCATION_ID_ENV: invocation_id},
         )
@@ -806,7 +839,7 @@ def _run_live_execution_only(
 
     # --- Stage 1: local outcome validator (validates facts) ---
     r_outcome = subprocess.run(
-        [sys.executable, str(outcome_script), str(target)],
+        _build_outcome_validator_cmd(outcome_script, target, plan_ref),
         capture_output=True, text=True,
         env={**os.environ, INVOCATION_ID_ENV: invocation_id},
     )
@@ -1146,12 +1179,13 @@ def _run_live_execution_plus_code(
     Stage 2b (single-round path): LOCAL_STATIC_ONLY code review (skill_orchestrated) — backward compat.
     """
     import hashlib
+    plan_ref = _get_plan_ref(target)  # SC-2: read plan_ref for Phase 2 verify-rerun
+    outcome_script = SCRIPTS / "gd-validate-execution-outcome.py"  # hoisted; used in both branches
 
     # T7: controller combined-branch path
     if use_controller:
-        outcome_script = SCRIPTS / "gd-validate-execution-outcome.py"
         r_outcome = subprocess.run(
-            [sys.executable, str(outcome_script), str(target)],
+            _build_outcome_validator_cmd(outcome_script, target, plan_ref),
             capture_output=True, text=True,
             env={**os.environ, INVOCATION_ID_ENV: invocation_id},
         )
@@ -1170,9 +1204,8 @@ def _run_live_execution_plus_code(
             claude_review_json=claude_review_json,
         )
 
-    outcome_script = SCRIPTS / "gd-validate-execution-outcome.py"
     r_outcome = subprocess.run(
-        [sys.executable, str(outcome_script), str(target)],
+        _build_outcome_validator_cmd(outcome_script, target, plan_ref),
         capture_output=True, text=True,
         env={**os.environ, INVOCATION_ID_ENV: invocation_id},
     )
