@@ -1,0 +1,33 @@
+{
+  "template_kind": "gd-execution-outcome-review",
+  "reviewer": "codex",
+  "review_target": "/Users/praise/AI-Agent/Claude/projects/Project GD/fixtures/deep-review/synthetic-skip-target/outcome.json",
+  "review_kind": "execution_outcome",
+  "review_run_status": "completed",
+  "gd_review_decision": "REQUIRES_CHANGES",
+  "scope_checked": [
+    {
+      "facet": "raw markdown structure",
+      "result": "pass",
+      "evidence": "writer-validated; verdict=REQUIRES_CHANGES"
+    }
+  ],
+  "findings": [
+    {
+      "severity": "P1",
+      "title": "执行结果把跳过测试记为通过",
+      "sc_refs": [
+        "SC-1"
+      ],
+      "evidence": "`fixtures/deep-review/synthetic-skip-target/outcome.json:5`、`:13-17` 声明通过；`fixtures/deep-review/synthetic-skip-target/plan-snapshot.md:14-15` 要求 0 skipped 且任何 golden_replay placeholder skip 失败；`fixtures/deep-review/synthetic-skip-target/test_golden_replay.py:9` 无条件 skip。复跑原命令 `python3 -m pytest fixtures/deep-review/synthetic-skip-target/ -q` 实际 exit=1；隔离捕获问题后 `python3 -m pytest fixtures/deep-review/synthetic-skip-target/ -q -s` 输出 `1 skipped`、exit=0。",
+      "impact": "SC-1 的执行验收为假阳性，bridge/deep-review 后续若接受该 outcome，会把未执行的 golden replay 误判为通过，核心验证不可判断。",
+      "required_fix": "修正 `fixtures/deep-review/synthetic-skip-target/outcome.json` 的 SC-1 状态与统计，或替换 `test_golden_replay.py` 中的 placeholder skip 为真实 golden replay 断言；结果必须记录实际 stdout/exit/skipped/pass 计数。",
+      "verify": "运行 `python3 -m pytest fixtures/deep-review/synthetic-skip-target/ -q -s`，必须看到 `1 passed` 且 `0 skipped`；再确认 `outcome.json` 中 SC-1 与实际输出一致。"
+    }
+  ],
+  "merge_notes": {
+    "conflict_with_other_reviewer": false
+  },
+  "residual_risk": [],
+  "timestamp": "2026-06-14T07:42:22Z"
+}

@@ -398,6 +398,9 @@ def run_round1(
     invocation_id: str,
     claude_findings: list[dict],
     stub_dispatch: "StubDispatch | None" = None,
+    deep: bool = False,
+    queue_job_id: str | None = None,
+    plan_file: str | None = None,
 ) -> tuple[list[dict], str | None]:
     """
     Dispatch codex_A + codex_B in parallel (max_parallel=2 per gd-review-suite-controller pattern).
@@ -419,6 +422,7 @@ def run_round1(
                 invocation_id=invocation_id,
                 lens_emphasis=LENS_A_EMPHASIS,
                 review_round=1,
+                deep=deep, queue_job_id=queue_job_id, plan_file=plan_file,
             )
             return _extract_findings_from_mapped(m)
 
@@ -428,6 +432,7 @@ def run_round1(
                 invocation_id=invocation_id,
                 lens_emphasis=LENS_B_EMPHASIS,
                 review_round=1,
+                deep=deep, queue_job_id=queue_job_id, plan_file=plan_file,
             )
             return _extract_findings_from_mapped(m)
 
@@ -731,6 +736,9 @@ def run_branch_b(
     threshold_files: int,
     max_rounds: int,
     stub_dispatch: "StubDispatch | None" = None,
+    deep: bool = False,
+    queue_job_id: str | None = None,
+    plan_file: str | None = None,
 ) -> str:
     """
     Branch B (execution-only): LOOP [validate execution result vs plan SC].
@@ -744,6 +752,7 @@ def run_branch_b(
         kind="execution_outcome", target=target, cwd=cwd, output_dir=output_dir,
         invocation_id=invocation_id, claude_findings=claude_findings,
         stub_dispatch=stub_dispatch,
+        deep=deep, queue_job_id=queue_job_id, plan_file=plan_file,
     )
     return _run_convergence_loop(
         kind="execution_outcome", target=target, cwd=cwd, output_dir=output_dir,
@@ -1374,6 +1383,7 @@ def main() -> int:
             claude_findings=claude_findings,
             threshold_lines=threshold_lines, threshold_files=threshold_files,
             max_rounds=args.max_rounds,
+            deep=args.deep, queue_job_id=args.queue_job_id, plan_file=args.plan_file,
         )
     elif args.branch == "combined":
         result = run_branch_c(
