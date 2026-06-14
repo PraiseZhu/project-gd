@@ -161,6 +161,18 @@ class TestFlatResultNormalization:
         finally:
             os.unlink(wrapped)
 
+    def test_on_disk_wrapped_fixture_clean(self):
+        """Rot guard: the repo's wrapped fixture validates clean (its batch deliverable
+        exists). Fails if fixtures/agent-exec/valid-agent-exec-batch.json goes missing again."""
+        fixture = os.path.join(
+            PROJECT_ROOT, "fixtures", "execution-outcome", "valid-agent-exec-outcome.json"
+        )
+        errors, _ = self._validate(fixture)
+        assert errors == [], (
+            f"on-disk wrapped fixture must validate clean (deliverable must_exist resolves), "
+            f"got: {errors}"
+        )
+
     def test_gate_not_weakened_missing_sc_acceptance(self):
         """exec_status but no sc_acceptance and no task_outcomes → still fails."""
         with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
