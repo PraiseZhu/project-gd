@@ -22,9 +22,14 @@ GD_REVIEW_DECISION: APPROVED | REQUIRES_CHANGES | FAILED
 
 ## 2. Scope Checked
 
-| 检查面 | 结论 | 证据（≤30 字） |
-|--------|------|---------------|
-| <REVIEW_FOCUS 项> | pass / fail / n_a | <短语> |
+> ⚠️ 格式强制：每行必须是 `| SC-N | pass/fail/n_a | <≤30字证据> |`（**SC-ID 逐行**）。
+> 禁止用 facet/维度行（如 `| 审计划完整性 |`）替代 SC-ID 行——validator 判 SHALLOW_REVIEW → degraded。
+> APPROVED 时必须逐条覆盖 target 中**全部真实存在的 SC-ID**（按本 target 实际编号，不臆造、不写 range 声明替代逐行）。
+
+| SC-ID | 结论 | 证据（≤30 字） |
+|-------|------|---------------|
+| SC-<N> | pass / fail / n_a | <短语> |
+| …（逐条覆盖 target 全部 SC-ID，不可省略、不可用范围声明替代） | | |
 
 ---
 
