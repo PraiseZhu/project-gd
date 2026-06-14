@@ -25,6 +25,15 @@
 | `/gd 执行` | `/gd execute` | 把活派给 1-2 个分身并行做，每做完一批就查一次有没有越界 |
 | `/gd 审代码` | `/gd review code` | 对执行结果做审查，确认每条目标都有真凭实据，没碰不该碰的文件 |
 
+**顶层快捷命令**：免打 `/gd <子命令>` 两段式，一个命令直达对应阶段（行为完全等价）。插件命名空间下写作 `/project-gd:<名>`。
+
+| 快捷命令 | 等价 | 干嘛 |
+|---------|------|------|
+| `/gd-plan` | `/gd plan` | 生成计划 |
+| `/gd-review-plan` | `/gd review plan` | 审计划 |
+| `/gd-exec`（中文别名 `/gd-执行`） | `/gd execute` | 执行 |
+| `/gd-review` | `/gd review` | 审查——**自动识别** target：审代码 / 审执行结果 / 两者一起，无需手动指定（只审计划用 `/gd-review-plan`） |
+
 ---
 
 ## 六大机制：它到底靠什么做到的
@@ -104,7 +113,7 @@ claude plugin marketplace add git@git.xindong.com:game-ui/project-gd.git
 claude plugin install project-gd
 ```
 
-重启 Claude Code（或 `/reload-plugins`），四个命令就位。
+重启 Claude Code（或 `/reload-plugins`），命令即就位（`/gd`·`/review1`·`/review2` 三条链路 + `/gd-*` 快捷 + `/gd-setup`）。
 
 **2 · 配 key + 部署后台服务**
 
