@@ -296,6 +296,34 @@ def validate_verify_rerun(
 # ── Phase 1 validation ───────────────────────────────────────────────────────
 
 
+def _normalize_to_outcome(data: dict) -> dict:
+    """Accept two producer shapes; normalise to the wrapped outcome envelope.
+
+    - **Wrapped envelope** (has ``task_outcomes``): an aggregated ``/gd execute``
+      outcome — returned unchanged.
+    - **Flat single-result** (``gd-execution-result`` per
+      ``gd-child-execute-prompt-template.md`` / ``gd-execution-status.schema.json``:
+      top-level ``exec_status`` + ``sc_acceptance``): this is what the execute child
+      actually emits. Wrap it into a 1-element ``task_outcomes`` so downstream
+      validation runs identically — the gate is NOT weakened, the same per-task
+      checks (exec_status / sc_acceptance / deliverables / verify-rerun) still apply.
+
+    Anything else is returned unchanged so the REQUIRED_TOP check fails with a clear
+    error (no silent pass).
+    """
+    if not isinstance(data, dict) or "task_outcomes" in data:
+        return data
+    if "exec_status" in data and "sc_acceptance" in data:
+        task = dict(data)
+        task.setdefault("task_id", data.get("result_id", "single"))
+        return {
+            "outcome_version": data.get("outcome_version", "flat-result-1"),
+            "outcome_id": data.get("outcome_id", data.get("result_id", "single")),
+            "task_outcomes": [task],
+        }
+    return data
+
+
 def validate_schema(path: Path) -> tuple[list[str], dict]:
     """Phase 1: schema-only validation. Returns (errors, data)."""
     errors: list[str] = []
@@ -306,6 +334,10 @@ def validate_schema(path: Path) -> tuple[list[str], dict]:
 
     if not isinstance(data, dict):
         return ["top-level must be a JSON object"], {}
+
+    # Accept both the wrapped outcome envelope AND the flat gd-execution-result the
+    # execute child actually emits (schema drift fix — see _normalize_to_outcome).
+    data = _normalize_to_outcome(data)
 
     missing_top = REQUIRED_TOP - set(data.keys())
     if missing_top:

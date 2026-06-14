@@ -1,0 +1,17 @@
+{
+  "template_kind": "gd-execution-result",
+  "result_id": "flat-fixture-001",
+  "task_id": "T1",
+  "executor_role": "agent_exec",
+  "executed_at": "2026-06-15T00:00:00Z",
+  "exec_status": "completed",
+  "sc_acceptance": [
+    {"sc_ref": "SC-1", "status": "pass", "evidence": "fixture: flat single-result child output"}
+  ],
+  "files_added": [],
+  "files_modified": [],
+  "owned_paths_writes_only": true,
+  "forbidden_paths_touched": [],
+  "out_of_scope_writes": [],
+  "handoff": {"result_path": "fixtures/execution-outcome/valid-flat-result.json"}
+}

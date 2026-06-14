@@ -1,10 +1,8 @@
 """Tests for SC-13, SC-14, SC-23: validate-execution-outcome and deep isolation guard."""
 import importlib.util
 import os
-import subprocess
 import sys
 import tempfile
-import pytest
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
@@ -124,3 +122,69 @@ class TestDeepActivePathPollutionGuard:
             "tempfile" in bridge_src or "TemporaryDirectory" in bridge_src
             or "temp_dir" in bridge_src.lower() or "tmpdir" in bridge_src.lower()
         ), "SC-23: bridge must use tmpdir/tempfile isolation for deep runs"
+
+
+class TestFlatResultNormalization:
+    """Schema drift fix: validator must accept the FLAT gd-execution-result the
+    execute child actually emits (top-level exec_status/sc_acceptance), not only the
+    wrapped task_outcomes envelope — without weakening the gate."""
+
+    def _validate(self, fixture_rel_or_tmp):
+        from pathlib import Path
+        mod = _load_validate_module()
+        return mod.validate_schema(Path(fixture_rel_or_tmp))
+
+    def test_flat_single_result_accepted(self):
+        """Flat gd-execution-result → validates clean (was blocked before fix)."""
+        fixture = os.path.join(
+            PROJECT_ROOT, "fixtures", "execution-outcome", "valid-flat-result.json"
+        )
+        errors, _ = self._validate(fixture)
+        assert errors == [], f"flat single-result must validate clean, got: {errors}"
+
+    def test_wrapped_outcome_still_accepted(self):
+        """Wrapped envelope (outcome_id/task_outcomes) still validates clean — no regression.
+
+        Built inline (no must_exist deliverables) to isolate normalisation behaviour from
+        unrelated fixture-path rot in the on-disk wrapped fixtures.
+        """
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+            f.write(
+                '{"outcome_version":"1","outcome_id":"wrapped-test-001",'
+                '"task_outcomes":[{"task_id":"T1","exec_status":"completed",'
+                '"sc_acceptance":[{"sc_ref":"SC-1","status":"pass"}]}]}'
+            )
+            wrapped = f.name
+        try:
+            errors, _ = self._validate(wrapped)
+            assert errors == [], f"wrapped outcome must validate clean, got: {errors}"
+        finally:
+            os.unlink(wrapped)
+
+    def test_gate_not_weakened_missing_sc_acceptance(self):
+        """exec_status but no sc_acceptance and no task_outcomes → still fails."""
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+            f.write('{"template_kind": "gd-execution-result", "exec_status": "completed"}')
+            bad = f.name
+        try:
+            errors, _ = self._validate(bad)
+            assert errors, "missing sc_acceptance + task_outcomes must fail (gate intact)"
+        finally:
+            os.unlink(bad)
+
+    def test_flat_invalid_sc_status_rejected(self):
+        """Flat form runs the SAME per-task checks: a bad sc status is caught."""
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+            f.write(
+                '{"template_kind":"gd-execution-result","task_id":"T1",'
+                '"exec_status":"completed",'
+                '"sc_acceptance":[{"sc_ref":"SC-1","status":"maybe"}]}'
+            )
+            bad = f.name
+        try:
+            errors, _ = self._validate(bad)
+            assert any("status invalid" in e for e in errors), (
+                f"bad sc status in flat form must be caught (gate runs on flat), got: {errors}"
+            )
+        finally:
+            os.unlink(bad)
