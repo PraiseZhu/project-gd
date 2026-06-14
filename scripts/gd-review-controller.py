@@ -462,6 +462,9 @@ def run_round_n(
     threshold_lines: int,
     threshold_files: int,
     stub_dispatch: "StubDispatch | None" = None,
+    deep: bool = False,
+    queue_job_id: str | None = None,
+    plan_file: str | None = None,
 ) -> tuple[list[dict], str | None, int]:
     """
     Run Round N (N>=2).
@@ -510,6 +513,7 @@ def run_round_n(
         baseline_findings=baseline_findings,
         delta_scope=delta_scope_text,
         scope_constraint=scope_constraint,
+        deep=deep, queue_job_id=queue_job_id, plan_file=plan_file,
     )
 
     if large_delta:
@@ -639,6 +643,9 @@ def _run_convergence_loop(
     threshold_files: int,
     max_rounds: int,
     stub_dispatch: "StubDispatch | None",
+    deep: bool = False,
+    queue_job_id: str | None = None,
+    plan_file: str | None = None,
 ) -> str:
     """Round 2+ convergence loop shared between Branch A and Branch B.
 
@@ -659,6 +666,7 @@ def _run_convergence_loop(
             threshold_lines=threshold_lines,
             threshold_files=threshold_files,
             stub_dispatch=stub_dispatch,
+            deep=deep, queue_job_id=queue_job_id, plan_file=plan_file,
         )
         baseline, baseline_unresolved, new_in_delta = update_baseline_statuses(
             baseline, round_findings, round_num
@@ -760,6 +768,7 @@ def run_branch_b(
         branch_label="execution-only", claude_findings=claude_findings,
         threshold_lines=threshold_lines, threshold_files=threshold_files,
         max_rounds=max_rounds, stub_dispatch=stub_dispatch,
+        deep=deep, queue_job_id=queue_job_id, plan_file=plan_file,
     )
 
 

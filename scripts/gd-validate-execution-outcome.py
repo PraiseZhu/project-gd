@@ -172,9 +172,12 @@ def _substitute_python(cmd: str, python_exe: str) -> str:
     Also strips the /usr/bin/env prefix when replacing so the result is a valid
     executable command.
     """
-    # Safety: only substitute if python_exe looks like a clean executable path
-    if " " in python_exe or "env" in python_exe:
-        return cmd  # unsafe exe string — skip substitution
+    # Safety: only substitute if python_exe looks like a clean absolute executable path.
+    # Block /usr/bin/env (the indirection binary) but not paths that contain 'env' as a
+    # substring (e.g. .pyenv, .venv, virtual_env) — use basename check.
+    import os as _os
+    if " " in python_exe or _os.path.basename(python_exe) == "env":
+        return cmd  # unsafe or indirection binary — skip substitution
     # Strip /usr/bin/env python3 prefix first (SC-13 key fix: avoids /usr/bin/env /path/to/python3)
     cmd = re.sub(r"/usr/bin/env\s+python3(?!\.\d)(\s+-[mc])", rf"{python_exe}\1", cmd)
     # Replace bare python3 -m or python3 -c

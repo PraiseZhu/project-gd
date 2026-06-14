@@ -1676,8 +1676,12 @@ def run_review_subcommand(sub: str, rest: list[str]) -> int:
         print(f"REVIEW_SUBCOMMAND_FAILED: {sub} — {res.get('failure_description') or res.get('status')}",
               file=sys.stderr)
         return 1
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(Path(mapped_path).read_text(encoding="utf-8"), encoding="utf-8")
+    try:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(Path(mapped_path).read_text(encoding="utf-8"), encoding="utf-8")
+    except OSError as exc:
+        print(f"REVIEW_SUBCOMMAND_WRITE_ERROR: {exc}", file=sys.stderr)
+        return 1
     decision = res.get("decision")
     print(f"REVIEW_SUBCOMMAND: {sub}")
     print(f"GD_REVIEW_DECISION: {decision}")

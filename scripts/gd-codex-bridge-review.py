@@ -1588,6 +1588,10 @@ def cmd_build_capsule(args: argparse.Namespace) -> int:
 
 
 # G1 sentinel: execution_outcome and combined must be dispatched via router.
+# code_diff is intentionally excluded: code reviews don't produce execution verdicts
+# that could be exploited as false-APPROVED pass gates, so the dispatch constraint
+# is not needed for that kind. run_review_subcommand("code") still sets the env
+# for traceability, but the bridge does not enforce it for code_diff.
 _EXECUTION_KINDS_REQUIRING_ROUTER: frozenset[str] = frozenset({"execution_outcome", "combined"})
 _GD_ROUTER_INVOCATION_ENV = "GD_REVIEW_ROUTER_INVOCATION_ID"
 
@@ -1905,8 +1909,9 @@ def _cmd_run_bridge_inner(args: argparse.Namespace) -> int:
                   file=sys.stderr)
             _post_git_status = ""  # force diff detection below
         if _pre_git_status != _post_git_status:
-            # Use absolute-path comparison to prevent substring/traversal bypass
-            _allowed_abs = (cwd / "plans/gd/2026-06-13-codex-deep-review/results").resolve()
+            # Use absolute-path comparison to prevent substring/traversal bypass.
+            # Allow any path under plans/gd/ (plan-dir results are regenerable artifacts).
+            _allowed_abs = (cwd / "plans" / "gd").resolve()
             _pre_lines = set(_pre_git_status.splitlines())
             _new_changes = []
             for _line in _post_git_status.splitlines():
@@ -1926,6 +1931,15 @@ def _cmd_run_bridge_inner(args: argparse.Namespace) -> int:
                     + "; ".join(_new_changes[:5]),
                     file=sys.stderr,
                 )
+                violated_mapped = _failed_mapped(
+                    "codex", args.kind, target_str,
+                    "deep isolation violated — Codex modified files outside allowed results path",
+                )
+                out_path.write_text(json.dumps(violated_mapped, ensure_ascii=False, indent=2), encoding="utf-8")
+                print("GD_CODEX_BRIDGE_STATUS: failed_to_run")
+                print("GD_REVIEW_DECISION: FAILED")
+                print(f"MAPPED_RESULT: {out_path}")
+                return 1
 
     # SC-17/SC-28: extract run_evidence from finding evidence prose when deep mode
     if _deep:
