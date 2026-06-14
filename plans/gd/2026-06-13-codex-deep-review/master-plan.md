@@ -314,3 +314,29 @@ VERIFY：见下方 SC-16/SC-17/SC-18 verify 命令
 ## 8. 与既有未完成工作的关系
 
 本计划开工前的基线状态（2026-06-13 更新）：option-A 4 个文件已 commit `a091962` 并 push 到 origin/main。当前 GD 工作树**只有本计划目录是未跟踪（untracked）**，无其他未提交改动。开工前须先 commit 本计划目录，在干净基线上开 deep-review 分支。
+
+## 9. SC 验证边界（2026-06-14 Codex deep 交叉审三轮后补记）
+
+执行完成后，本计划执行结果经 Codex deep 交叉审（L2 execution_outcome，三轮）。Codex 在**项目级 workspace-write 沙箱**内 re-run 每条 verify 命令，由此暴露并修复了若干真实缺陷（见下「修复记录」），同时识别出 6 条 SC 的**固有验证边界**：它们正常环境通过，但**无法在项目级 deep 沙箱内重跑**，因其 exercise `~/.claude` 运行时 / 具时序性 / 需嵌套调度。这是「用项目级沙箱验证 touch `~/.claude` 的基础设施」的物理边界，非缺陷。
+
+### 6 条边界 SC
+
+| SC | 边界类型 | 原因 | 正常环境证据 |
+|----|---------|------|------------|
+| SC-1  | `requires_claude_runtime` | 测试需写 `~/.claude/review-baselines/` + 读 `~/.claude/scripts/review-result-writer.sh`（均在项目沙箱外） | `pytest -k writer_no_flag_golden` 正常环境 pass |
+| SC-29 | `requires_claude_runtime` | 同 SC-1：deep timeout golden 需 `~/.claude` 运行时 | `pytest -k writer_deep_timeout_golden` 正常环境 pass |
+| SC-16 | `requires_claude_runtime` | 全套 pytest 含上述 writer 运行时测试，连带需 `~/.claude` | 正常环境 `pytest tests/` 42 passed |
+| SC-22 | `pre_change_temporal_gate` | 改 writer 前的一次性漂移门（assert live==`writer_pre_hash`）。writer 按计划改后，原命令必然失败（live 已==`writer_expected_hash`）。**最终态 hash 校验归 SC-18** | 改前已验 `NO_DRIFT`（live==pre_hash `03dc1d6a...`） |
+| SC-2  | `requires_claude_runtime` | deep 通道实证需读 `~/.claude/handoff/state/codex-watch.log`（沙箱外） | 日志实录 job `mode=workspace-write` |
+| SC-28 | `requires_nested_dispatch` | controller deep 需派 codex 子任务；Codex 沙箱内嵌套调度够不到 daemon | 正常调用 controller `--deep` 产 `skipped==1`+非 APPROVED（L2_DEEP_OK） |
+
+**验证守则**：上述 SC 的验收必须在**正常（非嵌套、可访问 `~/.claude`）环境**执行；放进 Codex/嵌套沙箱重跑会因边界失败，不构成回归证据。SC-2 verify 命令中的日志路径以 `~/.claude/handoff/state/codex-watch.log` 为准（早期文档曾误写 `logs/`）。
+
+### Codex deep 交叉审修复记录（2026-06-14）
+
+三轮交叉审捕获并修复的真实缺陷（原始 34/34 PASS 声明漏掉的）：
+
+1. **router `review execution|code` 子命令曾是幻影**（R2）：仅在顶层 `--help` 出现，argparse 拒收为未知参数 → SC-9/SC-10 曾假阳性、SC-17/SC-25 曾靠绕过 router 直调 bridge "通过"。已实现真子命令（`scripts/gd-review-router.py: run_review_subcommand`），SC-17/SC-25 经真子命令端到端验证（FAKE_SKIP_CAUGHT / SEMANTIC_BUG_CAUGHT），失败 fail-closed 不写 pass。
+2. **run_evidence 提取曾挂错层**（R2）：只在 run-bridge，router 走 parse-transport 绕过。已抽 `_extract_run_evidence_into_mapped` helper，run-bridge 与 parse-transport（canonical raw→mapped）共用。
+3. **证据捕获曾用 `| tail -1` 吞失败**（R2-F3）：改 pipefail 无 masking，连带翻出 e2e 产物被误 track 弄脏树 → 加 `plans/gd/*/results/` 到 .gitignore + untrack。
+4. **SC-22 hash 曾被偷换**（R3-F2）：outcome 生成误将 `writer_pre_hash` 换成 `writer_expected_hash`，已如实改回（见上表 SC-22 行）。
