@@ -155,7 +155,7 @@ echo ""
 
 # c · codex 模型（选项制；gpt-5.5 为当前 latest/default，列首）
 choose_option "c · codex 模型" "$cur_model" \
-  "gpt-5.5" "gpt-5.5-pro" "gpt-5.4" "gpt-5.4-mini" "gpt-5"
+  "gpt-5.5" "gpt-5.4" "gpt-5.4-mini" "gpt-5"
 CODEX_MODEL="$CHOSEN"
 
 # d · 模型强度 effort（选项制）

@@ -126,7 +126,7 @@ Project GD 的**三条 review 链路是三个独立命令**：
 - **FR-018**（2026-06-11 新增/细化，setup 命令 + 可重配预设）: 分发产物 MUST 提供一个**专门的 setup 命令**（随插件分发，与三链路命令并列在 bundle 内），收集并持久化安装者预设。**所有预设字段 MUST 以「选项」提供，MUST NOT 让安装者自由填路径/值**（自由填易破坏传输协同与隔离）。字段：
   - (a) **审查产物输出位置**——选项制（如 `${CLAUDE_PLUGIN_DATA}` / 目标项目内 / 其他受控选项），驱动 FR-006 默认值；
   - (b) **codex key**——MUST 同时支持「官方 key」与「第三方(代理) key」两类选项 + key 值输入；不同类型对应不同 codex 配置（provider / base_url / env_key）。key 写入 daemon 运行环境，MUST NOT 入 git / 不进 bundle / 不设内置默认 key；
-  - (c) **codex 模型**——选项制（如 gpt-5.5 / gpt-5.5-pro / gpt-5.4 / gpt-5.4-mini / gpt-5）；
+  - (c) **codex 模型**——选项制（如 gpt-5.5 / gpt-5.4 / gpt-5.4-mini / gpt-5）；
   - (d) **codex 模型强度（effort）**——选项制（如 none / low / medium / high / xhigh；`none` 为 gpt-5.5 显式无推理路径）。
   该 setup 命令 **MUST NOT 是一次性的**——安装者 MUST 能**随时重新运行**它进入配置、单独修改任一项，无需重装插件、不丢其他项。预设结果 MUST 存于更新安全位置（如 `${CLAUDE_PLUGIN_DATA}`），插件 `update` MUST NOT 清除。注：传输 `HANDOFF_ROOT` **不属**安装者预设（见 FR-016，插件管理）。命令名与首次引导形态属 `/gd plan` 阶段决定。
 
