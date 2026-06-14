@@ -63,6 +63,8 @@ __pycache__/
 # this only stops NEW untracked artifacts from entering the index.
 results/*
 reports/*
+# Plan-dir e2e/run artifacts (regenerable; excluded per SC-18/SC-24 intent)
+plans/gd/*/results/
 # Curated release evidence stays committable (run-manifest.json + approved artifacts).
 !results/release-evidence/
 
