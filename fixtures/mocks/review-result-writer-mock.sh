@@ -41,6 +41,19 @@ if [[ -n "$CAPSULE_FILE" && -f "$CAPSULE_FILE" ]]; then
 fi
 PRIMARY_TARGET="${PRIMARY_TARGET:-fixtures/review2-plan/good-plan.md}"
 
+# Build Scope Checked rows covering EVERY SC checklist line in the target plan,
+# matching the bridge SHALLOW_REVIEW count (_PLAN_SC_ID_RE = '^- [ ] SC-N' in
+# gd-codex-bridge-review.py). A single hardcoded row trips SHALLOW_REVIEW → degraded
+# whenever the target declares >1 SC, so derive rows dynamically from the real target.
+SC_LIST=$(grep -oE '^- \[[ xX]\] SC-[0-9]+' "$PRIMARY_TARGET" 2>/dev/null | grep -oE 'SC-[0-9]+' | sort -u || true)
+SC_ROWS=""
+for sc in $SC_LIST; do
+    [[ -n "$SC_ROWS" ]] && SC_ROWS="${SC_ROWS}"$'\n'
+    SC_ROWS="${SC_ROWS}| ${sc} | PASS | ${PRIMARY_TARGET}:1 — step present |"
+done
+# Fallback: target unreadable / no SC checklist lines → at least one row (avoids empty table).
+[[ -z "$SC_ROWS" ]] && SC_ROWS="| SC-1 | PASS | ${PRIMARY_TARGET}:1 — step present |"
+
 cat > "$RESULT_FILE" << EOF
 # Plan Review Result (Mock)
 
@@ -52,7 +65,7 @@ BASELINE_KEY: ${BASELINE_KEY:-unknown}
 SCOPE_CHECKED:
 | SC-ID | Status | Evidence |
 |-------|--------|----------|
-| SC-1 | PASS | ${PRIMARY_TARGET}:1 — step present |
+${SC_ROWS}
 
 ## Findings
 
