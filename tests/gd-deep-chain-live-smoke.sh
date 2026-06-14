@@ -117,12 +117,11 @@ else
     python3 - "$R_L2" <<'PY'
 import json, sys, glob
 fs = glob.glob(sys.argv[1] + "/codex_mapped*.json")
-ok = any(
-    any(e.get("skipped") == 1 for e in json.load(open(f)).get("run_evidence", []) or [])
-    and json.load(open(f)).get("gd_review_decision") != "APPROVED"
-    for f in fs
-)
-sys.exit(0 if ok else 1)
+def _check(f):
+    d = json.load(open(f))
+    ev = d.get("run_evidence") or []
+    return any(e.get("skipped") == 1 for e in ev) and d.get("gd_review_decision") != "APPROVED"
+sys.exit(0 if any(_check(f) for f in fs) else 1)
 PY
     if [ $? -eq 0 ]; then pass "L2 controller deep caught fake skip (run_evidence skipped==1, non-APPROVED)"
     else fail "L2 controller deep did NOT catch fake skip — see $R_L2"; fi
