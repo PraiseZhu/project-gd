@@ -153,14 +153,15 @@ printf "key: "
 read -rs KEY_VALUE
 echo ""
 
-# c · codex 模型（选项制）
+# c · codex 模型（选项制；gpt-5.5 为当前 latest/default，列首）
 choose_option "c · codex 模型" "$cur_model" \
-  "gpt-5.4" "gpt-5.4-mini" "gpt-5"
+  "gpt-5.5" "gpt-5.5-pro" "gpt-5.4" "gpt-5.4-mini" "gpt-5"
 CODEX_MODEL="$CHOSEN"
 
 # d · 模型强度 effort（选项制）
+# none = gpt-5.5 显式无推理文本路径（reasoning.effort: none）；xhigh 为 codex 扩展上限。
 choose_option "d · 模型强度（effort）" "$cur_effort" \
-  "low" "medium" "high" "xhigh"
+  "none" "low" "medium" "high" "xhigh"
 EFFORT="$CHOSEN"
 
 # --- 写入 JSON（python3 stdlib，保留未改动的 key 值）------------------------
