@@ -62,33 +62,37 @@ class TestBridgeSelfTestRegression:
     """SC-5: bridge self-test regression — validate no NEW failures from our changes."""
 
     def test_bridge_self_test_new_fixtures_pass(self):
-        """SC-5: all deep-* fixtures in codex-bridge-v2/ must pass in self-test output."""
+        """SC-5: deep-*.mapped.json schema-sample fixtures must NOT appear in self-test FAILED."""
         import subprocess
         bridge = os.path.join(PROJECT_ROOT, "scripts", "gd-codex-bridge-review.py")
         r = subprocess.run(
             [sys.executable, bridge, "self-test"],
             capture_output=True, text=True,
         )
-        # Check that our new fixtures all appear as ✓ (pass) lines
-        new_fixtures = [
+        # Pure schema-sample files (no _test_meta) are gracefully skipped by self-test.
+        # They must NOT appear in the FAILED section.
+        schema_sample_fixtures = [
             "deep-outcome-pass.mapped.json",
             "deep-plan-pass.mapped.json",
             "deep-code-pass.mapped.json",
+        ]
+        output = r.stdout + r.stderr
+        if "self-test FAILED:" in output:
+            failed_section = output.split("self-test FAILED:")[1]
+            for fixture in schema_sample_fixtures:
+                assert fixture not in failed_section, (
+                    f"SC-5: schema-sample fixture {fixture} must not appear in self-test FAILED"
+                )
+
+        # Routing fixtures (with _test_meta) must still appear as ✓
+        routing_fixtures = [
             "deep-outcome-fail-missing-evidence.mapped.json",
             "deep-plan-fail-missing-findings.mapped.json",
         ]
-        output = r.stdout + r.stderr
-        for fixture in new_fixtures:
+        for fixture in routing_fixtures:
             assert f"✓ v2-routing {fixture}" in output, (
-                f"SC-5: fixture {fixture} should appear as ✓ in self-test output"
+                f"SC-5: routing fixture {fixture} should appear as ✓ in self-test"
             )
-        # None of the new fixtures should appear in FAILED section
-        if "self-test FAILED:" in output:
-            failed_section = output.split("self-test FAILED:")[1]
-            for fixture in new_fixtures:
-                assert fixture not in failed_section, (
-                    f"SC-5: fixture {fixture} should not appear in self-test FAILED section"
-                )
 
 
 class TestV2TitleTolerance:

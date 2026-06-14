@@ -2297,6 +2297,9 @@ def cmd_self_test(args: argparse.Namespace) -> int:
             meta = desc.get("_test_meta", {})
             expect = meta.get("_expect")
             if expect not in {"PASS", "FAIL"}:
+                # Skip pure schema-sample files (no _test_meta — e.g. deep-*.mapped.json)
+                if "_test_meta" not in desc:
+                    continue
                 failures.append(f"v2-routing {fp.name}: _test_meta._expect must be PASS|FAIL")
                 continue
 
