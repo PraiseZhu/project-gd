@@ -1,0 +1,16 @@
+{
+  "_description": "Golden capture of review-result-writer.sh no-flag invocation to codex-send-wait. Captured 2026-06-14 before Step 1 writer modification.",
+  "writer_pre_hash": "03dc1d6a7b54780e0fe297b14b6d46f8882d022c6ae21695c56be4436b8214d3",
+  "codex_send_wait_argv": ["--cwd", "<REVIEW_CWD>", "--mode", "review-only", "--payload-file", "<CAPSULE_FILE>"],
+  "mode_value": "review-only",
+  "timeout_env": null,
+  "argv_pattern": {
+    "--mode": "review-only",
+    "has_send_timeout_env": false
+  },
+  "invariants": {
+    "mode_must_be": "review-only",
+    "no_extra_flags": true,
+    "codex_send_wait_timeout_env_absent": true
+  }
+}

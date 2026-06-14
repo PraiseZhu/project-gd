@@ -297,6 +297,9 @@ def _invoke_bridge_mapped(
     baseline_findings: list[dict] | None = None,
     delta_scope: str | None = None,
     scope_constraint: str | None = None,
+    deep: bool = False,
+    queue_job_id: str | None = None,
+    plan_file: str | None = None,
 ) -> dict:
     """
     Invoke gd-codex-bridge-review.py run-bridge + parse-transport for one codex job.
@@ -333,8 +336,17 @@ def _invoke_bridge_mapped(
         "--out", str(run_out),
         "--live-transport",
     ]
+    # SC-11/SC-32: deep mode — add --deep flag, --queue-job-id, --plan-file; timeout ≥1800s
+    bridge_timeout = 420
+    if deep:
+        run_args.append("--deep")
+        bridge_timeout = 1800
+    if queue_job_id:
+        run_args.extend(["--queue-job-id", queue_job_id])
+    if plan_file:
+        run_args.extend(["--plan-file", plan_file])
     try:
-        r_run = subprocess.run(run_args, capture_output=True, text=True, timeout=420, env=env)
+        r_run = subprocess.run(run_args, capture_output=True, text=True, timeout=bridge_timeout, env=env)
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(f"bridge run-bridge timed out: {exc}") from exc
 
@@ -1308,6 +1320,12 @@ def main() -> int:
                    help=f"D7: delta files threshold for Round2+ dual codex (default {DEFAULT_ROUND2_FANOUT_THRESHOLD_FILES})")
     p.add_argument("--max-rounds", type=int, default=DEFAULT_MAX_ROUNDS,
                    help=f"Hard ceiling on total rounds (default {DEFAULT_MAX_ROUNDS})")
+    p.add_argument("--deep", action="store_true", default=False,
+                   help="SC-11: deep review mode; bridge timeout ≥1800s")
+    p.add_argument("--queue-job-id", default=None,
+                   help="SC-12: queue job ID for dispatch tracking")
+    p.add_argument("--plan-file", default=None,
+                   help="SC-32: plan file for deep outcome capsule")
     args = p.parse_args()
 
     if args.selftest:

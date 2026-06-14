@@ -419,6 +419,8 @@ def _run_live_codex_bridge(
     output_dir: Path,
     invocation_id: str,
     timeout_sec: int,
+    deep: bool = False,
+    plan_file: str | None = None,
 ) -> dict:
     """C2 helper: invoke Codex live bridge for execution_outcome or combined kind.
 
@@ -456,6 +458,10 @@ def _run_live_codex_bridge(
         "failure_description": None,
     }
 
+    # SC-31: deep path requires bridge timeout ≥1800s
+    if deep:
+        timeout_sec = max(timeout_sec, 1800)
+
     run_args = [
         sys.executable, str(bridge_script), "run-bridge",
         "--kind", kind,
@@ -464,6 +470,10 @@ def _run_live_codex_bridge(
         "--out", str(run_out),
         "--live-transport",
     ]
+    if deep:
+        run_args.append("--deep")
+    if plan_file:
+        run_args += ["--plan-file", plan_file]
     try:
         r_run = subprocess.run(
             run_args, capture_output=True, text=True, timeout=timeout_sec,
@@ -797,6 +807,8 @@ def _run_live_execution_only(
     live_bridge_timeout_sec: int = 360,
     use_controller: bool = False,
     claude_review_json: Path | None = None,
+    deep: bool = False,
+    plan_file: str | None = None,
 ) -> int:
     """execution_only_no_code (Execution-Review Cross-Review v2):
       Stage 1: invoke gd-validate-execution-outcome.py (validate facts/deliverables/verify-reruns)
@@ -982,6 +994,8 @@ def _run_live_execution_only(
             output_dir=output_dir,
             invocation_id=invocation_id,
             timeout_sec=live_bridge_timeout_sec,
+            deep=deep,
+            plan_file=plan_file,
         )
         codex_status = bridge_result["status"]
         codex_decision = bridge_result["decision"]
@@ -1171,6 +1185,8 @@ def _run_live_execution_plus_code(
     live_bridge_timeout_sec: int = 360,
     use_controller: bool = False,
     claude_review_json: Path | None = None,
+    deep: bool = False,
+    plan_file: str | None = None,
 ) -> int:
     """execution_plus_code (combined): outcome-first, then code if passes (3a-SC-5/SC-7).
     Stage 1: gd-validate-execution-outcome.py
@@ -1342,6 +1358,8 @@ def _run_live_execution_plus_code(
             output_dir=output_dir,
             invocation_id=invocation_id,
             timeout_sec=live_bridge_timeout_sec,
+            deep=deep,
+            plan_file=plan_file,
         )
         codex_status = bridge_result["status"]
         codex_decision = bridge_result["decision"]
@@ -1428,6 +1446,8 @@ def run_live(
     review_contract: str = 'auto',
     expected_target_hash: str | None = None,
     live_bridge_timeout_sec: int = 360,
+    deep: bool = False,
+    plan_file: str | None = None,
 ) -> int:
     print(f"=== gd-review-router: live mode ===")
     print(f"target    : {target or '(auto)'}")
@@ -1482,6 +1502,8 @@ def run_live(
             review_contract=review_contract,
             live_bridge_timeout_sec=live_bridge_timeout_sec,
             use_controller=is_true_live,
+            deep=deep,
+            plan_file=plan_file,
         )
 
     if kind == "code_only" and target is not None:
@@ -1495,6 +1517,8 @@ def run_live(
             review_contract=review_contract,
             live_bridge_timeout_sec=live_bridge_timeout_sec,
             use_controller=is_true_live,
+            deep=deep,
+            plan_file=plan_file,
         )
 
     # Fallback: target is None for a non-plan kind — fail-closed.
@@ -1638,6 +1662,10 @@ def main() -> int:
                    help="Timeout (seconds) for live Codex bridge run-bridge subprocess. "
                         "Default 360 (codex-send-wait default is 300; must be longer). "
                         "On timeout: codex_review_status=transport_failed fail-closed.")
+    p.add_argument("--deep", action="store_true", default=False,
+                   help="SC-9: deep review mode; bridge timeout ≥1800s")
+    p.add_argument("--plan-file", default=None,
+                   help="SC-33: plan file path for deep outcome capsule")
     args = p.parse_args()
 
     if args.self_test:
@@ -1671,6 +1699,8 @@ def main() -> int:
             review_contract=getattr(args, "review_contract", "auto"),
             expected_target_hash=getattr(args, "expected_target_hash", None),
             live_bridge_timeout_sec=getattr(args, "live_bridge_timeout_sec", 360),
+            deep=getattr(args, "deep", False),
+            plan_file=getattr(args, "plan_file", None),
         )
 
     return err("UNKNOWN_MODE", args.mode, 2)

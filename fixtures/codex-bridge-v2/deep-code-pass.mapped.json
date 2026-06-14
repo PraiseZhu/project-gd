@@ -1,0 +1,17 @@
+{
+  "schema_version": "2.0",
+  "template_kind": "gd-code-diff-review",
+  "review_kind": "code_diff",
+  "review_target_kind": "code_only",
+  "target_role": "code_diff",
+  "reviewer": "codex",
+  "review_target": "scripts/gd-codex-bridge-review.py",
+  "review_run_status": "completed",
+  "gd_review_decision": "APPROVED",
+  "source_of_truth_decision": {"location": "fenced_json_block", "value": "APPROVED"},
+  "scope_checked": [{"area": "logic", "result": "pass", "evidence": "Code logic matches plan intent"}],
+  "findings": [{"severity": "P2", "title": "Minor style issue", "sc_refs": ["SC-1"], "evidence": "Line length exceeds 120", "impact": "Cosmetic", "required_fix": "Wrap long line", "verify": "line length < 120"}],
+  "merge_notes": {"conflict_with_other_reviewer": false},
+  "residual_risk": "none",
+  "timestamp": "2026-06-14T06:00:00Z"
+}

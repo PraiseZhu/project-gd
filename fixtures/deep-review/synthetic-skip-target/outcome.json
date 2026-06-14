@@ -1,0 +1,22 @@
+{
+  "_description": "Synthetic execution outcome - claims SC passes but test is unconditionally skipped",
+  "plan_ref": "fixtures/deep-review/synthetic-skip-target/plan-snapshot.md",
+  "execution_id": "synthetic-skip-target-v1",
+  "overall_status": "pass",
+  "steps_completed": 1,
+  "steps_total": 1,
+  "verify_results": [
+    {
+      "sc_id": "SC-1",
+      "sc_title": "golden replay execution passes",
+      "status": "pass",
+      "cmd": "python3 -m pytest fixtures/deep-review/synthetic-skip-target/ -q",
+      "claimed_exit": 0,
+      "claimed_passed": 0,
+      "claimed_failed": 0,
+      "claimed_skipped": 0,
+      "notes": "All tests passed (claimed)"
+    }
+  ],
+  "summary": "All 1 SC passed. Execution complete."
+}

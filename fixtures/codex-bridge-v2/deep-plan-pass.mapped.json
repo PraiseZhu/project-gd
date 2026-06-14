@@ -1,0 +1,17 @@
+{
+  "schema_version": "2.0",
+  "template_kind": "gd-plan-review",
+  "review_kind": "plan",
+  "review_target_kind": "plan_only",
+  "target_role": "plan_artifact",
+  "reviewer": "codex",
+  "review_target": "fixtures/deep-review/synthetic-skip-target/plan-snapshot.md",
+  "review_run_status": "completed",
+  "gd_review_decision": "APPROVED",
+  "source_of_truth_decision": {"location": "fenced_json_block", "value": "APPROVED"},
+  "scope_checked": [{"area": "architecture", "result": "pass", "evidence": "Plan structure clear"}],
+  "findings": [{"severity": "P2", "title": "No risk section", "sc_refs": ["SC-1"], "evidence": "Missing risk analysis section", "impact": "Minor coverage gap", "required_fix": "Add risk section", "verify": "grep -q risk plan-snapshot.md"}],
+  "merge_notes": {"conflict_with_other_reviewer": false},
+  "residual_risk": "none",
+  "timestamp": "2026-06-14T06:00:00Z"
+}

@@ -302,6 +302,18 @@ CAPABILITY_STATUS: <按映射表枚举值>
 
 **lock_revision=7 install**：H2b 写 commands/gd.md → record `revision: 7 plan_ref: h2b-command-router` → 跑 `bash tools/check-gd-command-parity.sh`。
 
+**Deep Review 档位（`--deep`，计划 2026-06-13-codex-deep-review 引入）**：
+
+`/gd review execution --deep` 和 `/gd review code --deep` 开启 workspace-write sandbox，Codex 真实执行 verify 命令（真跑观测 + 深读推理）。
+
+| 参数 | 含义 |
+|------|------|
+| `--deep` | workspace-write sandbox，timeout 1200/1500s |
+| `--plan-file <md>` | deep outcome capsule 携带 plan-derived SC verify 命令 |
+| `--out <path>` | 单文件输出（非目录），供 L2 controller 消费 |
+
+何时用 deep：release 前 / 执行结果存疑 / 用户显式要求（成本约 5-20 分钟 + 大 token）。
+
 ---
 
 ### `/gd review plan`
@@ -381,6 +393,10 @@ CAPABILITY_STATUS: <按映射表枚举值>
 
 任一缺失 → `CAPABILITY_STATUS: blocked_missing_artifact`，列出缺失文件，停止。
 
+**执行合约（plan_ref）**：
+
+- `plan_ref`：执行 outcome JSON 必须填写 `plan_ref` 字段，指向本次执行所依据的 master-plan.md 路径（例 `plans/gd/2026-06-13-codex-deep-review/master-plan.md`）。缺失时 router 打印激活提示（不 fail，渐进迁移）。
+
 **行为**：
 
 - `CAPABILITY_STATUS: local_only`
@@ -440,6 +456,15 @@ CAPABILITY_STATUS: <按映射表枚举值>
 ---
 
 ### `/gd review code`
+
+**双档位（conformance + deep）**：
+
+| 档位 | 命令 | sandbox | timeout | 用途 |
+|------|------|---------|---------|------|
+| 快档（默认） | `review code <target>` | read-only | 540/600s | conformance 验证 |
+| deep 档 | `review code <target> --deep [--plan-file <md>]` | workspace-write | 1200/1500s | 深读推理 + 语义 bug 检测 |
+
+deep 档使用场景：release 前 / 代码逻辑存疑 / 用户显式要求（成本约 5-20 分钟 + 大 token）。
 
 **前置读取**：
 

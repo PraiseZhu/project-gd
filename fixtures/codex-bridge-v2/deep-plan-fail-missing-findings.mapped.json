@@ -1,0 +1,14 @@
+{
+  "_test_meta": {
+    "_expect": "PASS",
+    "_reason": "SC-7: DEEP_FINDINGS_MISSING — plan parse-transport with malformed input; expects degraded/FAILED"
+  },
+  "subcommand": "parse-transport",
+  "kind": "plan",
+  "compat_v1": false,
+  "raw_fixture": "fixtures/review-bridge/v2/v2-plan-malformed.md",
+  "expected_review_run_status": "degraded",
+  "expected_gd_review_decision": "FAILED",
+  "expected_template_kind": "gd-plan-review",
+  "_fixture_comment": "SC-7: DEEP_FINDINGS_MISSING — malformed plan produces degraded/FAILED; validates error propagation"
+}

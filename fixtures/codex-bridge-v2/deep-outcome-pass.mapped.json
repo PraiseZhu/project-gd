@@ -1,0 +1,18 @@
+{
+  "schema_version": "2.0",
+  "template_kind": "gd-execution-outcome-review",
+  "review_kind": "execution_outcome",
+  "review_target_kind": "execution_only_no_code",
+  "target_role": "execution_artifact",
+  "reviewer": "codex",
+  "review_target": "fixtures/deep-review/synthetic-skip-target/outcome.json",
+  "review_run_status": "completed",
+  "gd_review_decision": "REQUIRES_CHANGES",
+  "source_of_truth_decision": {"location": "fenced_json_block", "value": "REQUIRES_CHANGES"},
+  "scope_checked": [{"area": "SC-1", "result": "fail", "evidence": "skipped=1, claimed pass"}],
+  "findings": [{"severity": "P1", "title": "Test skipped but claimed pass", "sc_refs": ["SC-1"], "evidence": "skipped=1, exit=0", "impact": "False pass conceals non-running test", "required_fix": "Remove @pytest.mark.skip", "verify": "pytest reports 0 skipped"}],
+  "run_evidence": [{"cmd": "python3 -m pytest fixtures/deep-review/synthetic-skip-target/ -q", "exit": 0, "passed": 0, "failed": 0, "skipped": 1, "skip_reason": "golden_replay placeholder", "interpreter_version": "Python 3.13.12"}],
+  "merge_notes": {"conflict_with_other_reviewer": false},
+  "residual_risk": "none",
+  "timestamp": "2026-06-14T06:00:00Z"
+}

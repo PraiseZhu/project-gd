@@ -535,7 +535,7 @@ def validate_mapped_schema_v2(d: dict) -> list[str]:
         "residual_risk",
         "timestamp",
     ]
-    allowed = set(required) | {"compatibility_mode", "cross_validation_findings"}
+    allowed = set(required) | {"compatibility_mode", "cross_validation_findings", "run_evidence"}
     for f in required:
         if f not in d:
             errs.append(f"缺字段 {f}")
@@ -823,12 +823,14 @@ def _parse_raw_to_mapped_v2(
     target_str = str(target)
 
     # 0. v2 H1 title presence (defensive — writer should already have asserted)
+    # SC-26: accept both "# Plan Review Result (v2)" and "# Plan Review Result" (without suffix)
     title = TITLE_BY_KIND_V2[kind]
-    if f"# {title}" not in raw_text:
+    title_bare = title.replace(" (v2)", "")
+    if f"# {title}" not in raw_text and f"# {title_bare}" not in raw_text:
         return (
             _failed_mapped(
                 "codex", kind, target_str,
-                f"raw 缺 v2 标题 # {title}", "degraded", compat_v1=False,
+                f"raw 缺 v2 标题 # {title} (也尝试了不带 (v2) 后缀)", "degraded", compat_v1=False,
             ),
             [f"missing v2 title {title}"],
         )
@@ -1384,6 +1386,91 @@ def build_capsule_text(
     return capsule, target_hash, capsule_hash, gd_baseline_key, run_id
 
 
+def _extract_plan_sc_verify_summary(plan_file_path: str) -> str:
+    """SC-33: Extract SC verify commands from plan markdown for deep capsule."""
+    try:
+        text = Path(plan_file_path).read_text(encoding="utf-8")
+        sc_hdr = re.compile(r"^\s*-\s*\[[ xX]\]\s*(SC-[\d]+(?:[.\-][\w]+)*)", re.MULTILINE)
+        verify_re = re.compile(r"-\s+verify\s*\(method:\s*([^)]+)\)\s*:\s*`([^`]+)`", re.MULTILINE | re.DOTALL)
+        entries = []
+        sc_positions = list(sc_hdr.finditer(text))
+        for idx, sc_match in enumerate(sc_positions):
+            sc_ref = sc_match.group(1)
+            block_start = sc_match.end()
+            block_end = sc_positions[idx + 1].start() if idx + 1 < len(sc_positions) else len(text)
+            block = text[block_start:block_end]
+            for v_match in verify_re.finditer(block):
+                entries.append(f"- {sc_ref}: `{v_match.group(2).strip()}`")
+        return "\n".join(entries[:20]) if entries else "(no verify commands found)"
+    except Exception as e:
+        return f"(error extracting verify commands: {e})"
+
+
+def _build_deep_plan_capsule(kind: str, target: Path, plan_file: str | None = None) -> str:
+    """SC-3: Deep plan review capsule addendum — architecture/risk/interface dimensions."""
+    plan_section = ""
+    if plan_file and Path(plan_file).exists():
+        plan_hash = _sha256_file(Path(plan_file))
+        sc_summary = _extract_plan_sc_verify_summary(plan_file)
+        plan_section = (
+            f"\nPLAN_FILE_PATH: {plan_file}\n"
+            f"PLAN_FILE_HASH: {plan_hash}\n"
+            f"\n## SC Verify Commands (from plan)\n\n{sc_summary}\n"
+        )
+    return (
+        f"\n## Deep Review Dimensions (SC-3)\n\n"
+        f"この deep review では以下の三つの次元で分析する：\n\n"
+        f"### 1. アーキテクチャ次元\n"
+        f"- 設計の一貫性と分離境界を検証する\n"
+        f"- モジュール間の依存関係と結合度を評価する\n"
+        f"- 拡張性と保守性のリスクを特定する\n\n"
+        f"### 2. リスク次元\n"
+        f"- セキュリティ境界違反と潜在的な脆弱性を検出する\n"
+        f"- エラー処理とフォールバックパスを検証する\n"
+        f"- データ整合性と状態管理のリスクを評価する\n\n"
+        f"### 3. インターフェース次元\n"
+        f"- API契約と公開インターフェースの安定性を検証する\n"
+        f"- 呼び出し側との互換性と後方互換性を評価する\n"
+        f"- 境界条件と入力検証を検証する\n"
+        + plan_section
+    )
+
+
+def _build_deep_outcome_capsule(kind: str, target: Path, plan_file: str | None = None) -> str:
+    """SC-4: Deep outcome capsule addendum — 真跑 evidence + 五元組."""
+    plan_section = ""
+    if plan_file and Path(plan_file).exists():
+        plan_hash = _sha256_file(Path(plan_file))
+        sc_summary = _extract_plan_sc_verify_summary(plan_file)
+        plan_section = (
+            f"\nPLAN_FILE_PATH: {plan_file}\n"
+            f"PLAN_FILE_HASH: {plan_hash}\n"
+            f"\n## SC Verify Commands (from plan)\n\n{sc_summary}\n"
+        )
+    return (
+        f"\n## Deep Outcome Review Requirements (SC-4)\n\n"
+        f"**必須：真跑証拠（run_evidence）の提供**\n\n"
+        f"各 verify コマンドを実際に実行し、以下の五元組を run_evidence 配列として報告すること：\n\n"
+        f"cmd / exit / passed / failed / skipped / skip_reason / interpreter_version\n\n"
+        f"**スキップ必査因（SC-4 必須）**：skipped > 0 の場合、skip_reason に具体的な理由を記載すること。\n\n"
+        f"**run_evidence は JSON block の run_evidence 配列フィールドに含めること。**\n"
+        + plan_section
+    )
+
+
+def _build_deep_code_capsule(kind: str, target: Path) -> str:
+    """SC-4: Deep code capsule addendum — deep-read semantic bug detection."""
+    return (
+        f"\n## Deep Code Review Requirements\n\n"
+        f"**必須：深読み + セマンティックバグ検出**\n\n"
+        f"1. **深読み**：ファイル全体を行単位で読み、コメントと実装の乖離を検出する\n"
+        f"2. **セマンティックバグ**：論理的に正しいが意味的に誤っているコードを検出する\n"
+        f"3. **副作用分析**：外部状態への意図しない書き込みや読み込みを検出する\n"
+        f"4. **並行性リスク**：レース条件、デッドロック、非原子的操作を検出する\n\n"
+        f"findings には sc_refs に加えて、具体的なファイル:行参照を含めること。\n"
+    )
+
+
 # ----------------------------- Subcommand handlers ----------------------------- #
 
 
@@ -1587,9 +1674,35 @@ def _cmd_run_bridge_inner(args: argparse.Namespace) -> int:
         print(f"TRANSPORT_RESULT: N/A")
         return 1
 
+    # SC-3/SC-4: append deep capsule addendum when --deep is set
+    _deep = getattr(args, "deep", False)
+    if _deep:
+        if args.kind == "plan":
+            capsule += _build_deep_plan_capsule(args.kind, target, getattr(args, "plan_file", None))
+        elif args.kind in {"execution_outcome", "combined"}:
+            capsule += _build_deep_outcome_capsule(args.kind, target, getattr(args, "plan_file", None))
+        else:
+            capsule += _build_deep_code_capsule(args.kind, target)
+
+    # SC-23: deep isolation guard — snapshot git status before running
+    _pre_git_status = ""
+    if _deep:
+        try:
+            _gs = subprocess.run(
+                ["git", "status", "--porcelain"],
+                capture_output=True, text=True, cwd=str(cwd), timeout=10,
+            )
+            _pre_git_status = _gs.stdout
+        except Exception:
+            pass
+
     tmpdir = Path(os.environ.get("TMPDIR", "/tmp"))
     capsule_tmp = tmpdir / f"gd-codex-bridge-{run_id}.capsule.txt"
     capsule_tmp.write_text(capsule, encoding="utf-8")
+
+    # SC-1b: --deep overrides timeout to 1500; passes --mode workspace-write --send-timeout 1200 to writer
+    _effective_timeout = 1500 if _deep else getattr(args, "writer_timeout_sec", 600)
+    _writer_extra_args: list[str] = ["--mode", "workspace-write", "--send-timeout", "1200"] if _deep else []
 
     try:
         result = subprocess.run(
@@ -1600,13 +1713,13 @@ def _cmd_run_bridge_inner(args: argparse.Namespace) -> int:
                 "--review-kind", args.kind,
                 "--cwd", str(cwd),
                 "--no-stop-marker",
-            ],
+            ] + _writer_extra_args,
             capture_output=True,
             text=True,
-            timeout=getattr(args, "writer_timeout_sec", 600),
+            timeout=_effective_timeout,
         )
     except subprocess.TimeoutExpired:
-        timeout_sec = getattr(args, "writer_timeout_sec", 600)
+        timeout_sec = _effective_timeout
         mapped = _failed_mapped("codex", args.kind, target_str,
                                 f"writer subprocess timeout >{timeout_sec}s")
         out_path.write_text(json.dumps(mapped, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -1721,6 +1834,30 @@ def _cmd_run_bridge_inner(args: argparse.Namespace) -> int:
 
             if l3_failed:
                 _apply_l3_failure(mapped, l3_reason, out_path)
+
+    # SC-23: deep isolation post-check
+    if _deep and _pre_git_status is not None:
+        try:
+            _gs_post = subprocess.run(
+                ["git", "status", "--porcelain"],
+                capture_output=True, text=True, cwd=str(cwd), timeout=10,
+            )
+            _post_git_status = _gs_post.stdout
+        except Exception:
+            _post_git_status = _pre_git_status
+        if _pre_git_status != _post_git_status:
+            _allowed_prefix = "plans/gd/2026-06-13-codex-deep-review/results/"
+            _new_changes = [
+                line for line in _post_git_status.splitlines()
+                if line not in _pre_git_status.splitlines()
+                and _allowed_prefix not in line
+            ]
+            if _new_changes:
+                print(
+                    f"DEEP_ISOLATION_VIOLATED: --deep run modified files outside allowed path: "
+                    + "; ".join(_new_changes[:5]),
+                    file=sys.stderr,
+                )
 
     decision = mapped["gd_review_decision"]
     status = mapped["review_run_status"]
@@ -2320,6 +2457,8 @@ def main(argv: list[str]) -> int:
                      help="Capsule target role; default=subplan")
     p_b.add_argument("--related-context", default=None,
                      help="Path to JSON file with related context entries (role/path/hash)")
+    p_b.add_argument("--plan-file", default=None,
+                     help="SC-33: path to plan markdown file; included in deep capsule metadata")
 
     p_r = sub.add_parser("run-bridge")
     p_r.add_argument("--kind", required=True, choices=_all_kind_choices)
@@ -2337,6 +2476,10 @@ def main(argv: list[str]) -> int:
     p_r.add_argument("--writer-timeout-sec", type=int, default=600,
                      metavar="SEC",
                      help="Writer subprocess timeout in seconds (300-1800). Default: 600.")
+    p_r.add_argument("--deep", action="store_true", default=False,
+                     help="SC-1b: deep review mode; bridge_timeout=1500, passes --mode workspace-write --send-timeout 1200 to writer")
+    p_r.add_argument("--plan-file", default=None,
+                     help="SC-33: path to plan markdown file; deep capsule includes PLAN_FILE_PATH + plan hash + SC verify commands")
 
     p_p = sub.add_parser("parse-transport")
     p_p.add_argument("--kind", required=True, choices=_all_kind_choices)

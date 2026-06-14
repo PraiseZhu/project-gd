@@ -1,0 +1,16 @@
+{
+  "_test_meta": {
+    "_expect": "PASS",
+    "_reason": "SC-7: DEEP_EVIDENCE_MISSING — outcome deep review: execution_outcome parse-transport with REQUIRES_CHANGES (missing evidence scenario)"
+  },
+  "subcommand": "parse-transport",
+  "kind": "execution_outcome",
+  "compat_v1": false,
+  "raw_fixture": "fixtures/review-bridge/v2/v2-execution-outcome-requires-changes.md",
+  "expected_review_run_status": "completed",
+  "expected_gd_review_decision": "REQUIRES_CHANGES",
+  "expected_template_kind": "gd-execution-outcome-review",
+  "expected_target_role": "execution_artifact",
+  "expected_review_target_kind": "execution_only_no_code",
+  "_fixture_comment": "SC-7: DEEP_EVIDENCE_MISSING fixture — run_evidence may be empty; should warn not fail"
+}

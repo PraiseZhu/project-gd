@@ -165,8 +165,19 @@ def _find_python311() -> str | None:
 
 
 def _substitute_python(cmd: str, python_exe: str) -> str:
-    """Replace bare 'python3' invocations with the locked interpreter."""
-    # Only replace when it's python3 -m or python3 -c (not e.g. python3.11)
+    """Replace bare 'python3' invocations with the locked interpreter.
+
+    SC-13: Guards against producing '/usr/bin/env /path/to/python3.13' by only
+    substituting when python_exe is a clean absolute path (no spaces, no 'env').
+    Also strips the /usr/bin/env prefix when replacing so the result is a valid
+    executable command.
+    """
+    # Safety: only substitute if python_exe looks like a clean executable path
+    if " " in python_exe or "env" in python_exe:
+        return cmd  # unsafe exe string — skip substitution
+    # Strip /usr/bin/env python3 prefix first (SC-13 key fix: avoids /usr/bin/env /path/to/python3)
+    cmd = re.sub(r"/usr/bin/env\s+python3(?!\.\d)(\s+-[mc])", rf"{python_exe}\1", cmd)
+    # Replace bare python3 -m or python3 -c
     cmd = re.sub(r"\bpython3(?!\.\d)(\s+-[mc])", rf"{python_exe}\1", cmd)
     return cmd
 
@@ -261,6 +272,20 @@ def validate_verify_rerun(
                 f"{sc_ref}: declared fail but verify exited 0 "
                 f"(unexpected pass; possible stale declaration)"
             )
+
+        # SC-14: warn if pytest reported skipped tests under a declared-pass result
+        if declared == "pass" and "pytest" in cmd.lower():
+            _stdout_clean = re.sub(r"\x1b\[[0-9;]*m", "", result.stdout or "")
+            _skipped_match = re.search(r"\b(\d+)\s+skipped\b", _stdout_clean)
+            if _skipped_match:
+                _n_skipped = int(_skipped_match.group(1))
+                if _n_skipped > 0:
+                    print(
+                        f"  WARN SKIP_UNDER_PASS: {sc_ref}: verify declared 'pass' "
+                        f"but {_n_skipped} test(s) were skipped — review skip reasons; "
+                        f"cmd={cmd[:80]}",
+                        file=sys.stderr,
+                    )
 
     return errors
 

@@ -107,7 +107,22 @@
       "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
     },
     "compatibility_mode": { "type": "string" },
-    "cross_validation_findings": { "type": "array", "items": { "type": "object" } }
+    "cross_validation_findings": { "type": "array", "items": { "type": "object" } },
+    "run_evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "cmd": {"type": "string"},
+          "exit": {"type": "integer"},
+          "passed": {"type": "integer"},
+          "failed": {"type": "integer"},
+          "skipped": {"type": "integer"},
+          "skip_reason": {"type": "string"},
+          "interpreter_version": {"type": "string"}
+        }
+      }
+    }
   },
   "allOf": [
     {
