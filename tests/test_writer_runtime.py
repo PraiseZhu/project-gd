@@ -16,6 +16,8 @@ GOLDEN_PATH = os.path.join(PROJECT_ROOT, "fixtures/deep-review/writer-no-flag-go
 WRITER_PATH = os.path.expanduser("~/.claude/scripts/review-result-writer.sh")
 WRITER_BACKUP_PATH = os.path.expanduser("~/.claude/scripts/review-result-writer.sh.deep-review-backup")
 STUB_DIR = os.path.expanduser("~/.claude/jobs/786c591a/tmp/stub-bin")
+# Resolved once at import time; avoids repeated os.path.exists per test method
+ACTIVE_WRITER_PATH = WRITER_PATH if os.path.exists(WRITER_PATH) else PREIMAGE_PATH
 
 
 def _sha256(path):
@@ -77,7 +79,7 @@ exit 127
             os.chmod(stub_path, 0o755)
 
             # Create modified writer with stub path
-            with open(WRITER_PATH if os.path.exists(WRITER_PATH) else PREIMAGE_PATH) as f:
+            with open(ACTIVE_WRITER_PATH) as f:
                 writer_src = f.read()
             writer_src = writer_src.replace(
                 '$HOME/.claude/handoff/bin/codex-send-wait',
@@ -148,7 +150,7 @@ exit 127
 """)
             os.chmod(stub_path, 0o755)
 
-            with open(WRITER_PATH if os.path.exists(WRITER_PATH) else PREIMAGE_PATH) as f:
+            with open(ACTIVE_WRITER_PATH) as f:
                 writer_src = f.read()
             writer_src = writer_src.replace(
                 '$HOME/.claude/handoff/bin/codex-send-wait',

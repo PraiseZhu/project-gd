@@ -1847,10 +1847,10 @@ def _cmd_run_bridge_inner(args: argparse.Namespace) -> int:
             _post_git_status = _pre_git_status
         if _pre_git_status != _post_git_status:
             _allowed_prefix = "plans/gd/2026-06-13-codex-deep-review/results/"
+            _pre_lines = set(_pre_git_status.splitlines())
             _new_changes = [
                 line for line in _post_git_status.splitlines()
-                if line not in _pre_git_status.splitlines()
-                and _allowed_prefix not in line
+                if line not in _pre_lines and _allowed_prefix not in line
             ]
             if _new_changes:
                 print(
@@ -1865,45 +1865,37 @@ def _cmd_run_bridge_inner(args: argparse.Namespace) -> int:
         _extracted_evidence = []
         for finding in mapped.get("findings", []):
             ev_text = finding.get("evidence", "")
-            # Look for pytest invocation with output
             cmd_m = re.search(r"`([^`]*pytest[^`]*)`", ev_text)
-            # Use pytest summary format: N skipped in X.XXs (more specific than bare word)
-            skip_m = re.search(r"\b(\d+)\s+skipped\s+in\s+[\d.]+s", ev_text)
-            if not skip_m:
-                # Also try: N skipped, or backtick-enclosed
-                skip_m2 = re.search(r"`[^`]*?(\d+)\s+skipped\s+in", ev_text)
-                skip_m = skip_m2 if skip_m2 else re.search(r"[\"'](\d+) skipped[\"']", ev_text)
-            pass_m = re.search(r"\b(\d+)\s+passed\s+in\s+[\d.]+s", ev_text)
-            if not pass_m:
-                pass_m = re.search(r"[\"'](\d+) passed[\"']", ev_text)
-            fail_m = re.search(r"\b(\d+)\s+failed\s+in\s+[\d.]+s", ev_text)
+            # Prefer pytest summary format (N X in Y.YYs); fall back to backtick-enclosed or quoted
+            skip_m = (re.search(r"\b(\d+)\s+skipped\s+in\s+[\d.]+s", ev_text)
+                      or re.search(r"`[^`]*?(\d+)\s+skipped\s+in", ev_text)
+                      or re.search(r"[\"'](\d+) skipped[\"']", ev_text))
+            pass_m = (re.search(r"\b(\d+)\s+passed\s+in\s+[\d.]+s", ev_text)
+                      or re.search(r"[\"'](\d+) passed[\"']", ev_text))
+            fail_m = (re.search(r"\b(\d+)\s+failed\s+in\s+[\d.]+s", ev_text)
+                      or re.search(r"[\"'](\d+) failed[\"']", ev_text))
             ver_m = re.search(r"Python\s+([\d.]+)", ev_text)
             if cmd_m and skip_m:
-                skip_count = int(skip_m.group(1) if skip_m.lastindex == 1 else
-                                 (skip_m.group(1) or "0"))
                 _extracted_evidence.append({
                     "cmd": cmd_m.group(1),
                     "exit": 0,
                     "passed": int(pass_m.group(1)) if pass_m else 0,
                     "failed": int(fail_m.group(1)) if fail_m else 0,
-                    "skipped": skip_count,
+                    "skipped": int(skip_m.group(1)),
                     "skip_reason": "(extracted from Codex finding evidence)",
                     "interpreter_version": f"Python {ver_m.group(1)}" if ver_m else "Python 3.x (from Codex evidence)",
                 })
         if _extracted_evidence:
             mapped["run_evidence"] = _extracted_evidence
-            out_path.write_text(json.dumps(mapped, ensure_ascii=False, indent=2), encoding="utf-8")
 
     # SC-28/SC-33: add plan_file_path and tests_status_source to mapped result when deep
     _plan_file_arg = getattr(args, "plan_file", None)
-    _needs_rewrite = False
     if _deep and _plan_file_arg and not mapped.get("plan_file_path"):
         mapped["plan_file_path"] = _plan_file_arg
-        _needs_rewrite = True
     if _deep and mapped.get("run_evidence") and not mapped.get("tests_status_source"):
         mapped["tests_status_source"] = "deep_evidence"
-        _needs_rewrite = True
-    if _needs_rewrite:
+    # Write once after all deep-mode mutations
+    if _deep:
         out_path.write_text(json.dumps(mapped, ensure_ascii=False, indent=2), encoding="utf-8")
 
     decision = mapped["gd_review_decision"]
