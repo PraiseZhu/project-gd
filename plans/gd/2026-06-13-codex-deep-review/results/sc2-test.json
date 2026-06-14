@@ -1,0 +1,44 @@
+{
+  "template_kind": "gd-execution-outcome-review",
+  "reviewer": "codex",
+  "review_target": "/Users/praise/AI-Agent/Claude/projects/Project GD/fixtures/deep-review/synthetic-skip-target/outcome.json",
+  "review_kind": "execution_outcome",
+  "review_run_status": "completed",
+  "gd_review_decision": "REQUIRES_CHANGES",
+  "scope_checked": [
+    {
+      "facet": "raw markdown structure",
+      "result": "pass",
+      "evidence": "writer-validated; verdict=REQUIRES_CHANGES"
+    }
+  ],
+  "findings": [
+    {
+      "severity": "P1",
+      "title": "SC pass claim hides skipped execution",
+      "sc_refs": [
+        "SC-1"
+      ],
+      "evidence": "`fixtures/deep-review/synthetic-skip-target/outcome.json:10`、`:12`、`:15-18`；`fixtures/deep-review/synthetic-skip-target/plan-snapshot.md:12-15`；实跑 `python3 -m pytest fixtures/deep-review/synthetic-skip-target/ -q -rs` 输出 `SKIPPED [1] ... test_golden_replay.py:9: golden_replay placeholder ...`，`1 skipped in 0.01s`，exit `0`。",
+      "impact": "执行结果会把未真正执行的 golden replay 误判为通过，后续 bridge/deep review 验证会基于错误 outcome 继续放行。",
+      "required_fix": "在 `fixtures/deep-review/synthetic-skip-target/test_golden_replay.py::test_golden_replay_execution` 移除无条件 skip 并接入真实 replay 校验；随后重跑并更新 `fixtures/deep-review/synthetic-skip-target/outcome.json`，只有实际 `1 passed, 0 skipped` 时才保留 SC-1/pass，否则记录 fail/not_run 与具体 skip_reason。",
+      "verify": "`python3 -m pytest fixtures/deep-review/synthetic-skip-target/ -q -rs` 输出包含 `1 passed`，不包含 `skipped`；`outcome.json` 中 SC-1 的 claimed/actual skipped 为 `0`。"
+    }
+  ],
+  "merge_notes": {
+    "conflict_with_other_reviewer": false
+  },
+  "residual_risk": [],
+  "timestamp": "2026-06-14T07:32:40Z",
+  "run_evidence": [
+    {
+      "cmd": "python3 -m pytest fixtures/deep-review/synthetic-skip-target/ -q -rs",
+      "exit": 0,
+      "passed": 0,
+      "failed": 0,
+      "skipped": 1,
+      "skip_reason": "(extracted from Codex finding evidence)",
+      "interpreter_version": "Python 3.x (Codex evidence)"
+    }
+  ]
+}

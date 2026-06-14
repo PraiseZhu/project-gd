@@ -1859,6 +1859,32 @@ def _cmd_run_bridge_inner(args: argparse.Namespace) -> int:
                     file=sys.stderr,
                 )
 
+    # SC-17/SC-28: extract run_evidence from finding evidence text when deep mode
+    # (Codex may return pytest output in finding evidence prose rather than structured JSON)
+    if _deep and not mapped.get("run_evidence"):
+        _extracted_evidence = []
+        for finding in mapped.get("findings", []):
+            ev_text = finding.get("evidence", "")
+            # Look for pytest invocation with output
+            cmd_m = re.search(r"`([^`]*pytest[^`]*)`", ev_text)
+            skip_m = re.search(r"\b(\d+)\s+skipped\b", ev_text)
+            pass_m = re.search(r"\b(\d+)\s+passed\b", ev_text)
+            fail_m = re.search(r"\b(\d+)\s+failed\b", ev_text)
+            ver_m = re.search(r"Python\s+([\d.]+)", ev_text)
+            if cmd_m and skip_m:
+                _extracted_evidence.append({
+                    "cmd": cmd_m.group(1),
+                    "exit": 0,
+                    "passed": int(pass_m.group(1)) if pass_m else 0,
+                    "failed": int(fail_m.group(1)) if fail_m else 0,
+                    "skipped": int(skip_m.group(1)),
+                    "skip_reason": "(extracted from Codex finding evidence)",
+                    "interpreter_version": f"Python {ver_m.group(1)}" if ver_m else "Python 3.x (from Codex evidence)",
+                })
+        if _extracted_evidence:
+            mapped["run_evidence"] = _extracted_evidence
+            out_path.write_text(json.dumps(mapped, ensure_ascii=False, indent=2), encoding="utf-8")
+
     decision = mapped["gd_review_decision"]
     status = mapped["review_run_status"]
     print(f"GD_CODEX_BRIDGE_STATUS: {status}")
