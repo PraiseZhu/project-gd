@@ -1418,20 +1418,20 @@ def _build_deep_plan_capsule(kind: str, target: Path, plan_file: str | None = No
             f"\n## SC Verify Commands (from plan)\n\n{sc_summary}\n"
         )
     return (
-        f"\n## Deep Review Dimensions (SC-3)\n\n"
-        f"この deep review では以下の三つの次元で分析する：\n\n"
-        f"### 1. アーキテクチャ次元\n"
-        f"- 設計の一貫性と分離境界を検証する\n"
-        f"- モジュール間の依存関係と結合度を評価する\n"
-        f"- 拡張性と保守性のリスクを特定する\n\n"
-        f"### 2. リスク次元\n"
-        f"- セキュリティ境界違反と潜在的な脆弱性を検出する\n"
-        f"- エラー処理とフォールバックパスを検証する\n"
-        f"- データ整合性と状態管理のリスクを評価する\n\n"
-        f"### 3. インターフェース次元\n"
-        f"- API契約と公開インターフェースの安定性を検証する\n"
-        f"- 呼び出し側との互換性と後方互換性を評価する\n"
-        f"- 境界条件と入力検証を検証する\n"
+        f"\n## 深度审查维度（SC-3）\n\n"
+        f"本次深度审查须从以下三个维度进行分析：\n\n"
+        f"### 1. 架构维度\n"
+        f"- 验证设计一致性与模块分离边界\n"
+        f"- 评估模块间依赖关系与耦合度\n"
+        f"- 识别可扩展性与可维护性风险\n\n"
+        f"### 2. 风险维度\n"
+        f"- 检测安全边界违规与潜在漏洞\n"
+        f"- 验证错误处理与回退路径\n"
+        f"- 评估数据一致性与状态管理风险\n\n"
+        f"### 3. 接口维度\n"
+        f"- 验证 API 合约与公开接口稳定性\n"
+        f"- 评估调用方兼容性与向后兼容性\n"
+        f"- 检查边界条件与输入验证\n"
         + plan_section
     )
 
@@ -1448,12 +1448,12 @@ def _build_deep_outcome_capsule(kind: str, target: Path, plan_file: str | None =
             f"\n## SC Verify Commands (from plan)\n\n{sc_summary}\n"
         )
     return (
-        f"\n## Deep Outcome Review Requirements (SC-4)\n\n"
-        f"**必須：真跑証拠（run_evidence）の提供**\n\n"
-        f"各 verify コマンドを実際に実行し、以下の五元組を run_evidence 配列として報告すること：\n\n"
+        f"\n## 深度结果审查要求（SC-4）\n\n"
+        f"**必须：提供真实运行证据（run_evidence）**\n\n"
+        f"须真实执行各 verify 命令，并将运行结果以 run_evidence 数组形式报告：\n\n"
         f"cmd / exit / passed / failed / skipped / skip_reason / interpreter_version\n\n"
-        f"**スキップ必査因（SC-4 必須）**：skipped > 0 の場合、skip_reason に具体的な理由を記載すること。\n\n"
-        f"**run_evidence は JSON block の run_evidence 配列フィールドに含めること。**\n"
+        f"**跳过必查因（SC-4 必须）**：skipped > 0 时，须在 skip_reason 中说明具体跳过原因。\n\n"
+        f"**run_evidence 须放入 JSON block 的 run_evidence 数组字段中。**\n"
         + plan_section
     )
 
@@ -1461,13 +1461,13 @@ def _build_deep_outcome_capsule(kind: str, target: Path, plan_file: str | None =
 def _build_deep_code_capsule(kind: str, target: Path) -> str:
     """SC-4: Deep code capsule addendum — deep-read semantic bug detection."""
     return (
-        f"\n## Deep Code Review Requirements\n\n"
-        f"**必須：深読み + セマンティックバグ検出**\n\n"
-        f"1. **深読み**：ファイル全体を行単位で読み、コメントと実装の乖離を検出する\n"
-        f"2. **セマンティックバグ**：論理的に正しいが意味的に誤っているコードを検出する\n"
-        f"3. **副作用分析**：外部状態への意図しない書き込みや読み込みを検出する\n"
-        f"4. **並行性リスク**：レース条件、デッドロック、非原子的操作を検出する\n\n"
-        f"findings には sc_refs に加えて、具体的なファイル:行参照を含めること。\n"
+        f"\n## 深度代码审查要求\n\n"
+        f"**必须：深读推理 + 语义 bug 检测**\n\n"
+        f"1. **深读**：逐行阅读全文件，检测注释与实现的偏差\n"
+        f"2. **语义 bug**：检测逻辑上通过但语义上错误的代码\n"
+        f"3. **副作用分析**：检测对外部状态的意外写入或读取\n"
+        f"4. **并发风险**：检测竞态条件、死锁、非原子操作\n\n"
+        f"findings 除 sc_refs 外须包含具体的 文件:行 引用。\n"
     )
 
 
@@ -1685,7 +1685,7 @@ def _cmd_run_bridge_inner(args: argparse.Namespace) -> int:
             capsule += _build_deep_code_capsule(args.kind, target)
 
     # SC-23: deep isolation guard — snapshot git status before running
-    _pre_git_status = ""
+    _pre_git_status: str | None = None
     if _deep:
         try:
             _gs = subprocess.run(
@@ -1693,8 +1693,18 @@ def _cmd_run_bridge_inner(args: argparse.Namespace) -> int:
                 capture_output=True, text=True, cwd=str(cwd), timeout=10,
             )
             _pre_git_status = _gs.stdout
-        except Exception:
-            pass
+        except Exception as _e:
+            print(
+                f"DEEP_ISOLATION_PREREQ_FAILED: cannot snapshot git status before deep run: {_e}",
+                file=sys.stderr,
+            )
+            mapped = _failed_mapped("codex", args.kind, target_str,
+                                    "deep isolation prereq failed — git status unavailable")
+            out_path.write_text(json.dumps(mapped, ensure_ascii=False, indent=2), encoding="utf-8")
+            print("GD_CODEX_BRIDGE_STATUS: failed_to_run")
+            print("GD_REVIEW_DECISION: FAILED")
+            print(f"MAPPED_RESULT: {out_path}")
+            return 1
 
     tmpdir = Path(os.environ.get("TMPDIR", "/tmp"))
     capsule_tmp = tmpdir / f"gd-codex-bridge-{run_id}.capsule.txt"
@@ -1844,14 +1854,26 @@ def _cmd_run_bridge_inner(args: argparse.Namespace) -> int:
             )
             _post_git_status = _gs_post.stdout
         except Exception:
-            _post_git_status = _pre_git_status
+            # Post-check failure is a hard error: we cannot confirm cleanliness
+            print("DEEP_ISOLATION_POSTREQ_FAILED: cannot verify git status after deep run",
+                  file=sys.stderr)
+            _post_git_status = ""  # force diff detection below
         if _pre_git_status != _post_git_status:
-            _allowed_prefix = "plans/gd/2026-06-13-codex-deep-review/results/"
+            # Use absolute-path comparison to prevent substring/traversal bypass
+            _allowed_abs = (cwd / "plans/gd/2026-06-13-codex-deep-review/results").resolve()
             _pre_lines = set(_pre_git_status.splitlines())
-            _new_changes = [
-                line for line in _post_git_status.splitlines()
-                if line not in _pre_lines and _allowed_prefix not in line
-            ]
+            _new_changes = []
+            for _line in _post_git_status.splitlines():
+                if _line in _pre_lines:
+                    continue
+                # Porcelain format: "XY path" or "XY orig -> path" — path starts at col 3
+                _rel = _line[3:].split(" -> ")[-1].strip()
+                try:
+                    _abs = (cwd / _rel).resolve()
+                    if not _abs.is_relative_to(_allowed_abs):
+                        _new_changes.append(_line)
+                except Exception:
+                    _new_changes.append(_line)  # conservative: treat unresolvable as violation
             if _new_changes:
                 print(
                     f"DEEP_ISOLATION_VIOLATED: --deep run modified files outside allowed path: "
@@ -1875,13 +1897,14 @@ def _cmd_run_bridge_inner(args: argparse.Namespace) -> int:
             fail_m = (re.search(r"\b(\d+)\s+failed\s+in\s+[\d.]+s", ev_text)
                       or re.search(r"[\"'](\d+) failed[\"']", ev_text))
             ver_m = re.search(r"Python\s+([\d.]+)", ev_text)
-            if cmd_m and skip_m:
+            _failed_count = int(fail_m.group(1)) if fail_m else 0
+            if cmd_m:
                 _extracted_evidence.append({
                     "cmd": cmd_m.group(1),
-                    "exit": 0,
+                    "exit": 1 if _failed_count > 0 else 0,
                     "passed": int(pass_m.group(1)) if pass_m else 0,
-                    "failed": int(fail_m.group(1)) if fail_m else 0,
-                    "skipped": int(skip_m.group(1)),
+                    "failed": _failed_count,
+                    "skipped": int(skip_m.group(1)) if skip_m else 0,
                     "skip_reason": "(extracted from Codex finding evidence)",
                     "interpreter_version": f"Python {ver_m.group(1)}" if ver_m else "Python 3.x (from Codex evidence)",
                 })

@@ -19,14 +19,19 @@ class TestDeepPlanCapsule:
         """SC-3: deep plan capsule contains architecture, risk, interface dimensions."""
         from gd_codex_bridge_review import _build_deep_plan_capsule
         result = _build_deep_plan_capsule("plan", Path("/tmp/fake-plan.md"))
-        assert "Deep Review Dimensions" in result, "capsule must mention Deep Review Dimensions"
-        assert "アーキテクチャ" in result or "arch" in result.lower(), "must have architecture dimension"
-        assert "リスク" in result or "risk" in result.lower(), "must have risk dimension"
-        assert "インターフェース" in result or "interface" in result.lower(), "must have interface dimension"
-        # SC-3: must NOT contain conformance scoping sentence
-        assert "conformance" not in result.lower() or "Deep" in result, (
+        assert "深度审查维度" in result or "Deep Review Dimensions" in result, \
+            "capsule must mention deep review dimensions"
+        assert (
+            "arch" in result.lower() or "架构" in result or "アーキテクチャ" in result
+        ), "must have architecture dimension"
+        assert (
+            "risk" in result.lower() or "风险" in result or "リスク" in result
+        ), "must have risk dimension"
+        assert (
+            "interface" in result.lower() or "接口" in result or "インターフェース" in result
+        ), "must have interface dimension"
+        assert "conformance" not in result.lower() or "Deep" in result, \
             "deep plan capsule must not be conformance-scoped"
-        )
 
     def test_deep_plan_capsule_with_plan_file(self):
         """SC-33: deep plan capsule includes PLAN_FILE_PATH when plan_file given."""

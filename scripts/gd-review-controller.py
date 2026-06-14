@@ -777,6 +777,9 @@ def run_branch_c(
     threshold_files: int,
     max_rounds: int,
     stub_dispatch: "StubDispatch | None" = None,
+    deep: bool = False,
+    queue_job_id: str | None = None,
+    plan_file: str | None = None,
 ) -> str:
     """
     Branch C (combined):
@@ -834,6 +837,7 @@ def run_branch_c(
         claude_findings=claude_findings,
         threshold_lines=threshold_lines, threshold_files=threshold_files,
         max_rounds=max_rounds, stub_dispatch=stub_dispatch,
+        deep=deep, queue_job_id=queue_job_id, plan_file=plan_file,
     )
 
 
@@ -1392,6 +1396,7 @@ def main() -> int:
             claude_findings=claude_findings,
             threshold_lines=threshold_lines, threshold_files=threshold_files,
             max_rounds=args.max_rounds,
+            deep=args.deep, queue_job_id=args.queue_job_id, plan_file=args.plan_file,
         )
     else:
         print(f"ERROR: unknown branch {args.branch!r}", file=sys.stderr)
