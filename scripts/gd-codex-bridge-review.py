@@ -1406,6 +1406,52 @@ def _extract_plan_sc_verify_summary(plan_file_path: str) -> str:
         return f"(error extracting verify commands: {e})"
 
 
+def _extract_run_evidence_into_mapped(mapped: dict) -> bool:
+    """SC-17/SC-28: extract structured run_evidence from finding-evidence prose.
+
+    Codex may report pytest output inside a finding's `evidence` text rather than as
+    a structured run_evidence array. This helper parses cmd / passed / failed / skipped /
+    interpreter_version out of that prose and populates mapped['run_evidence'] in place.
+
+    Called from BOTH run-bridge and parse-transport (canonical raw→mapped path) so the
+    router subcommand — which consumes parse-transport's mapped output — also benefits.
+
+    Returns True if run_evidence was added, False otherwise. No-op if run_evidence
+    already present.
+    """
+    if mapped.get("run_evidence"):
+        return False
+    extracted = []
+    for finding in mapped.get("findings", []) or []:
+        ev_text = finding.get("evidence", "") or ""
+        cmd_m = re.search(r"`([^`]*pytest[^`]*)`", ev_text)
+        if not cmd_m:
+            continue
+        # Prefer pytest summary format (N X in Y.YYs); fall back to backtick/quoted
+        skip_m = (re.search(r"\b(\d+)\s+skipped\s+in\s+[\d.]+s", ev_text)
+                  or re.search(r"`[^`]*?(\d+)\s+skipped\s+in", ev_text)
+                  or re.search(r"[\"'](\d+) skipped[\"']", ev_text))
+        pass_m = (re.search(r"\b(\d+)\s+passed\s+in\s+[\d.]+s", ev_text)
+                  or re.search(r"[\"'](\d+) passed[\"']", ev_text))
+        fail_m = (re.search(r"\b(\d+)\s+failed\s+in\s+[\d.]+s", ev_text)
+                  or re.search(r"[\"'](\d+) failed[\"']", ev_text))
+        ver_m = re.search(r"Python\s+([\d.]+)", ev_text)
+        failed_count = int(fail_m.group(1)) if fail_m else 0
+        extracted.append({
+            "cmd": cmd_m.group(1),
+            "exit": 1 if failed_count > 0 else 0,
+            "passed": int(pass_m.group(1)) if pass_m else 0,
+            "failed": failed_count,
+            "skipped": int(skip_m.group(1)) if skip_m else 0,
+            "skip_reason": "(extracted from Codex finding evidence)",
+            "interpreter_version": f"Python {ver_m.group(1)}" if ver_m else "Python 3.x (from Codex evidence)",
+        })
+    if extracted:
+        mapped["run_evidence"] = extracted
+        return True
+    return False
+
+
 def _build_deep_plan_capsule(kind: str, target: Path, plan_file: str | None = None) -> str:
     """SC-3: Deep plan review capsule addendum — architecture/risk/interface dimensions."""
     plan_section = ""
@@ -1881,35 +1927,9 @@ def _cmd_run_bridge_inner(args: argparse.Namespace) -> int:
                     file=sys.stderr,
                 )
 
-    # SC-17/SC-28: extract run_evidence from finding evidence text when deep mode
-    # (Codex may return pytest output in finding evidence prose rather than structured JSON)
-    if _deep and not mapped.get("run_evidence"):
-        _extracted_evidence = []
-        for finding in mapped.get("findings", []):
-            ev_text = finding.get("evidence", "")
-            cmd_m = re.search(r"`([^`]*pytest[^`]*)`", ev_text)
-            # Prefer pytest summary format (N X in Y.YYs); fall back to backtick-enclosed or quoted
-            skip_m = (re.search(r"\b(\d+)\s+skipped\s+in\s+[\d.]+s", ev_text)
-                      or re.search(r"`[^`]*?(\d+)\s+skipped\s+in", ev_text)
-                      or re.search(r"[\"'](\d+) skipped[\"']", ev_text))
-            pass_m = (re.search(r"\b(\d+)\s+passed\s+in\s+[\d.]+s", ev_text)
-                      or re.search(r"[\"'](\d+) passed[\"']", ev_text))
-            fail_m = (re.search(r"\b(\d+)\s+failed\s+in\s+[\d.]+s", ev_text)
-                      or re.search(r"[\"'](\d+) failed[\"']", ev_text))
-            ver_m = re.search(r"Python\s+([\d.]+)", ev_text)
-            _failed_count = int(fail_m.group(1)) if fail_m else 0
-            if cmd_m:
-                _extracted_evidence.append({
-                    "cmd": cmd_m.group(1),
-                    "exit": 1 if _failed_count > 0 else 0,
-                    "passed": int(pass_m.group(1)) if pass_m else 0,
-                    "failed": _failed_count,
-                    "skipped": int(skip_m.group(1)) if skip_m else 0,
-                    "skip_reason": "(extracted from Codex finding evidence)",
-                    "interpreter_version": f"Python {ver_m.group(1)}" if ver_m else "Python 3.x (from Codex evidence)",
-                })
-        if _extracted_evidence:
-            mapped["run_evidence"] = _extracted_evidence
+    # SC-17/SC-28: extract run_evidence from finding evidence prose when deep mode
+    if _deep:
+        _extract_run_evidence_into_mapped(mapped)
 
     # SC-28/SC-33: add plan_file_path and tests_status_source to mapped result when deep
     _plan_file_arg = getattr(args, "plan_file", None)
@@ -1971,6 +1991,11 @@ def cmd_parse_transport(args: argparse.Namespace) -> int:
         raw_text,
         compat_v1=compat_v1,
     )
+
+    # SC-17/SC-28: for execution_outcome/combined, extract run_evidence from finding prose
+    # so the router subcommand (which consumes this mapped output) carries run-evidence.
+    if args.kind in {"execution_outcome", "combined"}:
+        _extract_run_evidence_into_mapped(mapped)
 
     out_path = Path(args.out)
     out_path.write_text(json.dumps(mapped, ensure_ascii=False, indent=2), encoding="utf-8")

@@ -1630,7 +1630,68 @@ def run_self_test() -> int:
 # Main
 # ---------------------------------------------------------------------------
 
+def run_review_subcommand(sub: str, rest: list[str]) -> int:
+    """SC-9/SC-17/SC-25: `review execution|code [--deep --plan-file --out --target]` subcommand.
+
+    Thin wrapper over _run_live_codex_bridge that forces the review kind:
+      review execution → execution_outcome
+      review code      → code_diff
+    Sets the G1 sentinel invocation id, runs the live deep bridge, and writes the
+    mapped result JSON to --out (single file). Fails closed (non-zero) if the bridge
+    does not produce a mapped result — never writes a pass result on transport failure.
+    """
+    kind = "execution_outcome" if sub == "execution" else "code_diff"
+    sp = argparse.ArgumentParser(prog=f"gd-review-router.py review {sub}")
+    sp.add_argument("--target", required=True, help="Review target (outcome JSON or code path)")
+    sp.add_argument("--out", required=True, help="Single-file path to write mapped result JSON")
+    sp.add_argument("--deep", action="store_true", default=False,
+                    help="Deep review mode (workspace-write sandbox; bridge timeout ≥1800s)")
+    sp.add_argument("--plan-file", default=None, help="Plan file for deep outcome capsule (plan-derived verify)")
+    sp.add_argument("--output-dir", default=None, help="Working dir for intermediate bridge artifacts")
+    sp.add_argument("--live-bridge-timeout-sec", type=int, default=360)
+    a = sp.parse_args(rest)
+
+    if os.environ.get(INVOCATION_ID_ENV):
+        return err("SIDE_DOOR_DETECTED",
+                   f"{INVOCATION_ID_ENV} already set; unset before invoking router subcommand", 2)
+
+    invocation_id = generate_invocation_id()
+    out_path = Path(a.out)
+    work_dir = Path(a.output_dir) if a.output_dir else out_path.parent / f".review-{sub}-{invocation_id[-8:]}"
+    work_dir.mkdir(parents=True, exist_ok=True)
+    os.environ[INVOCATION_ID_ENV] = invocation_id
+    try:
+        res = _run_live_codex_bridge(
+            kind=kind, target=Path(a.target), output_dir=work_dir,
+            invocation_id=invocation_id,
+            timeout_sec=a.live_bridge_timeout_sec,
+            deep=a.deep, plan_file=a.plan_file,
+        )
+    finally:
+        os.environ.pop(INVOCATION_ID_ENV, None)
+
+    # Fail closed: no mapped result → do not write a pass outcome
+    mapped_path = res.get("mapped_path")
+    if not mapped_path or not Path(mapped_path).exists():
+        print(f"REVIEW_SUBCOMMAND_FAILED: {sub} — {res.get('failure_description') or res.get('status')}",
+              file=sys.stderr)
+        return 1
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(Path(mapped_path).read_text(encoding="utf-8"), encoding="utf-8")
+    decision = res.get("decision")
+    print(f"REVIEW_SUBCOMMAND: {sub}")
+    print(f"GD_REVIEW_DECISION: {decision}")
+    print(f"MAPPED_RESULT: {out_path}")
+    return 0 if decision == "APPROVED" else 1
+
+
 def main() -> int:
+    # SC-9: `review execution|code ...` subcommand form (translated to live deep bridge).
+    # Must run BEFORE the side-door check because the subcommand sets the invocation id itself.
+    argv = sys.argv[1:]
+    if len(argv) >= 2 and argv[0] == "review" and argv[1] in ("execution", "code"):
+        return run_review_subcommand(argv[1], argv[2:])
+
     # Q3: refuse if the invocation ID env is already set (side-door prevention)
     if os.environ.get(INVOCATION_ID_ENV):
         print(
