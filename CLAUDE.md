@@ -47,7 +47,7 @@ Shared Core（`docs/gd-v7-shared-core-index.md` 列全 15 artifact）：`GOAL_SO
   → ~/.claude/handoff/bin/codex-send-wait
   → codex-watch daemon (com.praise.codex-watch LaunchAgent)
   → codex exec   ← 外部 codex CLI 二进制
-  → TAPSVC 代理 (config.toml: model_provider=tapsvc, model=gpt-5.4, effort=xhigh)
+  → TAPSVC 代理 (config.toml: model_provider=tapsvc, model=gpt-5.5, effort=xhigh)
 ```
 
 链路通畅需同时满足（任一缺失整链断；排障按此顺序查）：
