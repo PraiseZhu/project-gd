@@ -69,18 +69,19 @@ TEMPLATE_BY_KIND_V2 = {
 }
 # Back-compat alias (kept so any legacy reference still resolves to v1 map).
 TEMPLATE_BY_KIND = TEMPLATE_BY_KIND_V1
-# HOME resolved at runtime (脱开发者用户名) so these guards/runtime refs work on the
-# installer's machine. WRITER_PATH keeps its explicit env override; SEND_WAIT_PATH
-# honors ${HANDOFF_BIN} (set by handoff/lib/state-paths.sh) before falling back.
+# HOME resolved at runtime (脱开发者用户名) so this works on the installer's
+# machine. WRITER_PATH defaults to the LIVE transport, NOT the legacy ~/.claude
+# install: the writer runs directly from vendor (CLAUDE.md §6) and reaches the
+# daemon's ${CLAUDE_PLUGIN_DATA}/gd-handoff dir via its own state-paths.sh. The
+# old default (~/.claude/scripts/review-result-writer.sh) pointed at a stale,
+# daemon-less copy and made every live review fail with a silent
+# "codex-send-wait exit 1". GD_WRITER_PATH_OVERRIDE still wins.
 WRITER_PATH = Path(
     os.environ.get(
         "GD_WRITER_PATH_OVERRIDE",
-        os.path.expanduser("~/.claude/scripts/review-result-writer.sh"),
+        str(GD_PROJECT_ROOT / "vendor" / "l3-transport" / "scripts" / "review-result-writer.sh"),
     )
 )
-SEND_WAIT_PATH = Path(
-    os.environ.get("HANDOFF_BIN", os.path.expanduser("~/.claude/handoff/bin"))
-) / "codex-send-wait"
 
 FIXTURES_DIR = GD_PROJECT_ROOT / "fixtures" / "review-bridge"
 SIDECAR_FIXTURES_DIR = GD_PROJECT_ROOT / "fixtures" / "review-sidecar"

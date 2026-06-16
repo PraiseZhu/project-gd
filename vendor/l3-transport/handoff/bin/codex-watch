@@ -135,6 +135,9 @@ read_meta_field() {
 }
 
 # count_running_workers: counts <job>.worker.running marker files in HANDOFF_ACTIVE.
+# Stale markers left by a daemon that died mid-job are cleared by
+# sweep_stale_worker_markers() at daemon startup (shlock guarantees no worker is
+# live at that point), so a plain count here is correct and bash 3.2-safe.
 count_running_workers() {
   local n=0
   shopt -s nullglob
@@ -144,6 +147,26 @@ count_running_workers() {
   done
   shopt -u nullglob
   echo "$n"
+}
+
+# sweep_stale_worker_markers: remove ALL *.worker.running markers at daemon
+# startup. shlock guarantees this is the only daemon instance, so no worker is
+# actually running yet — any marker present is a leak from a previous daemon that
+# died mid-job (healthcheck kickstart, SIGKILL, crash) before its worker could
+# finalize. Leaving them permanently inflates count_running_workers and can wedge
+# dispatch once >= MAX_PARALLEL leak. bash 3.2-safe (no $BASHPID / arrays).
+sweep_stale_worker_markers() {
+  shopt -s nullglob
+  local f n=0
+  for f in "${HANDOFF_ACTIVE}"/*.worker.running; do
+    rm -f "$f"
+    n=$((n + 1))
+  done
+  shopt -u nullglob
+  if [[ $n -gt 0 ]]; then
+    log "Swept ${n} stale worker.running marker(s) at startup"
+  fi
+  return 0
 }
 
 set_status() {
@@ -389,7 +412,11 @@ process_capsule() {
   queue_job_id=$(read_meta_field "$meta" "QUEUE_JOB_ID")
   [[ -z "$queue_job_id" ]] && queue_job_id="$job_id"
 
-  # Worker running marker (used by main loop for capacity counting)
+  # Worker running marker (used by main loop for capacity counting).
+  # NOTE: must stay bash 3.2-safe — the daemon runs under /bin/bash 3.2 where
+  # $BASHPID is undefined and would crash this worker subshell under `set -u`,
+  # leaving the job stuck at status=running. Stale markers from an abnormally
+  # killed daemon are cleared by sweep_stale_worker_markers() on next startup.
   : > "$worker_running_marker"
 
   if [[ -n "$batch_id" ]]; then
@@ -653,6 +680,10 @@ run_foreground() {
   # Plan 9 Phase B: write daemon config snapshot for runner probe
   write_config_snapshot
 
+  # Clear stale worker.running markers left by a previously killed daemon
+  # (shlock above guarantees we're the only instance → no live workers yet).
+  sweep_stale_worker_markers
+
   cleanup() {
     local current_pid="$$"
     if [[ -f "$HANDOFF_PID" ]]; then
@@ -713,6 +744,8 @@ start_daemon() {
 
 _run_loop() {
   trap 'rm -f "$HANDOFF_PID" "$HANDOFF_LOCK" "$HANDOFF_HEARTBEAT"; log "Stopped"; exit 0' TERM INT
+  # Clear stale worker.running markers left by a previously killed daemon.
+  sweep_stale_worker_markers
   while true; do
     date +%s > "$HANDOFF_HEARTBEAT"
     # Plan 9 Phase B: bounded-concurrency dispatcher
