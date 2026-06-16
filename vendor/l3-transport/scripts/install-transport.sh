@@ -33,11 +33,13 @@ LIVE_HANDOFF="$HANDOFF_ROOT"
 LIVE_BIN="$HANDOFF_BIN"
 LIVE_LIB="$HANDOFF_LIB"
 LIVE_LAUNCHAGENTS="$HOME/Library/LaunchAgents"
-PLIST_NAME="com.praise.codex-watch.plist"
+# 两个 plist 都部署：主 daemon + healthcheck。healthcheck 漏部署会留在旧路径,
+# 读不到新路径 heartbeat → 每 StartInterval kickstart-kill 健康 daemon(flap 根因)。
+PLIST_NAMES=("com.praise.codex-watch.plist" "com.praise.codex-watch-healthcheck.plist")
+PLIST_DAEMON="${PLIST_NAMES[0]}"   # 需 kickstart 的主 daemon plist（数组首项，单一真相源）
 
 SRC_BIN="$VENDOR_DIR/handoff/bin"
 SRC_LIB="$VENDOR_DIR/handoff/lib"
-SRC_PLIST="$VENDOR_DIR/launchagents/$PLIST_NAME"
 
 DRY_RUN=true
 RESTART_DAEMON=true
@@ -72,12 +74,14 @@ log "GD root:     $GD_ROOT"
 log "Vendor dir:  $VENDOR_DIR"
 log "Live bin:    $LIVE_BIN"
 log "Live lib:    $LIVE_LIB"
-log "Live plist:  $LIVE_LAUNCHAGENTS/$PLIST_NAME"
+log "Live plists: ${PLIST_NAMES[*]}"
 log "Mode:        $(if $DRY_RUN; then echo 'DRY-RUN (no changes)'; else echo 'LIVE'; fi)"
 log ""
 
-# Verify source exists
-for src in "$SRC_BIN" "$SRC_LIB" "$SRC_PLIST"; do
+# Verify source exists (bin/lib dirs + every plist template)
+_srcs=("$SRC_BIN" "$SRC_LIB")
+for pn in "${PLIST_NAMES[@]}"; do _srcs+=("$VENDOR_DIR/launchagents/$pn"); done
+for src in "${_srcs[@]}"; do
   if [[ ! -e "$src" ]]; then
     log "ERROR: source not found: $src" >&2
     exit 1
@@ -85,27 +89,36 @@ for src in "$SRC_BIN" "$SRC_LIB" "$SRC_PLIST"; do
 done
 
 # ─── Render plist placeholders → resolved runtime values ───
-# bundle plist is placeholder-ized (no /Users/<dev> literals). Substitute against
-# the SAME state-paths.sh-resolved HANDOFF_* values so daemon ProgramArguments /
-# log paths match the client's lookup. Rendered file becomes the deploy source.
+# bundle plists are placeholder-ized (no /Users/<dev> literals). Substitute against
+# the SAME state-paths.sh-resolved values so daemon/healthcheck ProgramArguments /
+# log paths / CLAUDE_PLUGIN_DATA match the client's lookup. Rendered files become deploy sources.
 HANDOFF_STATE_RESOLVED="${HANDOFF_STATE:-$HANDOFF_ROOT/state}"
+# CLAUDE_PLUGIN_DATA 用与 state-paths.sh 第 17 行同款 fallback：installer shell 没设该变量时
+# 回退 $HOME/.claude(绝不渲染空串,否则 daemon/client 又漂移到不同 gd-handoff 根)。
+CLAUDE_PLUGIN_DATA_RESOLVED="${CLAUDE_PLUGIN_DATA:-$HOME/.claude}"
 # sed 用 '|' 作分隔符：若任一替换值含 '|' 会破坏 sed 表达式、产生畸形 plist。
 # 正常路径不含 '|'；对 CI/自动化注入的异常路径 fail-closed，而非渲染坏文件。
-for _v in "$HANDOFF_BIN" "$HANDOFF_STATE_RESOLVED" "$HANDOFF_ROOT" "$HOME"; do
+for _v in "$HANDOFF_BIN" "$HANDOFF_STATE_RESOLVED" "$HANDOFF_ROOT" "$HOME" "$CLAUDE_PLUGIN_DATA_RESOLVED"; do
   case "$_v" in
     *"|"*) echo "ERROR: 路径含 '|' 无法安全渲染 plist: $_v" >&2; exit 1 ;;
   esac
 done
-RENDERED_PLIST="$(mktemp "${TMPDIR:-/tmp}/codex-watch-plist-XXXXXX")"
-trap 'rm -f "$RENDERED_PLIST"' EXIT   # mktemp 后立即注册 trap，消除临时文件泄漏窗口
-sed \
-  -e "s|__HANDOFF_BIN__|${HANDOFF_BIN}|g" \
-  -e "s|__HANDOFF_STATE__|${HANDOFF_STATE_RESOLVED}|g" \
-  -e "s|__HANDOFF_ROOT__|${HANDOFF_ROOT}|g" \
-  -e "s|__HOME__|${HOME}|g" \
-  "$SRC_PLIST" > "$RENDERED_PLIST"
-SRC_PLIST="$RENDERED_PLIST"
-log "Rendered plist placeholders → HANDOFF_BIN=$HANDOFF_BIN"
+# 渲染每个 plist 模板到临时文件;RENDERED_PLISTS[i] 对应 PLIST_NAMES[i]
+declare -a RENDERED_PLISTS=()
+_cleanup_rendered() { for _t in "${RENDERED_PLISTS[@]}"; do rm -f "$_t"; done; }
+trap _cleanup_rendered EXIT   # 立即注册 trap；空数组遍历安全
+for pn in "${PLIST_NAMES[@]}"; do
+  _tmp="$(mktemp "${TMPDIR:-/tmp}/codex-watch-plist-XXXXXX")"
+  RENDERED_PLISTS+=("$_tmp")   # mktemp 后立刻登记，sed 中途崩溃也能被 trap 清理
+  sed \
+    -e "s|__HANDOFF_BIN__|${HANDOFF_BIN}|g" \
+    -e "s|__HANDOFF_STATE__|${HANDOFF_STATE_RESOLVED}|g" \
+    -e "s|__HANDOFF_ROOT__|${HANDOFF_ROOT}|g" \
+    -e "s|__HOME__|${HOME}|g" \
+    -e "s|__CLAUDE_PLUGIN_DATA__|${CLAUDE_PLUGIN_DATA_RESOLVED}|g" \
+    "$VENDOR_DIR/launchagents/$pn" > "$_tmp"
+done
+log "Rendered ${#PLIST_NAMES[@]} plist(s) → HANDOFF_BIN=$HANDOFF_BIN CLAUDE_PLUGIN_DATA=$CLAUDE_PLUGIN_DATA_RESOLVED"
 log ""
 
 # ─── Deploy plan ───
@@ -135,19 +148,22 @@ for pair in "$SRC_BIN:$LIVE_BIN:bin" "$SRC_LIB:$LIVE_LIB:lib"; do
   done
 done
 
-# Plist (also in DEPLOY arrays for unified post-copy verification)
-fname="$PLIST_NAME"
-target_plist="$LIVE_LAUNCHAGENTS/$PLIST_NAME"
-DEPLOY_SOURCES+=("$SRC_PLIST")
-DEPLOY_TARGETS+=("$target_plist")
-src_hash=$(sha256_file "$SRC_PLIST")
-tgt_hash=$(sha256_file "$target_plist")
-if [[ "$src_hash" == "$tgt_hash" ]]; then
-  log "  SKIP $fname (hash match)"
-else
-  log "  DEPLOY $fname ($src_hash → $tgt_hash)"
-  deploy_count=$((deploy_count + 1))
-fi
+# Plists (both daemon + healthcheck; in DEPLOY arrays for unified post-copy verification)
+for pi in "${!PLIST_NAMES[@]}"; do
+  pn="${PLIST_NAMES[$pi]}"
+  rendered="${RENDERED_PLISTS[$pi]}"
+  target_pl="$LIVE_LAUNCHAGENTS/$pn"
+  DEPLOY_SOURCES+=("$rendered")
+  DEPLOY_TARGETS+=("$target_pl")
+  src_hash=$(sha256_file "$rendered")
+  tgt_hash=$(sha256_file "$target_pl")
+  if [[ "$src_hash" == "$tgt_hash" ]]; then
+    log "  SKIP $pn (hash match)"
+  else
+    log "  DEPLOY $pn ($src_hash → $tgt_hash)"
+    deploy_count=$((deploy_count + 1))
+  fi
+done
 
 log ""
 log "Total files to deploy: $deploy_count"
@@ -176,10 +192,13 @@ for f in "$LIVE_BIN"/* "$LIVE_LIB"/*; do
     log "  Backup: $(basename "$f")"
   fi
 done
-if [[ -f "$target_plist" ]]; then
-  cp "$target_plist" "$BACKUP_DIR/"
-  log "  Backup: $PLIST_NAME"
-fi
+for pn in "${PLIST_NAMES[@]}"; do
+  _tp="$LIVE_LAUNCHAGENTS/$pn"
+  if [[ -f "$_tp" ]]; then
+    cp "$_tp" "$BACKUP_DIR/"
+    log "  Backup: $pn"
+  fi
+done
 log "Backup stored at: $BACKUP_DIR"
 
 # ─── Deploy ───
@@ -238,26 +257,31 @@ if $RESTART_DAEMON; then
     log "No active jobs — safe to restart"
   fi
 
-  # Unload + reload via launchctl
-  if launchctl list | grep -q "com.praise.codex-watch"; then
-    log "Unloading com.praise.codex-watch..."
-    launchctl unload "$target_plist" 2>/dev/null || true
-    sleep 2
-  fi
+  # Unload + reload both plists via launchctl (daemon + healthcheck must use new paths together;
+  # reloading daemon without healthcheck leaves the stale healthcheck kickstart-killing it).
+  for pn in "${PLIST_NAMES[@]}"; do
+    _label="${pn%.plist}"
+    _tp="$LIVE_LAUNCHAGENTS/$pn"
+    if launchctl list | grep -q "$_label"; then
+      log "Unloading $_label..."
+      launchctl unload "$_tp" 2>/dev/null || true
+      sleep 1
+    fi
+    log "Loading $_label..."
+    launchctl load "$_tp"
+  done
 
-  log "Loading com.praise.codex-watch..."
-  launchctl load "$target_plist"
-
-  log "Kickstarting com.praise.codex-watch..."
-  launchctl kickstart -k "gui/$(id -u)/com.praise.codex-watch" 2>/dev/null || \
-    launchctl kickstart "system/com.praise.codex-watch" 2>/dev/null || \
+  log "Kickstarting $PLIST_DAEMON..."
+  _daemon_label="${PLIST_DAEMON%.plist}"
+  launchctl kickstart -k "gui/$(id -u)/${_daemon_label}" 2>/dev/null || \
+    launchctl kickstart "system/${_daemon_label}" 2>/dev/null || \
     log "NOTE: kickstart may have failed; daemon will start on next load"
 
   sleep 3
 
   # Verify
-  if pgrep -f "codex-watch" >/dev/null 2>&1; then
-    log "Daemon restarted successfully (pid: $(pgrep -f 'codex-watch' | head -1))"
+  if pgrep -f "codex-watch run" >/dev/null 2>&1; then
+    log "Daemon restarted successfully (pid: $(pgrep -f 'codex-watch run' | head -1))"
   else
     log "WARNING: daemon process not found after restart"
   fi

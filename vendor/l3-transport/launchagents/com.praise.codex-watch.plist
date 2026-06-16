@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- Placeholders (__HOME__ / __HANDOFF_BIN__ / __HANDOFF_STATE__) are rendered by
-     install-transport.sh against state-paths.sh-resolved values at deploy time.
-     This bundle file MUST NOT contain any developer-machine absolute path. -->
+<!-- Placeholders (__HOME__ / __HANDOFF_BIN__ / __HANDOFF_STATE__ / __CLAUDE_PLUGIN_DATA__)
+     are rendered by install-transport.sh against state-paths.sh-resolved values at deploy time.
+     This bundle file MUST NOT contain any developer-machine absolute path.
+     __CLAUDE_PLUGIN_DATA__ is required so the daemon resolves the SAME gd-handoff root as
+     the client (state-paths.sh fallback); without it daemon/client drift to different paths. -->
 <plist version="1.0">
 <dict>
 	<key>EnvironmentVariables</key>
@@ -17,6 +19,8 @@
 		<string>0</string>
 		<key>CODEX_SEND_WAIT_TIMEOUT</key>
 		<string>540</string>
+		<key>CLAUDE_PLUGIN_DATA</key>
+		<string>__CLAUDE_PLUGIN_DATA__</string>
 	</dict>
 	<key>KeepAlive</key>
 	<true/>
