@@ -262,7 +262,12 @@ if $RESTART_DAEMON; then
   for pn in "${PLIST_NAMES[@]}"; do
     _label="${pn%.plist}"
     _tp="$LIVE_LAUNCHAGENTS/$pn"
-    if launchctl list | grep -q "$_label"; then
+    # Exact per-label lookup: `launchctl list "$label"` exits 0 iff that label
+    # is loaded. The old `launchctl list | grep -q "$_label"` matched any line
+    # CONTAINING the label as a substring (e.g. a longer label, or the label
+    # appearing in another job's program path), so it could mis-decide a job was
+    # loaded when it was not — leaving a stale daemon never reloaded.
+    if launchctl list "$_label" >/dev/null 2>&1; then
       log "Unloading $_label..."
       launchctl unload "$_tp" 2>/dev/null || true
       sleep 1

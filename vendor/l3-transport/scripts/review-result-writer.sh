@@ -71,8 +71,14 @@ _SESSION_ID="${CLAUDE_SESSION_ID:-unknown}"
 _SESSION_ID_SAFE="$(printf '%s' "$_SESSION_ID" | tr -cd 'A-Za-z0-9_-' | cut -c1-64)"
 WRITER_MARKER_FILE="${CLAUDE_PLUGIN_DATA:-$HOME/.claude}/gd-state/review-writer-required/${_SESSION_ID_SAFE}.json"
 
-# Save capsule copy
-cp "$CAPSULE_FILE" "${BASELINE_DIR}/capsule-${TIMESTAMP}.txt"
+# Save capsule copy.
+# T1 (fail-loud): under `set -e` a failed cp (e.g. read-only / full disk) would
+# abort the script with NO stdout, so the client sees silence instead of a
+# definite failure. Emit [REVIEW] ✗ FAILED explicitly before exiting.
+if ! cp "$CAPSULE_FILE" "${BASELINE_DIR}/capsule-${TIMESTAMP}.txt"; then
+  echo "[REVIEW] ✗ FAILED — 无法写入 capsule 副本: ${BASELINE_DIR}/capsule-${TIMESTAMP}.txt"
+  exit 1
+fi
 
 # Extract capsule metadata for state tracking
 CAPSULE_DOMAIN=$(grep -m1 '^REVIEW_DOMAIN:' "$CAPSULE_FILE" | sed 's/^REVIEW_DOMAIN:[[:space:]]*//' || echo "N/A")
@@ -126,9 +132,16 @@ elif [[ $CODEX_EXIT -ne 0 ]]; then
   echo "[REVIEW] ✗ FAILED — codex-send-wait exit $CODEX_EXIT"
   echo "Failure log: ${ERROR_LOG}"
 else
-  # Save result first
+  # Save result first.
+  # T1 (fail-loud): the result file is the canonical landing of the codex
+  # verdict — if this redirect fails under `set -e` the script would die
+  # silently after a SUCCESSFUL codex run, making the client believe no result
+  # came back. Emit an explicit [REVIEW] ✗ FAILED instead of aborting quietly.
   RESULT_FILE="${BASELINE_DIR}/result-${TIMESTAMP}.md"
-  echo "$CODEX_OUTPUT" > "$RESULT_FILE"
+  if ! echo "$CODEX_OUTPUT" > "$RESULT_FILE"; then
+    echo "[REVIEW] ✗ FAILED — codex 返回成功但结果文件落盘失败: $RESULT_FILE"
+    exit 1
+  fi
 
   # Parse VERDICT from output
   if echo "$CODEX_OUTPUT" | grep -q 'VERDICT: APPROVED'; then

@@ -1,0 +1,36 @@
+template_kind: gd-execution-result
+result_id: step-4-shared-controller-transport-result
+task_id: step-4-shared-controller-transport
+parent_step: step-4
+parent_plan: plans/gd/2026-06-16-fix-review-chain-bugs/master-plan.md
+executor_role: claude_subagent
+executed_at: 2026-06-16T09:20:00Z
+exec_status: completed
+sc_acceptance:
+  - sc_ref: SC-9
+    status: pass
+    evidence: "N7: fut.result(timeout) + 单 codex _invoke_bridge_mapped 捕获任意异常 → 打印 CONVERGENCE_TIMEOUT + sys.exit(1) 不裸栈崩。N10: take_delta_snapshot 返回 (snapshot_ref, diff_text, diff_unavailable)；git stash/diff 非零或异常 → diff_unavailable=True 且 diff_text=''（不伪造），run_round_n 强制 fanout=2 注 DELTA_SCOPE='diff_unavailable: true'。验证: n7.py monkeypatch 抛错 → 含 CONVERGENCE_TIMEOUT + GOT_SYSTEMEXIT code=1 exit 0；n10.py 非 git 断言 diff_unavailable True/空/dispatch=2；控制组 n10ctrl.py 真 git 断言 diff_unavailable False 含真实 diff。6 controller selftest 全 PASS。"
+    not_run_reason: ""
+  - sc_ref: SC-10
+    status: pass
+    evidence: "#13 install-transport.sh 由 `launchctl list | grep -q $label`（模糊）改 `launchctl list \"$label\"`（精确，missing exit 113 / existing exit 0）。T1 review-result-writer.sh capsule cp 与 result 落盘两处关键写在 set -e 下原静默 abort，现各加 `[REVIEW] ✗ FAILED` + exit 1。T-watch watch-state.sh recent_failed_jobs 由 `ls -r`（空格切错）改 glob + stat 排序 + IFS=tab while-read（空格安全）+ return 0 防 EOF 误判。bridge WRITER_PATH 只读确认指 vendor(a12d384 已修未改)。验证: bash tests/gd-transport-sweep-smoke.sh PASS；T1 只读盘 cp 失败 stdout 含 [REVIEW] ✗ FAILED rc=1；T-watch 含空格路径返回 job-one/three 不含 two count=2 rc=0；三脚本 bash -n OK，bash4 特性扫描无命中。"
+    not_run_reason: ""
+files_added:
+  - tests/gd-step4-controller-transport-smoke.sh
+files_modified:
+  - scripts/gd-review-controller.py
+  - vendor/l3-transport/scripts/install-transport.sh
+  - vendor/l3-transport/scripts/review-result-writer.sh
+  - vendor/l3-transport/handoff/lib/watch-state.sh
+files_unchanged_in_scope: []
+owned_paths_writes_only: true
+forbidden_paths_touched: []
+out_of_scope_writes: []
+handoff:
+  result_path: plans/gd/2026-06-16-fix-review-chain-bugs/exec/results/step-4-shared-controller-transport.result.yaml
+  status_field: completed
+  summary: "收口共享 controller 与传输层 5 处 fail-open/静默失败：N7 future 异常转 CONVERGENCE_TIMEOUT 不崩、N10 git-delta 失败注 diff_unavailable 不伪造、#13 launchctl 精确 label、T1 关键写失败必报 [REVIEW] ✗ FAILED、T-watch glob 空格安全；新增 smoke 全绿，原 sweep + 6 controller selftest 仍 PASS。"
+  blockers: "none"
+known_limitations:
+  - "gd-review-controller.py 4 项 ruff 既有告警(hashlib/types 未用、未用局部变量)在改动行外，外科手术约束未碰。"
+  - "review-result-writer.sh 其余非关键写(error log || true、baseline jq || rm fallback)保持原容错语义，只补 capsule cp 与 result 落盘两处关键写。"

@@ -78,7 +78,13 @@ def validate_coverage(capsule_path: Path, output_path: Path) -> list[str]:
     mandatory_paths = extract_mandatory_reads_from_capsule(capsule_text)
 
     if not mandatory_paths:
-        # Empty mandatory list: no coverage required — exit clean regardless of output
+        # Empty MANDATORY_READ is treated as a coverage-gate FAILURE, not a pass.
+        # A capsule with no mandatory reads means the gate has nothing to verify and
+        # would otherwise "no-op pass" — that is the fail-open hole this gate must close.
+        errors.append(
+            "MANDATORY_READ list is empty — coverage gate has nothing to verify; "
+            "treating as FAIL (fail-closed). Capsule must declare at least one mandatory_read."
+        )
         return errors
 
     # Parse coverage from output (exactly-once enforced)

@@ -1077,6 +1077,15 @@ _EXECUTION_ARTIFACT_KINDS: frozenset[str] = frozenset({
 })
 
 
+def _kind_requires_l3(kind: str) -> bool:
+    """Return True when the L3 content-evidence validator should run for this review kind.
+
+    code_diff / execution_outcome / combined are execution-artifact reviews whose
+    SCOPE_CHECKED does not carry plan SC-IDs; L3 SC-ID evidence check does not apply.
+    """
+    return kind not in _EXECUTION_ARTIFACT_KINDS
+
+
 def _review_focus_for_kind(kind: str) -> str:
     """T6 SC-6.1: return a kind-specific REVIEW_FOCUS string (not hardcoded).
 
@@ -1123,6 +1132,37 @@ def _assert_not_capsule_target(kind: str, target: Path) -> None:
             "For code_diff use the .patch file; for execution_outcome use the result JSON; "
             "for combined use the diff or bundle descriptor."
         )
+    if target.is_dir():
+        raise ValueError(
+            f"CODE_DIFF_TARGET_MUST_BE_FILE: --kind={kind!r} received a directory as "
+            f"--target ({target}). Pass a regular file (e.g. a .patch file for code_diff, "
+            "a result JSON for execution_outcome). Directories cannot be hashed or read "
+            "as review targets."
+        )
+
+
+def _assert_out_is_file_path(out_path: Path) -> None:
+    """Guard: raise ValueError when --out points to an existing directory."""
+    if out_path.is_dir():
+        raise ValueError(
+            f"OUT_PATH_MUST_BE_FILE: --out received a directory ({out_path}). "
+            "Pass a file path for the output JSON/capsule, not a directory."
+        )
+
+
+def _validate_out_path(out_path: Path) -> "int | None":
+    """Validate --out path and ensure parent directory exists.
+
+    Returns 2 (CLI error exit code) if out_path is a directory; None on success.
+    Prints a diagnostic to stderr on failure.
+    """
+    try:
+        _assert_out_is_file_path(out_path)
+    except ValueError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 2
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    return None
 
 
 def _related_context_summary(related_context: list[dict] | None) -> str:
@@ -1589,6 +1629,8 @@ def cmd_build_capsule(args: argparse.Namespace) -> int:
         return 2
 
     out = Path(args.out)
+    if (rc := _validate_out_path(out)) is not None:
+        return rc
     out.write_text(capsule, encoding="utf-8")
     print(f"capsule 写入: {out}")
     print(f"target_hash: {target_hash}")
@@ -1699,6 +1741,8 @@ def _cmd_run_bridge_inner(args: argparse.Namespace) -> int:
     target = Path(args.target)
     cwd = Path(args.cwd)
     out_path = Path(args.out)
+    if (rc := _validate_out_path(out_path)) is not None:
+        return rc
     compat_v1 = _resolve_compat_v1(args.kind, getattr(args, "compat_v1", None))
 
     related = _load_related_context(getattr(args, "related_context", None))
@@ -1870,7 +1914,11 @@ def _cmd_run_bridge_inner(args: argparse.Namespace) -> int:
     # parse-transport path). Fail-closed on failure, timeout, missing script, or
     # missing target (F2+F5 fix). Also updates source_of_truth_decision.value (F-R6-2).
     # code_diff findings review code quality rather than plan SC-IDs; L3 skipped.
-    if args.kind not in {"code_diff"}:
+    # execution_outcome / combined: Codex reviews execution artifacts (sc_acceptance,
+    # exec_status, deliverables) whose SCOPE_CHECKED section lists execution dimensions
+    # (not plan SC-IDs). The L3 content-evidence SC-ID requirement is not applicable
+    # to execution reviews — skip to avoid false-rejecting valid execution APPROVED.
+    if _kind_requires_l3(args.kind):
         l3_script = GD_PROJECT_ROOT / "scripts" / "gd-validate-review-content-evidence.py"
         target_for_l3 = Path(args.target)
         raw_path_for_l3 = Path(result_path)
@@ -1977,7 +2025,10 @@ def _cmd_run_bridge_inner(args: argparse.Namespace) -> int:
     print(f"GD_REVIEW_DECISION: {decision}")
     print(f"MAPPED_RESULT: {out_path}")
     print(f"TRANSPORT_RESULT: {result_path}")
-    return 0 if decision == "APPROVED" else (1 if decision == "FAILED" else 0)
+    # SC-1 (bridge N9): fail-closed exit code. Only APPROVED is a pass (0);
+    # REQUIRES_CHANGES and FAILED must both surface a non-zero exit so callers
+    # cannot mistake "changes required" / "failed" for a green review.
+    return 0 if decision == "APPROVED" else 1
 
 
 def _apply_l3_failure(mapped: dict, reason: str, out_path: "Path") -> None:
@@ -2028,6 +2079,8 @@ def cmd_parse_transport(args: argparse.Namespace) -> int:
         _extract_run_evidence_into_mapped(mapped)
 
     out_path = Path(args.out)
+    if (rc := _validate_out_path(out_path)) is not None:
+        return rc
     out_path.write_text(json.dumps(mapped, ensure_ascii=False, indent=2), encoding="utf-8")
 
     # L3: content-evidence validator (SC-W1-1)
@@ -2036,7 +2089,9 @@ def cmd_parse_transport(args: argparse.Namespace) -> int:
     # is an aggregate-level bucket, not a review_run_status enum value (F1 fix).
     # Timeout, exceptions, missing script/target are all fail-closed (F2+F5 fix).
     # code_diff findings review code quality rather than plan SC-IDs; L3 skipped.
-    if args.kind not in {"code_diff"}:
+    # execution_outcome / combined: SCOPE_CHECKED lists execution dimensions, not
+    # plan SC-IDs; the SC-ID evidence requirement does not apply.
+    if _kind_requires_l3(args.kind):
         l3_script = GD_PROJECT_ROOT / "scripts" / "gd-validate-review-content-evidence.py"
         _l3_pre_fail = False
         _l3_pre_reason = ""
@@ -2083,7 +2138,9 @@ def cmd_parse_transport(args: argparse.Namespace) -> int:
     if errs:
         for e in errs[:5]:
             print(f"  parse-error: {e}", file=sys.stderr)
-    return 0 if decision == "APPROVED" else (1 if decision == "FAILED" else 0)
+    # SC-1 (bridge N9): fail-closed exit code — only APPROVED is a pass (0);
+    # REQUIRES_CHANGES and FAILED must both return non-zero.
+    return 0 if decision == "APPROVED" else 1
 
 
 def _merge_decision(claude: dict, codex: dict) -> tuple[str, str, str]:
@@ -2238,14 +2295,16 @@ def cmd_merge(args: argparse.Namespace) -> int:
         )
 
     out_path = Path(args.out)
+    if (rc := _validate_out_path(out_path)) is not None:
+        return rc
     out_path.write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"MERGED_DECISION: {merged['gd_review_decision']}")
     print(f"MERGED_STATUS: {merged['review_run_status']}")
     print(f"MERGED_REASON: {merged['merge_notes'].get('arbitration_reason', 'N/A')[:120]}")
     print(f"OUT: {out_path}")
-    return 0 if merged["gd_review_decision"] == "APPROVED" else (
-        1 if merged["gd_review_decision"] == "FAILED" else 0
-    )
+    # SC-1 (bridge N9): fail-closed exit code — only APPROVED is a pass (0);
+    # REQUIRES_CHANGES and FAILED must both return non-zero.
+    return 0 if merged["gd_review_decision"] == "APPROVED" else 1
 
 
 def cmd_self_test(args: argparse.Namespace) -> int:

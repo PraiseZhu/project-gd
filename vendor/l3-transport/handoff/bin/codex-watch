@@ -502,6 +502,19 @@ maybe_backoff() {
     attempt=$((attempt + 1))
     # Refresh heartbeat before each attempt so healthcheck doesn't falsely kickstart
     date +%s > "$HANDOFF_HEARTBEAT"
+    # Transport-healthcheck-flap fix: ALSO refresh this job's status-file mtime
+    # per attempt. The healthcheck stuck detector (codex-watch-healthcheck) measures
+    # (now - status mtime), NOT the heartbeat. The status mtime is set once at
+    # try_claim; without a per-attempt refresh a legitimate retry chain
+    # (CODEX_EXEC_TIMEOUT x max_attempts, up to ~480s) accumulates past
+    # STUCK_TASK_MAX_AGE=300, so the healthcheck false-kills a job that is still
+    # progressing — even one that then completes (observed: job completes on
+    # attempt 2 but was already reset to failed at 300s). Re-writing "running"
+    # resets the stuck-clock to per-attempt, mirroring the heartbeat refresh above.
+    # Invariant (asserted in tests/gd-transport-healthcheck-flap-smoke.sh):
+    # STUCK_TASK_MAX_AGE must exceed CODEX_EXEC_TIMEOUT so a single attempt never
+    # trips the stuck detector.
+    set_status "$base" "running"
 
     # GAP-1: select provider for this attempt (round-robin through chain)
     local provider_idx=$(( (attempt - 1) % chain_len ))

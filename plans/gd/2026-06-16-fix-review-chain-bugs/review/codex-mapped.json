@@ -1,0 +1,22 @@
+{
+  "template_kind": "gd-plan-review",
+  "reviewer": "codex",
+  "review_target": "/Users/praise/AI-Agent/Claude/projects/Project GD/plans/gd/2026-06-16-fix-review-chain-bugs/master-plan.md",
+  "review_kind": "plan",
+  "review_run_status": "failed_to_run",
+  "gd_review_decision": "FAILED",
+  "scope_checked": [
+    {
+      "facet": "bridge runtime",
+      "result": "fail",
+      "evidence": "writer FAILED exit=0: [REVIEW] ✗ FAILED — codex-send-wait ex"
+    }
+  ],
+  "findings": [],
+  "merge_notes": {
+    "conflict_with_other_reviewer": false,
+    "degraded_reason": "writer FAILED exit=0: [REVIEW] ✗ FAILED — codex-send-wait exit 1\nFailure log: /Users/praise/.claude/review-baselines/gd-plan-master-plan-md-17cbba95eadc/error-20260616T050838Z.log"
+  },
+  "residual_risk": [],
+  "timestamp": "2026-06-16T05:08:38Z"
+}

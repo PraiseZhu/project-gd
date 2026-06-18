@@ -151,19 +151,31 @@ def _is_router_descriptor(path: Path) -> bool:
     return False
 
 
+# P2 sentinel: a JSON target that declared itself a router descriptor
+# (router_version + artifacts keys present) but is unreadable/malformed at
+# classification time. This is DISTINCT from a genuinely empty target
+# ("no_artifact"): a corrupt descriptor means the caller intended to point at
+# artifacts but the descriptor itself is broken — we surface a different
+# failure_code so it is not silently bucketed as "nothing to review".
+CORRUPT_DESCRIPTOR_SENTINEL = "corrupt_descriptor"
+
+
 def _classify_router_descriptor(path: Path) -> str:
     """Classify a v1 router-input descriptor via the shared SSOT helper.
 
     Mirrors gd-detect-review-target.detect_kind() so router/detector parity is
-    preserved without a subprocess hop.
+    preserved without a subprocess hop. Returns CORRUPT_DESCRIPTOR_SENTINEL when
+    a self-declared descriptor cannot be parsed/validated (P2 fail-closed),
+    which the caller maps to a CORRUPT_ROUTER_DESCRIPTOR failure_code rather than
+    NO_ARTIFACT_DETECTED.
     """
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return "no_artifact"
+        return CORRUPT_DESCRIPTOR_SENTINEL
     artifacts = (data or {}).get("artifacts", {}) if isinstance(data, dict) else {}
     if not isinstance(artifacts, dict):
-        return "no_artifact"
+        return CORRUPT_DESCRIPTOR_SENTINEL
     return classify_artifacts(
         bool(artifacts.get("plan_files")),
         bool(artifacts.get("execution_files")),
@@ -263,16 +275,24 @@ def run_detect_only(target: Path | None, output_dir: Path, invocation_id: str) -
     kind = detect_review_target_kind(target)
     print(f"detected target kind: {kind}")
 
+    # P2: keep the report's review_target_kind enum-valid; a corrupt descriptor
+    # is surfaced via the note + REVIEW_TARGET_MISSING decision, not APPROVE.
+    is_corrupt = kind == CORRUPT_DESCRIPTOR_SENTINEL
+    report_kind = "no_artifact" if is_corrupt else kind
     report = {
         "schema_version": "2.0",
         "router_invocation_id": invocation_id,
         "mode": "detect_only",
-        "review_target_kind": kind,
-        "decision": "REVIEW_TARGET_MISSING" if kind == "no_artifact" else "REQUIRES_CHANGES",
+        "review_target_kind": report_kind,
+        "decision": "REVIEW_TARGET_MISSING" if report_kind == "no_artifact" else "REQUIRES_CHANGES",
         "validator_signature": VALIDATOR_SIGNATURE,
         "recorded_at": now_iso(),
         "findings": [],
-        "notes": "detect_only: no review was invoked; detection result only",
+        "notes": (
+            "detect_only: corrupt router descriptor (CORRUPT_ROUTER_DESCRIPTOR); fail-closed"
+            if is_corrupt else
+            "detect_only: no review was invoked; detection result only"
+        ),
     }
 
     rc, _ = write_and_validate_route_report(report, output_dir)
@@ -288,10 +308,15 @@ def run_live_dry_run(target: Path | None, output_dir: Path, invocation_id: str) 
     print(f"detected target kind: {kind}")
     print(f"mock bridge: skipping Codex API call (live_dry_run)")
 
+    # P2: normalize corrupt-descriptor sentinel to an enum-valid kind for the
+    # report while still fail-closing (REVIEW_TARGET_MISSING, never APPROVE).
+    is_corrupt = kind == CORRUPT_DESCRIPTOR_SENTINEL
+    report_kind = "no_artifact" if is_corrupt else kind
+
     # Simulate routing without actual review
-    decision = "REVIEW_TARGET_MISSING" if kind == "no_artifact" else "REQUIRES_CHANGES"
+    decision = "REVIEW_TARGET_MISSING" if report_kind == "no_artifact" else "REQUIRES_CHANGES"
     findings = []
-    if kind != "no_artifact":
+    if report_kind != "no_artifact":
         findings.append({
             "reviewer": "router_mock",
             "severity": "info",
@@ -302,7 +327,7 @@ def run_live_dry_run(target: Path | None, output_dir: Path, invocation_id: str) 
         "schema_version": "2.0",
         "router_invocation_id": invocation_id,
         "mode": "live_dry_run",
-        "review_target_kind": kind,
+        "review_target_kind": report_kind,
         "decision": decision,
         "validator_signature": VALIDATOR_SIGNATURE,
         "recorded_at": now_iso(),
@@ -388,6 +413,13 @@ def _run_live_plan_review(
             raw_result_hash = str(rh) if rh else None
         except Exception:
             pass
+
+    # N4 fail-closed: the merge loop's exit code is authoritative. A non-zero
+    # returncode means the loop did not cleanly converge to APPROVED, so we must
+    # NOT trust an APPROVED read out of a possibly stale/partial loop_report.
+    # (Bridge G6 arbitration: returncode beats decision.)
+    if r.returncode != 0 and downstream_decision == "APPROVED":
+        downstream_decision = "FAILED"
 
     # claude_review_origin: supplied if --claude-review was passed explicitly;
     # in skill_orchestrated path (/gd review plan), Claude command writes the JSON first.
@@ -523,8 +555,30 @@ def _run_live_codex_bridge(
         return result
 
     decision = mapped.get("gd_review_decision") or mapped.get("decision")
-    result["status"] = "requires_changes" if decision == "REQUIRES_CHANGES" else "completed"
-    result["decision"] = decision
+    # N3 fail-closed: only an explicit clean verdict (APPROVED / REQUIRES_CHANGES)
+    # may map to a non-failure status. A FAILED verdict, or a missing/None/unknown
+    # decision, must NOT collapse into "completed" — that is how a degraded or
+    # unparsed codex result silently became an approval. Mirror the bridge's
+    # _failed_mapped: surface it as wrapper_schema_fail with decision=FAILED.
+    norm = str(decision).strip().upper() if decision is not None else None
+    if norm == "REQUIRES_CHANGES":
+        result["status"] = "requires_changes"
+        result["decision"] = "REQUIRES_CHANGES"
+    elif norm == "APPROVED":
+        result["status"] = "completed"
+        result["decision"] = "APPROVED"
+    else:
+        # FAILED, None, or any unrecognized verdict → fail-closed.
+        result["status"] = "wrapper_schema_fail"
+        result["decision"] = "FAILED"
+        result["failure_description"] = (
+            f"codex mapped decision not a clean verdict "
+            f"(raw={decision!r}); fail-closed to FAILED"
+        )
+        result["findings"].append({
+            "reviewer": "codex_bridge", "severity": "error",
+            "description": result["failure_description"],
+        })
     result["raw_path"] = str(transport_raw)
     result["raw_hash"] = hashlib.sha256(transport_raw.read_bytes()).hexdigest()
     result["mapped_path"] = str(mapped_out)
@@ -1195,6 +1249,16 @@ def _run_live_execution_plus_code(
     Stage 2b (single-round path): LOCAL_STATIC_ONLY code review (skill_orchestrated) — backward compat.
     """
     import hashlib
+    # If target is a directory, resolve to the first valid execution JSON within it
+    # (execution_plus_code detection requires a dir with both .md + exec JSON, but
+    # outcome validator and _get_plan_ref need a concrete file).
+    if target.is_dir():
+        for candidate in sorted(target.rglob("*.json")):
+            if candidate.name.startswith("_"):
+                continue
+            if is_execution_json(candidate):
+                target = candidate
+                break
     plan_ref = _get_plan_ref(target)  # SC-2: read plan_ref for Phase 2 verify-rerun
     outcome_script = SCRIPTS / "gd-validate-execution-outcome.py"  # hoisted; used in both branches
 
@@ -1455,6 +1519,32 @@ def run_live(
 
     kind = detect_review_target_kind(target)
     print(f"detected target kind: {kind}")
+
+    # P2 fail-closed: a self-declared-but-corrupt router descriptor is reported
+    # with a DISTINCT failure_code from a genuine no-artifact target, so the
+    # operator can tell "you pointed at a broken descriptor" apart from "there
+    # was nothing to review". Both still fail-closed (exit 2, never APPROVE).
+    if kind == CORRUPT_DESCRIPTOR_SENTINEL:
+        report = {
+            "schema_version": "2.0",
+            "router_invocation_id": invocation_id,
+            "mode": "live",
+            "review_target_kind": "no_artifact",
+            "decision": "REVIEW_TARGET_MISSING",
+            "validator_signature": VALIDATOR_SIGNATURE,
+            "recorded_at": now_iso(),
+            "failure_code": "CORRUPT_ROUTER_DESCRIPTOR",
+            "claude_review_origin": "not_applicable",
+            "findings": [{"reviewer": "router", "severity": "error",
+                          "description": "CORRUPT_ROUTER_DESCRIPTOR: target declared a v1 router "
+                                         "descriptor (router_version + artifacts) but it is "
+                                         "unreadable/malformed; fail-closed, distinct from "
+                                         "NO_ARTIFACT_DETECTED. Must not APPROVE."}],
+        }
+        write_and_validate_route_report(report, output_dir)
+        print("ERROR: CORRUPT_ROUTER_DESCRIPTOR: descriptor present but malformed; fail-closed",
+              file=sys.stderr)
+        return 2
 
     if kind == "no_artifact":
         report = {

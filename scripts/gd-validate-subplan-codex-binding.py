@@ -59,7 +59,17 @@ def validate(reports_dir: Path, aggregate_path: Path) -> list[str]:
         return [f"AGGREGATE_JSON_PARSE_ERROR: {e}"]
 
     # 2. Binding-completeness checks (jobs must reference valid roles/kinds).
-    jobs = agg.get("jobs", [])
+    # SC-8 V13: an empty jobs[] means no subplan was actually bound to a Codex
+    # round-2 result. The binding loop below would vacuously pass on []; reject
+    # it explicitly so "no jobs" cannot serve as a signoff. (The delegated
+    # aggregate schema validator also enforces minItems>=1, but this guard keeps
+    # the binding check fail-closed even if that path ever relaxes.)
+    jobs = agg.get("jobs")
+    if not isinstance(jobs, list) or not jobs:
+        return [
+            "JOBS_EMPTY_OR_MISSING: aggregate has no jobs[] to bind — "
+            "an empty job set cannot satisfy subplan Codex binding"
+        ]
     for i, job in enumerate(jobs):
         if not isinstance(job, dict):
             errors.append(f"JOB[{i}]: not an object")

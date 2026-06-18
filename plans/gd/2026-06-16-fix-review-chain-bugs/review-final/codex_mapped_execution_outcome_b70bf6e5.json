@@ -1,0 +1,33 @@
+{
+  "template_kind": "gd-execution-outcome-review",
+  "reviewer": "codex",
+  "review_target": "/Users/praise/AI-Agent/Claude/projects/Project GD/plans/gd/2026-06-16-fix-review-chain-bugs/exec/execution-outcome-aggregate.json",
+  "review_kind": "execution_outcome",
+  "review_run_status": "completed",
+  "gd_review_decision": "REQUIRES_CHANGES",
+  "scope_checked": [
+    {
+      "facet": "raw markdown structure",
+      "result": "pass",
+      "evidence": "writer-validated; verdict=REQUIRES_CHANGES"
+    }
+  ],
+  "findings": [
+    {
+      "severity": "P1",
+      "title": "缺少可复跑验证清单",
+      "sc_refs": [
+        "SC-1"
+      ],
+      "evidence": "`plans/gd/2026-06-16-fix-review-chain-bugs/exec/execution-outcome-aggregate.json:90` 显示 `sc_acceptance` 后直接进入 `files_added`；`jq -r '.verify_results[]?.cmd // empty' ...` 输出为空。",
+      "impact": "SC-1~SC-13 的 pass 结论依赖不可结构化复判的文字 evidence，后续 validation 无法判断结果是否真实、陈旧或受当前只读沙箱影响。",
+      "required_fix": "重新生成 `execution-outcome-aggregate.json`，补齐 `verify_results[]` 的 `cmd/expected_exit/actual_exit/actual_stdout`，并补齐 `deliverables_produced[]` 的 `path/must_exist/verified`。",
+      "verify": "`jq -e '(.verify_results|length)>0 and (.deliverables_produced|length)>0 and all(.verify_results[]; .actual_exit==.expected_exit) and all(.deliverables_produced[]; (.must_exist|not) or .verified==true)' plans/gd/2026-06-16-fix-review-chain-bugs/exec/execution-outcome-aggregate.json`"
+    }
+  ],
+  "merge_notes": {
+    "conflict_with_other_reviewer": false
+  },
+  "residual_risk": [],
+  "timestamp": "2026-06-16T12:24:54Z"
+}

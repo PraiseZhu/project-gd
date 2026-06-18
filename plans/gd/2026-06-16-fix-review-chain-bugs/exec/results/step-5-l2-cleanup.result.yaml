@@ -1,0 +1,35 @@
+template_kind: gd-execution-result
+result_id: step-5-l2-cleanup-result
+task_id: step-5-l2-cleanup
+parent_step: step-5
+parent_plan: plans/gd/2026-06-16-fix-review-chain-bugs/master-plan.md
+executor_role: claude_subagent
+executed_at: 2026-06-16T09:29:43Z
+exec_status: completed
+sc_acceptance:
+  - sc_ref: SC-11
+    status: pass
+    evidence: |
+      bash tests/gd-step5-l2-cleanup-smoke.sh → exit 0，8/8 PASS。
+      SC-11a（review2-output 空 MANDATORY_READ 失效）：gd-validate-review2-output.py 原"空清单 → 整门通过"改为追加 error fail-closed。
+        实测：空 MANDATORY_READ capsule → exit 1 + COVERAGE_VALIDATE_FAIL + "MANDATORY_READ list is empty ... treating as FAIL (fail-closed)"。非空全覆盖仍 exit 0 + COVERAGE_VALIDATE_PASS（happy path 未破）。
+      SC-11b（audit-legacy-trust JSON raw_result_path 误降级）：新增 extract_raw_result_path() 容忍尾逗号 + 剥配对引号。
+        实测：JSON 形态报告(指向真实 raw 文件) → tier=trusted_codex_raw；JSON raw 指向不存在文件 → local_self_review_only（仍要求文件真实存在）。
+    not_run_reason: ""
+files_added:
+  - tests/gd-step5-l2-cleanup-smoke.sh
+files_modified:
+  - scripts/gd-validate-review2-output.py
+  - scripts/gd-audit-legacy-review-trust.py
+files_unchanged_in_scope: []
+owned_paths_writes_only: true
+forbidden_paths_touched: []
+out_of_scope_writes: []
+handoff:
+  result_path: plans/gd/2026-06-16-fix-review-chain-bugs/exec/results/step-5-l2-cleanup.result.yaml
+  status_field: completed
+  summary: "L2 coverage gate 空清单改 fail-closed、legacy trust audit 兼容 JSON 格式 raw_result_path，新 smoke 8/8 全绿。冲突：既有 gd-review2-output-coverage-smoke.sh SC-6a 固化旧 fail-open，已由主 agent merge 仲裁对齐到 fail-closed。"
+  blockers: "none"
+known_limitations:
+  - "child surface 的越界冲突：既有 tests/gd-review2-output-coverage-smoke.sh SC-6a 断言旧 fail-open 行为(空清单→exit 0 PASS)，不在 step-5 owned_paths。已由主 agent merge 阶段改 SC-6a 期望为 exit 1 + COVERAGE_VALIDATE_FAIL，coverage smoke 现 12/0 全绿。"
+  - "两脚本均无内置 self-test；py_compile 通过。"

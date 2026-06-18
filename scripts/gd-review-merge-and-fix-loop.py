@@ -81,6 +81,16 @@ NON_PLAN_REVIEW_KINDS = frozenset(_SSOT_REVIEW_KIND_ENUM) - {DEFAULT_REVIEW_KIND
 # In production mode (--plan), this must be set; fixture mode (--fixture) is exempt.
 INVOCATION_ID_ENV = "GD_REVIEW_ROUTER_INVOCATION_ID"
 
+# N1 fail-closed sentinel: when a bridge job aborts (exception / timeout /
+# non-zero returncode / unparseable mapped result) it MUST NOT return an empty
+# findings list, because downstream treats "no findings" as "nothing wrong →
+# can resolve / approve". Instead it injects a synthetic blocking finding whose
+# category is BRIDGE_FAILURE_CATEGORY. update_baseline_statuses() refuses to
+# ever mark such a finding resolved, so a silent bridge failure can never
+# collapse into an approval (mirrors gd-codex-bridge-review.py cmd_run_bridge's
+# _failed_mapped behaviour).
+BRIDGE_FAILURE_CATEGORY = "BRIDGE_FAILURE"
+
 # Production closure does not depend on passive ~/.claude/handoff probe; use GD_ENABLE_HANDOFF_PROBE=1 for legacy debug only.
 # Codex bridge probe: only checked if GD_ENABLE_HANDOFF_PROBE=1 is set in the environment.
 # If not set, the passive probe is skipped entirely and execution proceeds directly.
@@ -448,22 +458,40 @@ def _write_baseline(
     return path
 
 
+def _norm_path(p: object) -> str:
+    return str(p or "").strip().lstrip("./").lower()
+
+
 def update_baseline_statuses(
     baseline_findings: list[dict],
     round_findings: list[dict],
     round_num: int,
+    modified_files: set[str] | None = None,
 ) -> tuple[int, list[dict]]:
     """用本轮 finding 更新 baseline 状态。
-    仅当本轮 codex 不再报该 symptom (±3窗口不命中) 才标 resolved。
+    #3 fail-closed: 一个 finding 只有在它所属文件本轮被**实际修改过**
+    (modified_files 命中) 且 codex 不再报该 symptom (±3窗口不命中) 时才标
+    resolved。仅靠 codex "本轮没再报" 不足以判定 resolved —— 那可能是 bridge
+    静默失败 / codex 抖动。modified_files=None 时退化为"无任何文件被改"，因此
+    没有 finding 会被判定 resolved。
     delta 中不在 baseline 的 finding 追加为新 unresolved。
     返回 (baseline_unresolved_count, new_in_delta_findings)。
     """
     new_in_delta: list[dict] = []
+    modified = {_norm_path(m) for m in (modified_files or set())}
 
     for bf in baseline_findings:
         if bf.get("status") == "resolved":
             bf.setdefault("round_history", []).append(
                 {"round": round_num, "status": "resolved"}
+            )
+            continue
+        # BRIDGE_FAILURE sentinels are never auto-resolved: their absence in a
+        # later round just means that round also failed/recovered; resolution
+        # of a transport failure is not a code fix.
+        if bf.get("bridge_failure") or str(bf.get("category", "")).strip() == BRIDGE_FAILURE_CATEGORY:
+            bf.setdefault("round_history", []).append(
+                {"round": round_num, "status": bf["status"]}
             )
             continue
         fc = _finding_filecat(bf)
@@ -472,7 +500,10 @@ def update_baseline_statuses(
             _finding_filecat(rf) == fc and _lines_within_window(line, rf.get("line"))
             for rf in round_findings
         )
-        if not still_reported:
+        file_touched = _norm_path(bf.get("file")) in modified
+        # #3: require an actual modification to the finding's file before a
+        # "no longer reported" symptom is accepted as resolved.
+        if not still_reported and file_touched:
             bf["status"] = "resolved"
             bf["resolved_in_round"] = round_num
         bf.setdefault("round_history", []).append(
@@ -513,6 +544,24 @@ def update_baseline_statuses(
     return baseline_unresolved, new_in_delta
 
 
+def _bridge_failure_finding(round_num: int, lens: str, reason: str) -> dict:
+    """N1: build a non-empty, never-resolvable blocking finding for a bridge
+    job that aborted. Mirrors gd-codex-bridge-review.py _failed_mapped: a
+    failure is surfaced as a concrete blocking item, not an empty list."""
+    return {
+        "id": f"BRIDGE-FAIL-r{round_num}-{lens}",
+        "file": f"<bridge:{lens}>",
+        "line": None,
+        "category": BRIDGE_FAILURE_CATEGORY,
+        "severity": "P1",
+        "description": (
+            f"Codex bridge job failed (round={round_num}, lens={lens}): {reason}. "
+            "Fail-closed: a bridge failure is NOT 'no findings'."
+        ),
+        "bridge_failure": True,
+    }
+
+
 def _run_bridge_job(
     plan_path: Path,
     cwd: Path,
@@ -522,13 +571,18 @@ def _run_bridge_job(
     env: dict,
 ) -> list[dict]:
     """Run bridge run-bridge + parse-transport; return findings list.
-    Fails open (returns []) on any error so a single-lens failure doesn't
-    APPROVED the full loop — caller handles fail-closed logic at merge level.
+
+    N1 fail-closed: on any failure (exception, timeout, non-zero returncode,
+    missing/unparseable mapped result) this returns a NON-EMPTY list holding a
+    BRIDGE_FAILURE sentinel finding — never []. An empty list is reserved for
+    the genuine "bridge ran cleanly and reported zero findings" case, which is
+    the only case downstream may treat as a clean lens.
     """
     out_log = output_dir / f"bridge-r{round_num}-{lens}.log"
     mapped_out = output_dir / f"bridge-r{round_num}-{lens}-mapped.json"
     try:
-        subprocess.run(
+        # N2: check returncode of run-bridge; non-zero → fail-closed sentinel.
+        run_res = subprocess.run(
             [
                 sys.executable,
                 "scripts/gd-codex-bridge-review.py",
@@ -544,7 +598,34 @@ def _run_bridge_job(
             text=True,
             timeout=600,
         )
-        subprocess.run(
+        if run_res.returncode != 0:
+            # F4 fix (SC-1 × SC-5 interaction): bridge exit 1 means REQUIRES_CHANGES
+            # or FAILED — both are VALID review verdicts per gd.md Review Trust §8.1.
+            # Before injecting a BRIDGE_FAILURE sentinel we check whether run-bridge
+            # actually produced a TRANSPORT_RESULT (raw result path). If it did, the
+            # bridge reached the codex result stage and we should attempt parse-transport
+            # to surface the real decision/findings. Only when no transport result is
+            # available (failed_to_run / transport failure before codex responded) do we
+            # fall through to the BRIDGE_FAILURE sentinel.
+            transport_result_path: Path | None = None
+            for line in out_log.read_text(encoding="utf-8").splitlines() if out_log.exists() else []:
+                if line.startswith("TRANSPORT_RESULT:"):
+                    raw_val = line.split(":", 1)[1].strip()
+                    if raw_val and raw_val != "N/A":
+                        transport_result_path = Path(raw_val)
+                    break
+            if transport_result_path is None or not transport_result_path.exists():
+                return [_bridge_failure_finding(
+                    round_num, lens,
+                    f"run-bridge returncode={run_res.returncode} and no valid "
+                    f"TRANSPORT_RESULT (failed_to_run / transport failure): "
+                    f"{(run_res.stderr or run_res.stdout).strip()[:200]}",
+                )]
+            # Transport result exists — fall through to parse-transport so the
+            # real REQUIRES_CHANGES/FAILED verdict and findings are surfaced.
+
+        # N2: check returncode of parse-transport too.
+        parse_res = subprocess.run(
             [
                 sys.executable,
                 "scripts/gd-codex-bridge-review.py",
@@ -559,12 +640,36 @@ def _run_bridge_job(
             text=True,
             timeout=60,
         )
-        if mapped_out.exists():
-            mapped = json.loads(mapped_out.read_text(encoding="utf-8"))
-            return mapped.get("findings", [])
-    except Exception:
-        pass
-    return []
+        if parse_res.returncode != 0:
+            return [_bridge_failure_finding(
+                round_num, lens,
+                f"parse-transport returncode={parse_res.returncode}: "
+                f"{(parse_res.stderr or parse_res.stdout).strip()[:200]}",
+            )]
+
+        if not mapped_out.exists():
+            return [_bridge_failure_finding(
+                round_num, lens, "mapped result file not written by parse-transport",
+            )]
+        mapped = json.loads(mapped_out.read_text(encoding="utf-8"))
+    except subprocess.TimeoutExpired as exc:
+        return [_bridge_failure_finding(round_num, lens, f"subprocess timeout: {exc}")]
+    except (OSError, json.JSONDecodeError) as exc:
+        return [_bridge_failure_finding(round_num, lens, f"mapped result unreadable: {exc}")]
+    except Exception as exc:  # noqa: BLE001 — any failure is fail-closed, never []
+        return [_bridge_failure_finding(round_num, lens, f"unexpected bridge error: {exc}")]
+
+    # N1: a mapped result whose decision is FAILED must surface as blocking even
+    # if it carries no findings array (writer can fail before emitting findings).
+    decision = str(mapped.get("gd_review_decision", "")).strip().upper()
+    findings = mapped.get("findings", [])
+    if decision == "FAILED" and not findings:
+        return [_bridge_failure_finding(
+            round_num, lens,
+            f"mapped gd_review_decision=FAILED with empty findings "
+            f"(run_status={mapped.get('run_status')!r})",
+        )]
+    return findings
 
 
 # ---------------------------------------------------------------------------
@@ -955,15 +1060,23 @@ def run_production_plan(
         findings_codex_b = fut_b.result()
 
     # Claude self-review findings: load from --claude-review if supplied.
+    # N8 fail-closed: if a path was supplied but cannot be loaded, do NOT
+    # silently treat it as zero findings (that would let a missing/corrupt
+    # self-review masquerade as "Claude found nothing"). Abort the loop.
     findings_claude: list[dict] = []
     if claude_review_path is not None:
         cp = Path(claude_review_path)
-        if cp.exists():
-            try:
-                cr = json.loads(cp.read_text(encoding="utf-8"))
-                findings_claude = cr.get("findings", [])
-            except (OSError, json.JSONDecodeError):
-                findings_claude = []
+        if not cp.exists():
+            err("CLAUDE_REVIEW_LOAD_FAILED",
+                f"--claude-review path does not exist: {claude_review_path}")
+            sys.exit(1)
+        try:
+            cr = json.loads(cp.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            err("CLAUDE_REVIEW_LOAD_FAILED",
+                f"--claude-review unreadable/invalid JSON ({claude_review_path}): {exc}")
+            sys.exit(1)
+        findings_claude = cr.get("findings", [])
 
     baseline_findings = merge_findings_union(findings_codex_a, findings_codex_b, findings_claude)
     _write_baseline(output_dir, baseline_findings, invocation_id=invocation_id)
@@ -991,6 +1104,7 @@ def run_production_plan(
         diff_text = ""
         delta_lines = 0
         delta_files = 0
+        modified_files: set[str] = set()
         try:
             # delta = working-tree diff against HEAD (plan-file version delta).
             # No git history is written; the stash-create tree-ish is not needed
@@ -1001,15 +1115,14 @@ def run_production_plan(
             )
             diff_text = diff_result.stdout[:4000]
             delta_lines = diff_text.count("\n+") + diff_text.count("\n-")
-            delta_files = len(
-                {
-                    ln[4:]
-                    for ln in diff_text.splitlines()
-                    if ln.startswith("--- a/") or ln.startswith("+++ b/")
-                }
-            )
+            modified_files = {
+                ln[6:]
+                for ln in diff_result.stdout.splitlines()
+                if ln.startswith("--- a/") or ln.startswith("+++ b/")
+            }
+            delta_files = len(modified_files)
         except Exception:
-            pass
+            modified_files = set()
 
         REVIEW_ROUND = round_num
         DELTA_SCOPE = f"{delta_lines} lines changed across {delta_files} files\n--- diff ---\n{diff_text}"
@@ -1045,7 +1158,7 @@ def run_production_plan(
 
         round_findings = round_findings_a + round_findings_b
         baseline_unresolved, new_in_delta = update_baseline_statuses(
-            baseline_findings, round_findings, round_num
+            baseline_findings, round_findings, round_num, modified_files
         )
 
         # --- SC-4 stagnation check ---
