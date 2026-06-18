@@ -184,12 +184,54 @@ def _severity_rank(s: str) -> int:
 # Delta snapshot via git stash create (no commit)
 # ---------------------------------------------------------------------------
 
+def _append_untracked_diff(cwd: Path, diff_text: str) -> str:
+    """Append untracked files as pseudo-diff so code_diff review covers them.
+
+    ``git diff HEAD`` excludes untracked files; without this a multi-file review
+    silently misses newly-added files. Best-effort: any git error keeps the
+    tracked diff_text unchanged. Never touches the git index (no ``git add -N``).
+    """
+    try:
+        uf_r = subprocess.run(
+            ["git", "ls-files", "--others", "--exclude-standard"],
+            cwd=str(cwd), capture_output=True, text=True, timeout=GIT_OP_TIMEOUT_SEC,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return diff_text
+    if uf_r.returncode != 0:
+        return diff_text
+    parts = [diff_text]
+    for uf in (uf_r.stdout or "").splitlines():
+        uf = uf.strip()
+        if not uf:
+            continue
+        try:
+            nd_r = subprocess.run(
+                ["git", "diff", "--no-index", "--", "/dev/null", uf],
+                cwd=str(cwd), capture_output=True, text=True, timeout=GIT_OP_TIMEOUT_SEC,
+            )
+        except (subprocess.TimeoutExpired, OSError):
+            continue
+        # git diff --no-index exits 1 when the two paths differ (expected for a
+        # real new file); stdout is the pseudo-diff regardless of exit code.
+        if nd_r.stdout:
+            parts.append(nd_r.stdout)
+    return "".join(parts)
+
+
 def take_delta_snapshot(cwd: Path) -> tuple[str | None, str, bool]:
     """
     Run ``git stash create`` to snapshot current working tree state.
     Returns (stash_tree_ish, diff_text, diff_unavailable).
     On clean tree (empty stash output) falls back to HEAD blob hash.
     Controller NEVER writes to the git history (stash create only).
+
+    diff_text = tracked changes (``git diff HEAD``) + untracked new files as
+    pseudo-diff (``_append_untracked_diff``, best-effort). Three downstream
+    consumers share this exact semantics: ``compute_delta_size`` (D7 fanout),
+    DELTA_SCOPE capsule injection, and ``_materialize_code_diff_target``. So
+    fanout decision and the materialized .patch stay consistent on what was
+    actually reviewed (including newly-added files).
 
     SC-9 N10 (fail-closed): a non-zero ``git stash create`` exit OR a non-zero
     ``git diff HEAD`` exit OR a TimeoutExpired means the real delta could NOT be
@@ -255,6 +297,11 @@ def take_delta_snapshot(cwd: Path) -> tuple[str | None, str, bool]:
         diff_text = ""
     else:
         diff_text = diff_lines_r.stdout or ""
+    # Append untracked (not-yet-added) files as pseudo-diff so code_diff review
+    # covers newly-added files too. git diff HEAD excludes them. Best-effort:
+    # on failure keeps the tracked diff_text unchanged.
+    if not diff_unavailable:
+        diff_text = _append_untracked_diff(cwd, diff_text)
 
     if snapshot_ref is None:
         # Clean working tree: use HEAD tree hash as stable blob reference

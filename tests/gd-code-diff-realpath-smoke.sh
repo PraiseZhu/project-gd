@@ -146,28 +146,15 @@ cwd = pathlib.Path("${WDIR4}")
 output_dir = pathlib.Path("${TMPROOT}/mat_out")
 output_dir.mkdir(parents=True, exist_ok=True)
 
-# Reproduce what take_delta_snapshot does: git diff HEAD (tracked) +
-# untracked via git ls-files --others + git diff --no-index
+# tracked diff (git diff HEAD); untracked pseudo-diff via the REAL production
+# fn _append_untracked_diff (also exercised through take_delta_snapshot in
+# SC-DIR-5). SC-DIR-4 isolates the materialization layer: feed a real
+# diff_text and assert the .patch — so use the real untracked-appending fn,
+# not a parallel bash copy that would silently drift if the fn changes.
 import subprocess
-
-# tracked diff
 r = subprocess.run(["git", "diff", "HEAD"], cwd=str(cwd),
                    capture_output=True, text=True)
-diff_text = r.stdout or ""
-
-# untracked files → pseudo-diff
-uf_r = subprocess.run(
-    ["git", "ls-files", "--others", "--exclude-standard"],
-    cwd=str(cwd), capture_output=True, text=True,
-)
-for uf in (uf_r.stdout or "").splitlines():
-    uf_path = cwd / uf
-    nd_r = subprocess.run(
-        ["git", "diff", "--no-index", "--", "/dev/null", str(uf_path)],
-        capture_output=True, text=True,
-    )
-    # git diff --no-index exits 1 when files differ (expected)
-    diff_text += nd_r.stdout or ""
+diff_text = mod._append_untracked_diff(cwd, r.stdout or "")
 
 patch = mod._materialize_code_diff_target(
     diff_text=diff_text,
@@ -200,6 +187,49 @@ elif [[ "$STATUS_BEFORE" != "$STATUS_AFTER" ]]; then
     fail "SC-DIR-4: index 状态被改动 (before='$STATUS_BEFORE' after='$STATUS_AFTER')"
 else
     pass "SC-DIR-4: .patch 含 tracked+untracked diff，index 未变"
+fi
+
+# ---------------------------------------------------------------------------
+# SC-DIR-5 (untracked 生产路径): take_delta_snapshot 必须把 untracked 新文件
+#              合进 diff_text。修复前只 git diff HEAD，untracked 漏掉 → codex 审不到。
+#              注：SC-DIR-4 是测物化函数（手动拼 diff_text 传进去），SC-DIR-5 测生产
+#              入口 take_delta_snapshot 自己产出含 untracked 的 diff_text。
+# ---------------------------------------------------------------------------
+echo "--- SC-DIR-5: take_delta_snapshot 生产路径含 untracked 新文件 ---"
+WDIR5="$TMPROOT/wt5"
+mkdir -p "$WDIR5"
+git -C "$WDIR5" init -q
+printf 'tracked\n' > "$WDIR5/t.py"
+git -C "$WDIR5" add .
+git -C "$WDIR5" -c user.email=t@t -c user.name=t commit -qm seed
+printf 'changed-content\n' >> "$WDIR5/t.py"            # tracked change
+printf 'brand-new-untracked-file\n' > "$WDIR5/new.py"  # untracked new file
+
+python3 - "$CONTROLLER" "$WDIR5" <<'PYEOF'
+import importlib.util, pathlib, sys
+ctrl_path, wdir = sys.argv[1], sys.argv[2]
+spec = importlib.util.spec_from_file_location("gc", ctrl_path)
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+cwd = pathlib.Path(wdir)
+_snap, diff_text, diff_unavail = mod.take_delta_snapshot(cwd)
+fail = []
+if diff_unavail:
+    fail.append("DIFF_UNAVAILABLE")
+if "changed-content" not in diff_text:
+    fail.append("MISSING_TRACKED")
+if "brand-new-untracked-file" not in diff_text:
+    fail.append("MISSING_UNTRACKED")  # ← 修复前命中（bug 复现）
+if fail:
+    print("SC5_FAIL: " + ",".join(fail))
+    sys.exit(1)
+print("SC5_OK: tracked+untracked present in delta")
+PYEOF
+_5exit=$?
+if [[ $_5exit -eq 0 ]]; then
+    pass "SC-DIR-5: take_delta_snapshot 含 untracked+tracked"
+else
+    fail "SC-DIR-5: take_delta_snapshot 漏 untracked (exit=$_5exit)"
 fi
 
 # ---------------------------------------------------------------------------
