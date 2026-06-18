@@ -517,8 +517,11 @@ def run_round1(
 
     # code_diff: materialize diff_text → .patch file so bridge gets a real file target.
     # run_branch_a passes target=cwd (directory) as a sentinel; replace it here.
+    # Skip in stub mode: the selftest stub returns findings directly and never
+    # touches the bridge, so effective_target is unused — running materialization
+    # there would couple the selftest to the real working-tree diff state.
     effective_target = target
-    if kind == "code_diff":
+    if kind == "code_diff" and stub_dispatch is None:
         patch = _materialize_code_diff_target(
             diff_text, output_dir, round_num=1, diff_unavailable=_diff_unavailable,
         )
