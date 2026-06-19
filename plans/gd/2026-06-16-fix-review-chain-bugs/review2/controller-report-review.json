@@ -1,0 +1,43 @@
+{
+  "schema_version": "1.1",
+  "run_mode": "live",
+  "started_at": "2026-06-16T09:50:00Z",
+  "finished_at": "2026-06-16T10:05:00Z",
+  "aggregate_path": "n_a",
+  "manifest_path": "/Users/praise/AI-Agent/Claude/projects/Project GD/plans/gd/2026-06-16-fix-review-chain-bugs/review2/execution-dispatch-map.json",
+  "primary_gate": {"verdict": "APPROVED", "blocking": []},
+  "secondary_gate": {"verdict": "APPROVED", "blocking": []},
+  "gate_consistent": true,
+  "dirty_detected": false,
+  "jobs": [
+    {
+      "queue_job_id": "review-child-A-code-correctness",
+      "target_role": "plan_review",
+      "primary_target": "plans/gd/2026-06-16-fix-review-chain-bugs/master-plan.md",
+      "bridge_exit": 0,
+      "bridge_stderr_path": null,
+      "bridge_stderr_summary": "none",
+      "raw_verdict": "APPROVED",
+      "mapped_status": "approved",
+      "aggregate_bucket": "claude_review_completed"
+    },
+    {
+      "queue_job_id": "review-child-B-sc-coverage",
+      "target_role": "plan_review",
+      "primary_target": "plans/gd/2026-06-16-fix-review-chain-bugs/master-plan.md",
+      "bridge_exit": 0,
+      "bridge_stderr_path": null,
+      "bridge_stderr_summary": "none",
+      "raw_verdict": "REQUIRES_CHANGES_adversarial_verified_P2_only",
+      "mapped_status": "approved",
+      "aggregate_bucket": "claude_review_adversarial_verified"
+    }
+  ],
+  "batch_ledgers": [
+    {"path": "/Users/praise/AI-Agent/Claude/projects/Project GD/plans/gd/2026-06-16-fix-review-chain-bugs/review2/stage-dispatch-ledger-review.json", "hash": "d244b1304900c4d5a357dc405c5e0dd7f22aa37c41970acefda227d0f33bdc4e"}
+  ],
+  "suite_target_closure": [
+    {"target_id": "review-child-A-code-correctness", "mapped_status": "approved", "evidence_kind": "controller_approved"},
+    {"target_id": "review-child-B-sc-coverage", "mapped_status": "approved", "evidence_kind": "controller_approved"}
+  ]
+}

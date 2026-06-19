@@ -1,0 +1,139 @@
+{
+  "schema_version": "1.0",
+  "recorded_at": "2026-06-19",
+  "recorded_by": "codex",
+  "project": "Project GD",
+  "branch": "fix/transport-healthcheck-flap",
+  "decision": "APPROVED_FOR_LOCAL_SMOKE",
+  "acceptance_source_of_truth": true,
+  "supersedes": [
+    {
+      "path": "plans/gd/2026-06-16-fix-review-chain-bugs/execution-dispatch-map.json",
+      "reason": "Original child-executor owned_paths map predates gd3/gd4 plus Codex takeover integration and no longer covers the final diff boundary."
+    },
+    {
+      "path": "plans/gd/2026-06-16-fix-review-chain-bugs/review-combined/route-report-combined.json",
+      "reason": "Historical combined route report captured the pre-fix transport_failed state; keep as evidence of the old failure, not as final acceptance."
+    }
+  ],
+  "scope": {
+    "goal": "GD three review chains no longer false-green on missing, degraded, failed, or unsubstantiated Codex review evidence.",
+    "chains": [
+      "L1 lightweight/combined transport path",
+      "L2 controller deep path",
+      "L3 router deep execution/code paths"
+    ],
+    "runtime_root_changes": "none: /Users/praise/.claude was not modified by this acceptance."
+  },
+  "final_diff_boundary": {
+    "tracked_files": [
+      "scripts/gd-codex-bridge-review.py",
+      "scripts/gd-review-merge-and-fix-loop.py",
+      "scripts/gd-review-router.py",
+      "scripts/gd_review_contract.py",
+      "tests/gd-review2-plan-routing-smoke.sh",
+      "tests/gd-step2-l3-failopen-smoke.sh",
+      "tests/gd-step4-controller-transport-smoke.sh",
+      "tests/test_deep_capsules.py",
+      "pytest.ini",
+      "vendor/l3-transport/handoff/lib/state-paths.sh",
+      "vendor/l3-transport/scripts/review-result-writer.sh",
+      "plans/gd/2026-06-16-fix-review-chain-bugs/execution-dispatch-map.json",
+      "plans/gd/2026-06-16-fix-review-chain-bugs/final-acceptance-2026-06-19.json"
+    ],
+    "new_files": [
+      "tests/test_bridge_sc_refs_policy.py",
+      "tests/test_loop_report_payload.py"
+    ],
+    "boundary_note": "This final boundary intentionally replaces the original owned_paths dispatch map for acceptance only; it does not retroactively change child executor ownership history."
+  },
+  "false_green_closures": [
+    {
+      "risk": "execution_outcome findings without sc_refs",
+      "status": "closed",
+      "evidence": "v1 raw parser and v2 schema reject empty sc_refs except code_diff legacy exception; tests/test_bridge_sc_refs_policy.py."
+    },
+    {
+      "risk": "APPROVED with degraded, failed, missing, or unknown run status",
+      "status": "closed",
+      "evidence": "gd_review_contract.codex_review_status_from_evidence requires explicit review_run_status=completed for clean APPROVED."
+    },
+    {
+      "risk": "parse-transport non-zero for valid REQUIRES_CHANGES causes evidence loss",
+      "status": "closed",
+      "evidence": "Router now treats mapped JSON presence as evidence and classifies the mapped verdict instead of only trusting parse return code."
+    },
+    {
+      "risk": "deep execution/combined APPROVED without verify rerun evidence",
+      "status": "closed",
+      "evidence": "Deep execution/combined gate requires structured run_evidence and rejects failed or skipped evidence under APPROVED."
+    },
+    {
+      "risk": "L3 execution live smoke catches skip in finding text but machine run_evidence extracts skipped=0",
+      "status": "closed",
+      "evidence": "run_evidence extraction now recognizes bare backtick counts such as `1 skipped`; tests/test_deep_capsules.py covers the live wording and gd-deep-chain-live-smoke passes."
+    },
+    {
+      "risk": "deep code_diff findings without machine-checkable file:line evidence",
+      "status": "closed",
+      "evidence": "Deep code_diff gate requires every REQUIRES_CHANGES finding to cite the reviewed target as target-file:line with in-range line numbers."
+    },
+    {
+      "risk": "vendor writer transport failure exits zero",
+      "status": "closed",
+      "evidence": "Vendor writer now exits non-zero for degraded_unreviewed, failed, malformed, or empty verdict status."
+    },
+    {
+      "risk": "step4 T-paths smoke inherits caller CLAUDE_PLUGIN_DATA and falsely fails HOME fallback assertions",
+      "status": "closed",
+      "evidence": "tests/gd-step4-controller-transport-smoke.sh now unsets CLAUDE_PLUGIN_DATA for fallback checks and separately asserts explicit CLAUDE_PLUGIN_DATA precedence."
+    },
+    {
+      "risk": "pytest discovery/entrypoint drift causes no-tests-collected or collects deep-review fixture targets as normal tests",
+      "status": "closed",
+      "evidence": "pytest.ini pins test discovery to tests/ and adds repo/scripts to pythonpath; bare pytest -q and python3 -m pytest -q both pass."
+    }
+  ],
+  "validation_commands": [
+    {
+      "cmd": "git diff --check",
+      "status": "passed"
+    },
+    {
+      "cmd": "/Users/praise/.pyenv/shims/python3 scripts/gd-codex-bridge-review.py self-test",
+      "status": "passed"
+    },
+    {
+      "cmd": "/Users/praise/.pyenv/shims/python3 scripts/gd-review-router.py --self-test",
+      "status": "passed"
+    },
+    {
+      "cmd": "PYTHONPATH=scripts /Users/praise/.pyenv/shims/python3 -m pytest -q tests/test_bridge_sc_refs_policy.py tests/test_loop_report_payload.py tests/test_deep_capsules.py tests/test_deep_parser.py tests/test_router_deep.py tests/test_controller_deep.py tests/test_validate_outcome.py tests/review-fusion",
+      "status": "passed_59"
+    },
+    {
+      "cmd": "PATH=\"/Users/praise/.pyenv/shims:$PATH\" pytest -q",
+      "status": "passed_63",
+      "note": "Repo-level pytest.ini keeps discovery under tests/ so deep-review synthetic fixtures are not collected as normal tests."
+    },
+    {
+      "cmd": "PATH=\"/Users/praise/.pyenv/shims:$PATH\" python3 -m pytest -q",
+      "status": "passed_63"
+    },
+    {
+      "cmd": "bash tests/gd-review2-plan-routing-smoke.sh && bash tests/gd-step2-l3-failopen-smoke.sh && bash tests/gd-step4-controller-transport-smoke.sh",
+      "status": "passed_after_final_p2_fix"
+    },
+    {
+      "cmd": "CLAUDE_PLUGIN_DATA=/tmp/gd-foreign-plugin-data PATH=\"/Users/praise/.pyenv/shims:$PATH\" bash tests/gd-step4-controller-transport-smoke.sh",
+      "status": "passed_after_tpaths_env_isolation_fix",
+      "note": "Verifies step4 smoke remains green in Claude Code-like sessions that inject CLAUDE_PLUGIN_DATA."
+    },
+    {
+      "cmd": "bash tests/gd-deep-chain-live-smoke.sh",
+      "status": "passed_after_l3_execution_bare_skip_fix",
+      "note": "Reran after bare `1 skipped` extraction fix; L3 execution, L3 code, and L2 controller deep all caught planted defects."
+    }
+  ],
+  "remaining_risks": []
+}

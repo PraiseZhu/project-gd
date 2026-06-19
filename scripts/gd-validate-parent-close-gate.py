@@ -884,23 +884,26 @@ def validate_closure_json(path: Path) -> int:
                     f"{_ledger_ref.name}: {_e}"
                 )
 
-    # Rule 4: Reject non-approval mapped_status when verdict=APPROVED
-    top_verdict = data.get("verdict") or data.get("decision") or ""
-    is_top_approved = str(top_verdict).upper() == "APPROVED"
+    # Rule 4: Reject ineligible mapped_status in any job.
+    # SC-8 V12: this check must be UNCONDITIONAL. Previously it ran only when the
+    # top-level verdict was APPROVED, so a closure JSON with a missing/empty/
+    # non-APPROVED verdict could carry an ineligible job (transport_failed,
+    # degraded, human_exec, ...) straight through the gate. Reaching this gate
+    # already means the report is being offered as final closure evidence, so an
+    # ineligible job is a hard fail regardless of the declared verdict.
     INELIGIBLE_STATUSES = frozenset({
         "transport_failed", "failed_to_run", "timeout", "degraded",
         "wrapper_schema_fail", "local_only", "human_exec",
     })
-    if is_top_approved:
-        for job in jobs:
-            if not isinstance(job, dict):
-                continue
-            ms = job.get("mapped_status", "")
-            if ms in INELIGIBLE_STATUSES:
-                job_id = job.get("queue_job_id") or job.get("job_id") or "(unknown)"
-                failures.append(
-                    f"PARENT_CLOSE_GATE_INVALID: closure_ineligible: {ms} in job {job_id}"
-                )
+    for job in jobs:
+        if not isinstance(job, dict):
+            continue
+        ms = job.get("mapped_status", "")
+        if ms in INELIGIBLE_STATUSES:
+            job_id = job.get("queue_job_id") or job.get("job_id") or "(unknown)"
+            failures.append(
+                f"PARENT_CLOSE_GATE_INVALID: closure_ineligible: {ms} in job {job_id}"
+            )
 
     # Rule 6: Reject codex-only approval (no Claude review evidence)
     if data.get("claude_review_missing") is True or data.get("claude_review_status") == "skipped":

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # gd-review2-output-coverage-smoke.sh — Phase 4 smoke test (SC-6)
 # Verifies gd-validate-review2-output.py coverage validator behaviour:
-#   SC-6a: empty mandatory list → exit 0, MANDATORY_READ_COUNT: 0
+#   SC-6a: empty mandatory list → exit 1 (fail-closed), COVERAGE_VALIDATE_FAIL, MANDATORY_READ_COUNT: 0
 #   SC-6b: all paths covered → COVERAGE_VALIDATE_PASS
 #   SC-6c: missing path → COVERAGE_VALIDATE_FAIL with missing entry
 #   SC-6d: invalid status → COVERAGE_VALIDATE_FAIL
@@ -75,9 +75,9 @@ OUTPUT_CONTRACT:
   RELEASE_VERDICT: NOT_APPLICABLE
 EOF
 
-# --- SC-6a: empty mandatory list → exit 0 ---
+# --- SC-6a: empty mandatory list → exit 1 (fail-closed, aligned with SC-11a) ---
 echo
-echo "--- SC-6a: empty mandatory list → COVERAGE_VALIDATE_PASS ---"
+echo "--- SC-6a: empty mandatory list → COVERAGE_VALIDATE_FAIL (fail-closed) ---"
 
 cat > "$TMPDIR/output-empty.md" << 'EOF'
 Some review findings here.
@@ -86,10 +86,10 @@ EOF
 
 _ex=0
 out=$($VALIDATOR --capsule "$TMPDIR/capsule-empty.md" --output "$TMPDIR/output-empty.md" 2>/dev/null) || _ex=$?
-if [[ $_ex -eq 0 ]] && echo "$out" | grep -q "COVERAGE_VALIDATE_PASS"; then
-    pass "empty mandatory list → exit 0 + COVERAGE_VALIDATE_PASS"
+if [[ $_ex -eq 1 ]] && echo "$out" | grep -q "COVERAGE_VALIDATE_FAIL"; then
+    pass "empty mandatory list → exit 1 + COVERAGE_VALIDATE_FAIL (fail-closed)"
 else
-    fail "empty mandatory list → expected exit 0 + PASS, got exit=$_ex: $(echo "$out" | head -3)"
+    fail "empty mandatory list → expected exit 1 + FAIL, got exit=$_ex: $(echo "$out" | head -3)"
 fi
 
 if echo "$out" | grep -q "MANDATORY_READ_COUNT: 0"; then

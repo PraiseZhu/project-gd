@@ -37,8 +37,15 @@ done
 [[ ! -f "$payload_file" ]] && { echo "Error: payload file not found: $payload_file" >&2; exit 1; }
 
 # Check watcher state via shared watch_state()
-watcher_status=$(watch_state)
-watcher_rc=$?
+# NOTE: must NOT let `set -e` abort on this line. watch_state() returns non-zero
+# for DEGRADED (2) and STOPPED (1). A bare `watcher_status=$(watch_state)`
+# assignment trips `set -e` and exits the script with that code BEFORE the
+# graceful `case` below runs — turning a clear "WATCH_UNAVAILABLE exit 2 +
+# message" (STOPPED) or a "proceed anyway" (DEGRADED) into a silent exit 1 with
+# empty output (observed: empty 1-byte error log when the daemon was mid-restart).
+# `|| watcher_rc=$?` captures the real code and keeps set -e satisfied.
+watcher_rc=0
+watcher_status=$(watch_state) || watcher_rc=$?
 
 case $watcher_rc in
   0)

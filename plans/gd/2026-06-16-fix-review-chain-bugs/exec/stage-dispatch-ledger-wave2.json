@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "stage": "execute",
+  "parent_run_id": "fix-review-chain-bugs-20260616",
+  "batch_id": "batch-exec-wave2",
+  "recorded_at": "2026-06-16T09:09:17Z",
+  "child_agent_count": 2,
+  "max_parallel": 2,
+  "child_jobs": [
+    {
+      "job_id": "step-2-l3-failopen",
+      "result_path": "plans/gd/2026-06-16-fix-review-chain-bugs/exec/results/step-2-l3-failopen.result.yaml",
+      "result_hash": "209338b68b6342f6ac025337a28e14c155e298438333419fcd00616931b156bf",
+      "status": "completed"
+    },
+    {
+      "job_id": "step-4-shared-controller-transport",
+      "result_path": "plans/gd/2026-06-16-fix-review-chain-bugs/exec/results/step-4-shared-controller-transport.result.yaml",
+      "result_hash": "f3a01a83a91fbc1d09b58e75cabb993af75039494bca24c6011895f1fd574787",
+      "status": "completed"
+    }
+  ],
+  "main_agent_merge": {
+    "merge_report_path": "plans/gd/2026-06-16-fix-review-chain-bugs/exec/merge-report-wave2.md",
+    "merge_report_hash": "5e66c1ee370ae7d8a8ab3fbdb0c6806f354cd32744b2e3e866729868e5889355",
+    "final_decision": "APPROVED",
+    "blocking_buckets": []
+  }
+}

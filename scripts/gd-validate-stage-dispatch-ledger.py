@@ -199,7 +199,13 @@ def _validate_cross_checks(data):
 
 
 def validate(data):
-    """Return list of error strings. Empty == valid."""
+    """Return list of error strings. Empty == valid.
+
+    SC-8 V5: when jsonschema is unavailable, the manual fallback IS itself
+    fail-closed (it enforces every required field, the SHA-256 pattern, and the
+    cross-checks), so the fallback does not relax validation. We still emit a
+    stderr WARN so the degradation is visible rather than silent.
+    """
     # Try loading schema for jsonschema validation
     try:
         with open(_SCHEMA_PATH, "r", encoding="utf-8") as f:
@@ -207,8 +213,19 @@ def validate(data):
         result = _validate_with_jsonschema(data, schema)
         if result is not None:
             return result + _validate_cross_checks(data)
+        # result is None → jsonschema not importable; surface the downgrade.
+        print(
+            "WARN: jsonschema unavailable — using manual fail-closed validator "
+            "(required fields + SHA-256 + cross-checks still enforced).",
+            file=sys.stderr,
+        )
     except (OSError, json.JSONDecodeError):
-        pass  # schema file not found or malformed — fall through to manual
+        # schema file not found or malformed — fall through to manual fallback.
+        print(
+            f"WARN: schema unreadable at {_SCHEMA_PATH} — using manual "
+            "fail-closed validator.",
+            file=sys.stderr,
+        )
 
     return _validate_manual(data)
 
