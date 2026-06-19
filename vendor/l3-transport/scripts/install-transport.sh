@@ -96,9 +96,24 @@ HANDOFF_STATE_RESOLVED="${HANDOFF_STATE:-$HANDOFF_ROOT/state}"
 # CLAUDE_PLUGIN_DATA 用与 state-paths.sh 第 17 行同款 fallback：installer shell 没设该变量时
 # 回退 $HOME/.claude(绝不渲染空串,否则 daemon/client 又漂移到不同 gd-handoff 根)。
 CLAUDE_PLUGIN_DATA_RESOLVED="${CLAUDE_PLUGIN_DATA:-$HOME/.claude}"
+# TAPTAP_API_KEY 渲染：install 之前 plist 会被模板覆盖，必须主动保留 key。
+# 优先级：installer shell env > 现有 live plist（重装保留）> launchctl getenv（GUI domain）。
+# 占位符 __TAPTAP_API_KEY__ 在模板里；渲染时注入明文（明文只进 live plist，不入 git）。
+TAPTAP_KEY_RESOLVED=""
+[ -n "${TAPTAP_API_KEY:-}" ] && TAPTAP_KEY_RESOLVED="$TAPTAP_API_KEY"
+if [ -z "$TAPTAP_KEY_RESOLVED" ]; then
+  _live_plist="${HOME}/Library/LaunchAgents/com.praise.codex-watch.plist"
+  [ -f "$_live_plist" ] && TAPTAP_KEY_RESOLVED=$(/usr/libexec/PlistBuddy -c "Print :EnvironmentVariables:TAPTAP_API_KEY" "$_live_plist" 2>/dev/null || true)
+fi
+[ -z "$TAPTAP_KEY_RESOLVED" ] && TAPTAP_KEY_RESOLVED="$(launchctl getenv TAPTAP_API_KEY 2>/dev/null || true)"
+if [ -z "$TAPTAP_KEY_RESOLVED" ]; then
+  log "WARN: TAPTAP_API_KEY 未找到（env/现有 plist/launchctl 都没有）；渲染 plist 不含 key，daemon 起来报 Missing key，需 launchctl setenv 或重注入 plist 后 reload"
+else
+  log "TAPTAP_API_KEY: 已解析（来源: $([ -n "${TAPTAP_API_KEY:-}" ] && echo env || { [ -f "${HOME}/Library/LaunchAgents/com.praise.codex-watch.plist" ] && echo existing-plist || echo launchctl; }), ${TAPTAP_KEY_RESOLVED:0:8}...）"
+fi
 # sed 用 '|' 作分隔符：若任一替换值含 '|' 会破坏 sed 表达式、产生畸形 plist。
 # 正常路径不含 '|'；对 CI/自动化注入的异常路径 fail-closed，而非渲染坏文件。
-for _v in "$HANDOFF_BIN" "$HANDOFF_STATE_RESOLVED" "$HANDOFF_ROOT" "$HOME" "$CLAUDE_PLUGIN_DATA_RESOLVED"; do
+for _v in "$HANDOFF_BIN" "$HANDOFF_STATE_RESOLVED" "$HANDOFF_ROOT" "$HOME" "$CLAUDE_PLUGIN_DATA_RESOLVED" "$TAPTAP_KEY_RESOLVED"; do
   case "$_v" in
     *"|"*) echo "ERROR: 路径含 '|' 无法安全渲染 plist: $_v" >&2; exit 1 ;;
   esac
@@ -116,6 +131,7 @@ for pn in "${PLIST_NAMES[@]}"; do
     -e "s|__HANDOFF_ROOT__|${HANDOFF_ROOT}|g" \
     -e "s|__HOME__|${HOME}|g" \
     -e "s|__CLAUDE_PLUGIN_DATA__|${CLAUDE_PLUGIN_DATA_RESOLVED}|g" \
+    -e "s|__TAPTAP_API_KEY__|${TAPTAP_KEY_RESOLVED}|g" \
     "$VENDOR_DIR/launchagents/$pn" > "$_tmp"
 done
 log "Rendered ${#PLIST_NAMES[@]} plist(s) → HANDOFF_BIN=$HANDOFF_BIN CLAUDE_PLUGIN_DATA=$CLAUDE_PLUGIN_DATA_RESOLVED"

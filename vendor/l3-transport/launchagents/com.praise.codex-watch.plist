@@ -21,6 +21,8 @@
 		<string>540</string>
 		<key>CLAUDE_PLUGIN_DATA</key>
 		<string>__CLAUDE_PLUGIN_DATA__</string>
+		<key>TAPTAP_API_KEY</key>
+		<string>__TAPTAP_API_KEY__</string>
 	</dict>
 	<key>KeepAlive</key>
 	<true/>
