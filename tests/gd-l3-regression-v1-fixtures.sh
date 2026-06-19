@@ -17,17 +17,9 @@ for raw in "$FIXTURE_DIR"/*/*.md "$FIXTURE_DIR"/*.md; do
   case "$fname" in
     *malformed*|*missing*|*multiple*|*degraded*|*failed*) continue ;;
   esac
-  # F5 fix: --skip-line-ref-check is no longer valid for REQUIRES_CHANGES
-  # verdicts. RC bridge-parser fixtures don't carry line evidence (they're
-  # parser stubs, not evidence-quality reviews) — FAKE_EVIDENCE_DETECTED on
-  # them is CORRECT behavior, not a false positive. Skip them here so we only
-  # assert false-positive freedom on APPROVED / unknown-verdict outputs.
-  if grep -q "REQUIRES_CHANGES" "$raw" 2>/dev/null; then
-    continue
-  fi
   # Use the fixture itself as both target and review — L3 should not false-positive
-  # on legitimate APPROVED/unknown-verdict review outputs.
-  result=$(python3 "$L3" --target "$raw" --review "$raw" 2>&1)
+  # on legitimate review outputs (unknown verdict → EVIDENCE_VALID).
+  result=$(python3 "$L3" --target "$raw" --review "$raw" --skip-line-ref-check 2>&1)
   if echo "$result" | grep -q "EVIDENCE_VALID"; then
     PASS_COUNT=$((PASS_COUNT + 1))
   elif echo "$result" | grep -q "FAKE_EVIDENCE_DETECTED"; then

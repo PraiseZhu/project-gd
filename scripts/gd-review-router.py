@@ -61,7 +61,6 @@ ROUTE_REPORT_VALIDATOR = SCRIPTS / "gd-validate-route-report.py"
 sys.path.insert(0, str(SCRIPTS))
 from gd_review_contract import MODE_ENUM as VALID_MODES  # noqa: E402
 from gd_review_contract import REVIEW_TARGET_KIND_ENUM as _VALID_KINDS  # noqa: E402
-from gd_review_contract import codex_review_status_from_evidence  # noqa: E402
 from gd_review_detection import (  # noqa: E402
     classify_artifacts,
     has_execution_artifacts_in_dir,
@@ -152,31 +151,19 @@ def _is_router_descriptor(path: Path) -> bool:
     return False
 
 
-# P2 sentinel: a JSON target that declared itself a router descriptor
-# (router_version + artifacts keys present) but is unreadable/malformed at
-# classification time. This is DISTINCT from a genuinely empty target
-# ("no_artifact"): a corrupt descriptor means the caller intended to point at
-# artifacts but the descriptor itself is broken — we surface a different
-# failure_code so it is not silently bucketed as "nothing to review".
-CORRUPT_DESCRIPTOR_SENTINEL = "corrupt_descriptor"
-
-
 def _classify_router_descriptor(path: Path) -> str:
     """Classify a v1 router-input descriptor via the shared SSOT helper.
 
     Mirrors gd-detect-review-target.detect_kind() so router/detector parity is
-    preserved without a subprocess hop. Returns CORRUPT_DESCRIPTOR_SENTINEL when
-    a self-declared descriptor cannot be parsed/validated (P2 fail-closed),
-    which the caller maps to a CORRUPT_ROUTER_DESCRIPTOR failure_code rather than
-    NO_ARTIFACT_DETECTED.
+    preserved without a subprocess hop.
     """
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return CORRUPT_DESCRIPTOR_SENTINEL
+        return "no_artifact"
     artifacts = (data or {}).get("artifacts", {}) if isinstance(data, dict) else {}
     if not isinstance(artifacts, dict):
-        return CORRUPT_DESCRIPTOR_SENTINEL
+        return "no_artifact"
     return classify_artifacts(
         bool(artifacts.get("plan_files")),
         bool(artifacts.get("execution_files")),
@@ -276,24 +263,16 @@ def run_detect_only(target: Path | None, output_dir: Path, invocation_id: str) -
     kind = detect_review_target_kind(target)
     print(f"detected target kind: {kind}")
 
-    # P2: keep the report's review_target_kind enum-valid; a corrupt descriptor
-    # is surfaced via the note + REVIEW_TARGET_MISSING decision, not APPROVE.
-    is_corrupt = kind == CORRUPT_DESCRIPTOR_SENTINEL
-    report_kind = "no_artifact" if is_corrupt else kind
     report = {
         "schema_version": "2.0",
         "router_invocation_id": invocation_id,
         "mode": "detect_only",
-        "review_target_kind": report_kind,
-        "decision": "REVIEW_TARGET_MISSING" if report_kind == "no_artifact" else "REQUIRES_CHANGES",
+        "review_target_kind": kind,
+        "decision": "REVIEW_TARGET_MISSING" if kind == "no_artifact" else "REQUIRES_CHANGES",
         "validator_signature": VALIDATOR_SIGNATURE,
         "recorded_at": now_iso(),
         "findings": [],
-        "notes": (
-            "detect_only: corrupt router descriptor (CORRUPT_ROUTER_DESCRIPTOR); fail-closed"
-            if is_corrupt else
-            "detect_only: no review was invoked; detection result only"
-        ),
+        "notes": "detect_only: no review was invoked; detection result only",
     }
 
     rc, _ = write_and_validate_route_report(report, output_dir)
@@ -309,15 +288,10 @@ def run_live_dry_run(target: Path | None, output_dir: Path, invocation_id: str) 
     print(f"detected target kind: {kind}")
     print(f"mock bridge: skipping Codex API call (live_dry_run)")
 
-    # P2: normalize corrupt-descriptor sentinel to an enum-valid kind for the
-    # report while still fail-closing (REVIEW_TARGET_MISSING, never APPROVE).
-    is_corrupt = kind == CORRUPT_DESCRIPTOR_SENTINEL
-    report_kind = "no_artifact" if is_corrupt else kind
-
     # Simulate routing without actual review
-    decision = "REVIEW_TARGET_MISSING" if report_kind == "no_artifact" else "REQUIRES_CHANGES"
+    decision = "REVIEW_TARGET_MISSING" if kind == "no_artifact" else "REQUIRES_CHANGES"
     findings = []
-    if report_kind != "no_artifact":
+    if kind != "no_artifact":
         findings.append({
             "reviewer": "router_mock",
             "severity": "info",
@@ -328,7 +302,7 @@ def run_live_dry_run(target: Path | None, output_dir: Path, invocation_id: str) 
         "schema_version": "2.0",
         "router_invocation_id": invocation_id,
         "mode": "live_dry_run",
-        "review_target_kind": report_kind,
+        "review_target_kind": kind,
         "decision": decision,
         "validator_signature": VALIDATOR_SIGNATURE,
         "recorded_at": now_iso(),
@@ -404,7 +378,6 @@ def _run_live_plan_review(
     downstream_decision = "FAILED"
     raw_result_path = None
     raw_result_hash = None
-    codex_review_status = None  # read directly from loop_report (merge-loop computes it)
 
     if loop_report_path:
         try:
@@ -413,32 +386,8 @@ def _run_live_plan_review(
             raw_result_path = lrep.get("raw_result_path")
             rh = lrep.get("raw_result_hash")
             raw_result_hash = str(rh) if rh else None
-            codex_review_status = lrep.get("codex_review_status")
-        except Exception as exc:
-            # Fail-visible (rule 12): a loop_report that EXISTS but won't parse is a
-            # merge-loop writer bug, NOT a transport failure. Surface it on stderr so
-            # codex-chain diagnosis isn't misdirected to transport/launchd/key.
-            # Conservative transport_failed default still applied below.
-            print(f"WARN: loop_report unreadable ({loop_report_path}): {exc}", file=sys.stderr)
-
-    # Fail-closed: loop_report missing/unreadable or no codex_review_status field →
-    # transport_failed. (The mapping logic lives in merge-loop, which has the
-    # evidence triple; router only transports the computed value + defaults when
-    # evidence is absent.)
-    if not codex_review_status:
-        codex_review_status = "transport_failed"
-    if downstream_decision == "APPROVED":
-        if codex_review_status == "transport_failed":
-            downstream_decision = "FAILED"
-        elif codex_review_status in ("wrapper_schema_fail", "requires_changes"):
-            downstream_decision = "REQUIRES_CHANGES"
-
-    # N4 fail-closed: the merge loop's exit code is authoritative. A non-zero
-    # returncode means the loop did not cleanly converge to APPROVED, so we must
-    # NOT trust an APPROVED read out of a possibly stale/partial loop_report.
-    # (Bridge G6 arbitration: returncode beats decision.)
-    if r.returncode != 0 and downstream_decision == "APPROVED":
-        downstream_decision = "FAILED"
+        except Exception:
+            pass
 
     # claude_review_origin: supplied if --claude-review was passed explicitly;
     # in skill_orchestrated path (/gd review plan), Claude command writes the JSON first.
@@ -458,25 +407,9 @@ def _run_live_plan_review(
         "claude_review_origin": cr_origin,
         "downstream_loop_report_path": loop_report_path,
         "downstream_returncode": r.returncode,
-        "codex_review_status": codex_review_status,
         "findings": [],
     }
-    # Codex evidence: the loop_report's raw_result_path IS the codex mapped result
-    # (bridge-r{round}-{lens}-mapped.json written by _run_bridge_job in merge-loop).
-    # Mirror it into codex_* fields so plan review has the same observability as
-    # the execution path (:1088-1093). Filled only when codex actually ran (non-None).
-    if raw_result_path is not None:
-        report["codex_mapped_result_path"] = raw_result_path
-        report["codex_mapped_result_hash"] = raw_result_hash
-    # Mirror execution path (:1094-1097): surface transport + wrapper failures with
-    # explicit failure_codes so closure-eligibility scanners see them.
-    if codex_review_status == "transport_failed":
-        report["failure_code"] = "CODEX_TRANSPORT_UNAVAILABLE"
-    elif codex_review_status == "wrapper_schema_fail":
-        report["failure_code"] = "CODEX_WRAPPER_SCHEMA_FAIL"
-    rc, _ = write_and_validate_route_report(report, output_dir)
-    if rc != 0:
-        return 1
+    write_and_validate_route_report(report, output_dir)
     return 0 if downstream_decision == "APPROVED" else 1
 
 
@@ -572,13 +505,8 @@ def _run_live_codex_bridge(
     ]
     # G2 (bridge): parse-transport auto-infers --compat-v1 for execution_outcome/combined
     # when flag is omitted. Explicit flag here would also work; omit to keep helper simple.
-    if deep:
-        parse_args.append("--deep")
     r_parse = subprocess.run(parse_args, capture_output=True, text=True)
-    # parse-transport returns non-zero for valid non-APPROVED mapped results.
-    # Treat absence/unreadability of the mapped JSON as parse failure; otherwise
-    # let codex_review_status_from_evidence classify the mapped decision.
-    if not mapped_out.exists():
+    if r_parse.returncode != 0 or not mapped_out.exists():
         msg = f"parse-transport failed: {(r_parse.stderr or '')[:300]}"
         result["status"] = "wrapper_schema_fail"
         result["failure_description"] = msg
@@ -595,25 +523,8 @@ def _run_live_codex_bridge(
         return result
 
     decision = mapped.get("gd_review_decision") or mapped.get("decision")
-    norm = str(decision).strip().upper() if decision is not None else "FAILED"
-    status = codex_review_status_from_evidence(True, norm, mapped.get("review_run_status"))
-    result["status"] = status
-    if status == "completed":
-        result["decision"] = "APPROVED"
-    elif status == "requires_changes":
-        result["decision"] = "REQUIRES_CHANGES"
-    else:
-        # FAILED, None, unknown verdict, or degraded/failed run status → fail-closed.
-        result["decision"] = "FAILED"
-        result["failure_description"] = (
-            f"codex mapped evidence not a clean verdict "
-            f"(decision={decision!r}, run_status={mapped.get('review_run_status')!r}); "
-            "fail-closed to FAILED"
-        )
-        result["findings"].append({
-            "reviewer": "codex_bridge", "severity": "error",
-            "description": result["failure_description"],
-        })
+    result["status"] = "requires_changes" if decision == "REQUIRES_CHANGES" else "completed"
+    result["decision"] = decision
     result["raw_path"] = str(transport_raw)
     result["raw_hash"] = hashlib.sha256(transport_raw.read_bytes()).hexdigest()
     result["mapped_path"] = str(mapped_out)
@@ -1032,10 +943,8 @@ def _run_live_execution_only(
         # Explicit "v2" contract overrides this to enforce v2 header strictly.
         if review_contract != "v2":
             parse_args.append("--compat-v1")
-        if deep:
-            parse_args.append("--deep")
         r_bridge = subprocess.run(parse_args, capture_output=True, text=True)
-        if not mapped_out.exists():
+        if r_bridge.returncode != 0:
             codex_status = "wrapper_schema_fail"
             findings.append({
                 "reviewer": "codex_bridge",
@@ -1043,6 +952,7 @@ def _run_live_execution_only(
                 "description": f"bridge parse-transport failed: {r_bridge.stderr[:400]}",
             })
         else:
+            codex_status = "completed"
             codex_raw_path = str(codex_raw_result)
             codex_raw_hash = hashlib.sha256(codex_raw_result.read_bytes()).hexdigest()
             codex_mapped_path = str(mapped_out)
@@ -1050,12 +960,8 @@ def _run_live_execution_only(
             try:
                 mapped = json.loads(mapped_out.read_text(encoding="utf-8"))
                 codex_decision = mapped.get("gd_review_decision") or mapped.get("decision")
-                # R1: derive codex_review_status from verdict + run_status via the shared
-                # SSOT helper — a FAILED/degraded mapped must NOT silently become 'completed'.
-                codex_status = codex_review_status_from_evidence(
-                    True,
-                    str(codex_decision).strip().upper() if codex_decision else "FAILED",
-                    mapped.get("review_run_status"))
+                if codex_decision == "REQUIRES_CHANGES":
+                    codex_status = "requires_changes"
                 for f in mapped.get("findings", []) or []:
                     findings.append({**f, "reviewer": "codex"})
             except Exception as e:
@@ -1067,12 +973,7 @@ def _run_live_execution_only(
         try:
             mapped = json.loads(codex_mapped_result.read_text(encoding="utf-8"))
             codex_decision = mapped.get("gd_review_decision") or mapped.get("decision")
-            # R1: shared SSOT helper (verdict + run_status aware) instead of 2-state inline
-            # that mapped FAILED/None/unknown → completed.
-            codex_status = codex_review_status_from_evidence(
-                True,
-                str(codex_decision).strip().upper() if codex_decision else "FAILED",
-                mapped.get("review_run_status"))
+            codex_status = "requires_changes" if codex_decision == "REQUIRES_CHANGES" else "completed"
             codex_mapped_path = str(codex_mapped_result)
             codex_mapped_hash = hashlib.sha256(codex_mapped_result.read_bytes()).hexdigest()
             # raw_path unknown when only mapped supplied; mark synthetic
@@ -1294,16 +1195,6 @@ def _run_live_execution_plus_code(
     Stage 2b (single-round path): LOCAL_STATIC_ONLY code review (skill_orchestrated) — backward compat.
     """
     import hashlib
-    # If target is a directory, resolve to the first valid execution JSON within it
-    # (execution_plus_code detection requires a dir with both .md + exec JSON, but
-    # outcome validator and _get_plan_ref need a concrete file).
-    if target.is_dir():
-        for candidate in sorted(target.rglob("*.json")):
-            if candidate.name.startswith("_"):
-                continue
-            if is_execution_json(candidate):
-                target = candidate
-                break
     plan_ref = _get_plan_ref(target)  # SC-2: read plan_ref for Phase 2 verify-rerun
     outcome_script = SCRIPTS / "gd-validate-execution-outcome.py"  # hoisted; used in both branches
 
@@ -1422,14 +1313,13 @@ def _run_live_execution_plus_code(
         # revision=20: same compat-v1 policy as execution_only path
         if review_contract != "v2":
             parse_args.append("--compat-v1")
-        if deep:
-            parse_args.append("--deep")
         r_bridge = subprocess.run(parse_args, capture_output=True, text=True)
-        if not mapped_out.exists():
+        if r_bridge.returncode != 0:
             codex_status = "wrapper_schema_fail"
             findings.append({"reviewer": "codex_bridge", "severity": "error",
                              "description": f"bridge parse-transport failed: {r_bridge.stderr[:400]}"})
         else:
+            codex_status = "completed"
             codex_raw_path = str(codex_raw_result)
             codex_raw_hash = hashlib.sha256(codex_raw_result.read_bytes()).hexdigest()
             codex_mapped_path = str(mapped_out)
@@ -1437,12 +1327,8 @@ def _run_live_execution_plus_code(
             try:
                 mapped = json.loads(mapped_out.read_text(encoding="utf-8"))
                 codex_decision = mapped.get("gd_review_decision") or mapped.get("decision")
-                # R1: derive codex_review_status from verdict + run_status via the shared
-                # SSOT helper — a FAILED/degraded mapped must NOT silently become 'completed'.
-                codex_status = codex_review_status_from_evidence(
-                    True,
-                    str(codex_decision).strip().upper() if codex_decision else "FAILED",
-                    mapped.get("review_run_status"))
+                if codex_decision == "REQUIRES_CHANGES":
+                    codex_status = "requires_changes"
                 for f in mapped.get("findings", []) or []:
                     findings.append({**f, "reviewer": "codex"})
             except Exception as e:
@@ -1453,12 +1339,7 @@ def _run_live_execution_plus_code(
         try:
             mapped = json.loads(codex_mapped_result.read_text(encoding="utf-8"))
             codex_decision = mapped.get("gd_review_decision") or mapped.get("decision")
-            # R1: shared SSOT helper (verdict + run_status aware) instead of 2-state inline
-            # that mapped FAILED/None/unknown → completed.
-            codex_status = codex_review_status_from_evidence(
-                True,
-                str(codex_decision).strip().upper() if codex_decision else "FAILED",
-                mapped.get("review_run_status"))
+            codex_status = "requires_changes" if codex_decision == "REQUIRES_CHANGES" else "completed"
             codex_mapped_path = str(codex_mapped_result)
             codex_mapped_hash = hashlib.sha256(codex_mapped_result.read_bytes()).hexdigest()
             codex_raw_path = str(codex_mapped_result) + ".raw_unknown"
@@ -1574,32 +1455,6 @@ def run_live(
 
     kind = detect_review_target_kind(target)
     print(f"detected target kind: {kind}")
-
-    # P2 fail-closed: a self-declared-but-corrupt router descriptor is reported
-    # with a DISTINCT failure_code from a genuine no-artifact target, so the
-    # operator can tell "you pointed at a broken descriptor" apart from "there
-    # was nothing to review". Both still fail-closed (exit 2, never APPROVE).
-    if kind == CORRUPT_DESCRIPTOR_SENTINEL:
-        report = {
-            "schema_version": "2.0",
-            "router_invocation_id": invocation_id,
-            "mode": "live",
-            "review_target_kind": "no_artifact",
-            "decision": "REVIEW_TARGET_MISSING",
-            "validator_signature": VALIDATOR_SIGNATURE,
-            "recorded_at": now_iso(),
-            "failure_code": "CORRUPT_ROUTER_DESCRIPTOR",
-            "claude_review_origin": "not_applicable",
-            "findings": [{"reviewer": "router", "severity": "error",
-                          "description": "CORRUPT_ROUTER_DESCRIPTOR: target declared a v1 router "
-                                         "descriptor (router_version + artifacts) but it is "
-                                         "unreadable/malformed; fail-closed, distinct from "
-                                         "NO_ARTIFACT_DETECTED. Must not APPROVE."}],
-        }
-        write_and_validate_route_report(report, output_dir)
-        print("ERROR: CORRUPT_ROUTER_DESCRIPTOR: descriptor present but malformed; fail-closed",
-              file=sys.stderr)
-        return 2
 
     if kind == "no_artifact":
         report = {

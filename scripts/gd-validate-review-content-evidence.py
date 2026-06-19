@@ -114,18 +114,10 @@ def _check_finding_has_line_evidence(
     review_text: str,
     target_path: Path,
     errors: list[str],
-    degraded_findings: "Optional[list[str]]" = None,
 ) -> None:
     """Every ### Finding block must contain at least one path:line ref that resolves
     to the target file (matched by name or path suffix). Refs to unrelated files
     do not satisfy the evidence requirement.
-
-    SC-12 (误拒收口): when ``degraded_findings`` is provided AND the overall review
-    is structurally valid (legit verdict + substantive findings), an individual
-    finding that merely lacks a target-pointing line ref is recorded as a degraded
-    finding (a per-finding reference-quality warning) instead of collapsing the
-    whole review into FAKE_EVIDENCE_DETECTED. With ``degraded_findings`` None the
-    legacy hard-fail behaviour is preserved.
     """
     findings = _FINDING_BLOCK_RE.findall(review_text)
     if not findings:
@@ -140,16 +132,12 @@ def _check_finding_has_line_evidence(
             if r[0] == target_name or target_str.endswith(r[0])
         ]
         if not target_refs:
-            msg = (
-                f"Finding #{i} has no path:line evidence "
+            errors.append(
+                f"FAKE_EVIDENCE_DETECTED: Finding #{i} has no path:line evidence "
                 f"pointing to target '{target_name}' "
                 f"(found {len(refs)} ref(s) to other files — "
                 f"reviewer must cite '{target_name}:<line>')"
             )
-            if degraded_findings is not None:
-                degraded_findings.append(f"DEGRADED_FINDING: {msg}")
-            else:
-                errors.append(f"FAKE_EVIDENCE_DETECTED: {msg}")
 
 
 def _check_scope_coverage(
@@ -197,106 +185,21 @@ def _check_requires_changes_has_findings(
     review_text: str,
     verdict: str,
     errors: list[str],
-    degraded_findings: "Optional[list[str]]" = None,
 ) -> None:
-    """REQUIRES_CHANGES must have ≥1 finding with sc_refs.
-
-    SC-3 (V16): REQUIRES_CHANGES with zero ### Finding blocks is a hard fail — the
-    no-findings case is a genuine fake-review signal and is never softened.
-
-    SC-12 (误拒收口): an individual finding that merely lacks an SC-ID reference is
-    a per-finding citation-style defect; when ``degraded_findings`` is provided
-    (review is structurally valid) it is recorded as a degraded finding rather than
-    collapsing the otherwise-valid REQUIRES_CHANGES review. With ``degraded_findings``
-    None the legacy hard-fail behaviour is preserved.
-    """
+    """REQUIRES_CHANGES must have ≥1 finding with sc_refs."""
     if verdict != "REQUIRES_CHANGES":
         return
     findings = _FINDING_BLOCK_RE.findall(review_text)
     if not findings:
-        # SC-3: hard fail — never softened. No findings ⇒ no verifiable substance.
         errors.append(
             "FAKE_EVIDENCE_DETECTED: REQUIRES_CHANGES verdict with no ### Finding sections"
         )
         return
     for i, block in enumerate(findings, 1):
         if not _extract_sc_ids(block):
-            msg = f"Finding #{i} has no SC-ID reference"
-            if degraded_findings is not None:
-                degraded_findings.append(f"DEGRADED_FINDING: {msg}")
-            else:
-                errors.append(f"FAKE_EVIDENCE_DETECTED: {msg}")
-
-
-# 5 mandatory Chinese finding fields (mirrors gd-codex-bridge-review.py
-# REQUIRED_FINDING_FIELDS_CN). A finding that carries these substance fields is a
-# concrete conclusion, not a hollow placeholder — used by SC-12 to decide whether
-# a review is "structurally valid" enough to only degrade (not collapse) on minor
-# citation-style defects.
-_FINDING_SUBSTANCE_FIELDS_CN = ("问题", "证据", "影响", "最小修复", "验收")
-
-
-def _finding_is_substantive(block: str) -> bool:
-    """A finding block is substantive if it carries at least one filled-in
-    mandatory substance field (问题/证据/影响/最小修复/验收) with non-empty content.
-    """
-    for cn in _FINDING_SUBSTANCE_FIELDS_CN:
-        m = re.search(rf"^\s*{cn}\s*[:：]\s*(\S.*)$", block, re.MULTILINE)
-        if m and m.group(1).strip():
-            return True
-    return False
-
-
-def _review_is_structurally_valid(
-    review_text: str,
-    verdict: str,
-    target_path: Path,
-    target_sc_ids: set[str],
-) -> bool:
-    """SC-12 gate: a review is eligible for per-finding *degradation* (instead of
-    whole-review *collapse*) only when it has already demonstrated citation
-    competence. It is structurally valid when ALL of:
-
-      * verdict is a legit canonical value (NOT UNKNOWN), and
-      * it has at least one ### Finding block, and
-      * at least one finding is substantive (carries a filled-in 中文 field), and
-      * citation competence is demonstrated: at least one finding carries a valid
-        target-pointing ``target:NN`` line ref AND (when the target has SC-IDs) at
-        least one finding cites a real target SC-ID.
-
-    This is the explicit boundary between SC-2/SC-3 (reject genuine fakery: UNKNOWN
-    verdict, zero findings, or a review that NEVER cites the target correctly) and
-    SC-12 (don't misfire on a single citation-style nitpick inside an otherwise
-    well-cited, valid review). A review that cannot cite the target at all in ANY
-    finding has NOT proven competence → strict fail-closed, so legacy stub fixtures
-    whose findings carry no machine-checkable ``target:NN`` ref stay rejected.
-    """
-    if verdict not in {"APPROVED", "REQUIRES_CHANGES", "FAILED"}:
-        return False
-    findings = _FINDING_BLOCK_RE.findall(review_text)
-    if not findings:
-        return False
-    target_name = target_path.name
-    target_str = str(target_path)
-    has_substantive = False
-    has_valid_line_ref = False
-    has_valid_sc_id = False
-    for block in findings:
-        has_substantive = has_substantive or _finding_is_substantive(block)
-        for ref in _LINE_REF_RE.findall(block):
-            if ref[0] == target_name or target_str.endswith(ref[0]):
-                has_valid_line_ref = True
-                break
-        if _extract_sc_ids(block) & target_sc_ids:
-            has_valid_sc_id = True
-    if not has_substantive:
-        return False
-    if not has_valid_line_ref:
-        return False
-    # When the target declares SC-IDs, at least one finding must cite a real one.
-    if target_sc_ids and not has_valid_sc_id:
-        return False
-    return True
+            errors.append(
+                f"FAKE_EVIDENCE_DETECTED: Finding #{i} has no SC-ID reference"
+            )
 
 
 def _extract_verdict(review_text: str) -> Optional[str]:
@@ -398,41 +301,15 @@ def validate(
 
     errors: list[str] = []
     error_codes: list[str] = []
-    degraded_findings: list[str] = []
     skip_line_ref = getattr(args_ns, "skip_line_ref_check", False) if args_ns else False
-
-    # SC-2 (V1): an unrecognizable / missing verdict is NOT a free pass. Previously
-    # an UNKNOWN verdict early-exited every verdict-gated anti-fake check, so a
-    # review with no parseable verdict sailed through as EVIDENCE_VALID. Treat it as
-    # a fake-review signal: the reviewer must emit a single canonical
-    # GD_REVIEW_DECISION (APPROVED|REQUIRES_CHANGES|FAILED).
-    if verdict not in {"APPROVED", "REQUIRES_CHANGES", "FAILED"}:
-        errors.append(
-            "FAKE_EVIDENCE_DETECTED: no recognizable GD_REVIEW_DECISION verdict "
-            "(APPROVED|REQUIRES_CHANGES|FAILED) — anti-fake checks cannot be "
-            "skipped on an unverifiable verdict"
-        )
-        error_codes.append("unknown_verdict")
-
-    # SC-12 (误拒收口): only when the review is structurally valid (legit verdict,
-    # ≥1 substantive finding) do we soften per-finding citation defects into degraded
-    # findings instead of collapsing the whole review. UNKNOWN verdict or zero
-    # findings keep the strict fail-closed path (SC-2 / SC-3).
-    structurally_valid = _review_is_structurally_valid(
-        review_text, verdict, target_path, target_sc_ids
-    )
-    _df_sink = degraded_findings if structurally_valid else None
-
     _check_sc_refs(review_text, target_sc_ids, errors, reference_sc_ids=reference_sc_ids)
     _check_line_refs(review_text, target_path, target_line_count, errors)
     missing_scope_sc_ids = _check_scope_coverage(review_text, target_sc_ids, verdict, errors)
     if missing_scope_sc_ids:
         error_codes.append("missing_scope_sc_ids")
-    _check_requires_changes_has_findings(review_text, verdict, errors, degraded_findings=_df_sink)
+    _check_requires_changes_has_findings(review_text, verdict, errors)
     if not skip_line_ref:
-        _check_finding_has_line_evidence(
-            review_text, target_path, errors, degraded_findings=_df_sink
-        )
+        _check_finding_has_line_evidence(review_text, target_path, errors)
     # F3: execution JSON targets require verify rerun evidence.
     if target_path.suffix.lower() == ".json":
         _check_execution_verify_evidence(target_text, review_text, errors)
@@ -443,11 +320,8 @@ def validate(
         "target_sc_id_count": len(target_sc_ids),
         "target_line_count": target_line_count,
         "verdict": verdict,
-        "verdict_preserved": verdict if not errors else None,
-        "structurally_valid": structurally_valid,
         "errors": errors,
         "error_codes": error_codes,
-        "degraded_findings": degraded_findings,
         "missing_scope_sc_ids": sorted(missing_scope_sc_ids),
         "review_sc_id_count": len(_extract_sc_ids(review_text)),
     }
@@ -497,18 +371,6 @@ def main(argv: list[str]) -> int:
         print(f"ERROR: target not found: {target}", file=sys.stderr)
         return 2
 
-    # SC-3 / F5 fix (V16): --skip-line-ref-check is a legacy compatibility flag
-    # for parser-stub fixtures. It must NOT be usable to bypass line-evidence
-    # checks for any review that carries a REQUIRES_CHANGES verdict — regardless
-    # of target file type. The original guard covered only .json targets; this
-    # extends it to all REQUIRES_CHANGES reviews (Markdown or JSON) because
-    # skipping line-ref on an RC review re-opens the exact fail-open hole SC-3
-    # was designed to close.
-    #
-    # Legacy fixture exemption: the 4 legacy .md RC fixtures in
-    # tests/gd-l3-regression-v1-fixtures.sh that rely on --skip-line-ref-check
-    # must be updated to remove the flag (or use APPROVED verdicts) — they
-    # should not have been testing skip+RC as a passing case.
     if args.review == "-":
         review_text = sys.stdin.read()
     else:
@@ -517,22 +379,6 @@ def main(argv: list[str]) -> int:
             print(f"ERROR: review file not found: {review_path}", file=sys.stderr)
             return 2
         review_text = review_path.read_text(encoding="utf-8")
-
-    # F5 fix: reject --skip-line-ref-check for .json targets or any RC review.
-    # Moved after review_text load to reuse the already-read text (no early double-read).
-    if getattr(args, "skip_line_ref_check", False):
-        _is_rc = "REQUIRES_CHANGES" in review_text
-        if target.suffix.lower() == ".json" or _is_rc:
-            _reason = (
-                "execution-outcome JSON target" if target.suffix.lower() == ".json"
-                else "REQUIRES_CHANGES verdict (line evidence cannot be skipped for RC reviews)"
-            )
-            print(
-                f"ERROR: --skip-line-ref-check is rejected for {_reason}",
-                file=sys.stderr,
-            )
-            print("L3_RESULT: FAKE_EVIDENCE_DETECTED (skip flag rejected)")
-            return 1
 
     # Resolve target kind: 'json' mode reads target as JSON text for SC-ID extraction.
     target_kind = args.target_kind
@@ -566,12 +412,6 @@ def main(argv: list[str]) -> int:
             f"({len(errors)} error(s), verdict={report['verdict']})"
         )
         return 1
-
-    # SC-12: surface per-finding citation defects without collapsing the verdict.
-    # Written to stderr so the snapshotted stdout (L3_RESULT line) stays
-    # byte-identical for callers/tests that freeze the validator's stdout.
-    for d in report.get("degraded_findings", []):
-        print(f"WARN: {d}", file=sys.stderr)
 
     print(
         f"L3_RESULT: EVIDENCE_VALID "

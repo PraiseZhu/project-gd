@@ -1,7 +1,0 @@
-CONVERGENCE_TIMEOUT: Round 1 codex dispatch failed/timed out (RuntimeError: bridge run-bridge timed out: Command '['/Users/praise/.pyenv/versions/3.13.12/bin/python3', '/Users/praise/AI-Agent/Claude/projects/Project GD/scripts/gd-codex-bridge-review.py', 'run-bridge', '--kind)
-[controller] Branch B: execution-only  invocation_id=ctrl-20260616T111857Z-99305cc7
-CONVERGENCE_TIMEOUT
-=== gd-review-router: live mode ===
-target    : plans/gd/2026-06-16-fix-review-chain-bugs/exec/execution-outcome-aggregate.json
-
-detected target kind: execution_only_no_code

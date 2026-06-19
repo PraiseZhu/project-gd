@@ -57,8 +57,9 @@ daemon 是 L3 多 agent 并发架构的承重墙：worker pool(max_parallel=2)+ 
 1. **路径解耦**：
    - `review-result-writer.sh`：`$HOME/.claude/handoff/bin/codex-send-wait`(:88)、
      `$HOME/.claude/review-baselines/`(:51)、`$HOME/.claude/state/`(:60) → 改为插件相对/可配置
-   - `bridge` `WRITER_PATH` 已改指 vendor 副本(2026-06-16）；`SEND_WAIT_PATH`（原 dead code）已移除
+   - `bridge` 入口(`WRITER_PATH`/`SEND_WAIT_PATH`)→ 改指本目录副本
 2. **HANDOFF_ROOT 隔离**：handoff 脚本支持 `HANDOFF_ROOT` 环境变量覆盖
    (`state-paths.sh:8` `:=` 默认值)，封装时设为插件内目录，避免与系统 `~/.claude/handoff` 冲突
 3. **daemon 常驻机制**：plist `ProgramArguments` 指向本目录副本 + 提供 launchctl
    安装脚本(插件 install 阶段注册)
+4. **bridge:73 SEND_WAIT_PATH** 是 dead code，解耦时一并清理

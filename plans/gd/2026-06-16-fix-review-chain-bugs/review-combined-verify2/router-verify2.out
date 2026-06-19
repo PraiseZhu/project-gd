@@ -1,7 +1,0 @@
-CONVERGENCE_TIMEOUT: Round 1 codex dispatch failed/timed out (RuntimeError: parse-transport failed: '')
-[controller] Branch B: execution-only  invocation_id=ctrl-20260616T113002Z-9b469396
-CONVERGENCE_TIMEOUT
-=== gd-review-router: live mode ===
-target    : plans/gd/2026-06-16-fix-review-chain-bugs/exec/execution-outcome-aggregate.json
-
-detected target kind: execution_only_no_code
