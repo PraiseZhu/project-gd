@@ -109,15 +109,19 @@ PYEOF
 # fully delegated to scripts/gd-finalize-codex-watch-job.py which keeps the
 # fcntl.flock held for the entire critical section (cancel-check + mv +
 # status write + event emit), then releases atomically on exit.
+# Resolve helper relative to this script (distributable: no hardcoded paths).
+# NOTE: gd-finalize-codex-watch-job.py is not yet shipped in the vendor
+# distribution; finalize_batch_job fail-closes (warns + skips) when absent rather
+# than breaking the daemon. Follow-up: ship the helper with the plugin.
 PHASE_B_FINALIZE_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/../bin/gd-finalize-codex-watch-job.py"
-# Fall back to project script path if helper not under handoff/
-if [[ ! -f "$PHASE_B_FINALIZE_HELPER" ]]; then
-  PHASE_B_FINALIZE_HELPER="/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/scripts/gd-finalize-codex-watch-job.py"
-fi
 
 finalize_batch_job() {
   # Args: <base> <batch_id> <queue_job_id> <raw_status: done|failed> <result_tmp_or_empty>
   local base="$1" batch_id="$2" queue_job_id="$3" raw_status="$4" result_tmp="$5"
+  if [[ ! -f "$PHASE_B_FINALIZE_HELPER" ]]; then
+    echo "[codex-watch] WARN: finalize helper missing ($PHASE_B_FINALIZE_HELPER); batch $queue_job_id finalize skipped (fail-closed, helper not yet shipped)" >&2
+    return 0
+  fi
   python3 "$PHASE_B_FINALIZE_HELPER" \
     --base "$base" \
     --batch-run-id "$batch_id" \
