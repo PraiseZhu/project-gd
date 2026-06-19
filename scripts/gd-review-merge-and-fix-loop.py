@@ -72,6 +72,7 @@ LOCK_REVISION = 3  # H2a contract revision; bump when contract semantics change
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from gd_review_contract import (  # noqa: E402
     REVIEW_KIND_ENUM as _SSOT_REVIEW_KIND_ENUM,
+    codex_review_status_from_evidence as _codex_review_status_from_evidence,
 )
 
 DEFAULT_REVIEW_KIND = "plan"
@@ -790,6 +791,181 @@ def _sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _build_loop_report_payload(
+    plan_path: Path,
+    plan_hash: str,
+    decision: str,
+    transport_status: str,
+    classification: str,
+    codex_verdict: str,
+    claude_verdict: str,
+    merge_reason: str,
+    raw_result_path: str | None,
+    raw_result_hash: str | None,
+    codex_review_status: str,
+    review_run_status: str | None = None,
+    binding_status: str = "bound",
+) -> dict:
+    """Construct the loop_report payload (pure function, unit-testable).
+
+    recorded_at is stamped by _write_loop_report_file at write time. Field set
+    aligned with the legacy _consume_and_merge report so router._run_live_plan_review
+    (:401-413 glob + read) sees identical keys regardless of which path produced
+    the loop_report — consumption path OR convergence-loop exit. Includes
+    codex_review_status (the precise 4-state verdict, computed by
+    _codex_review_status_from_evidence) and review_run_status (raw run state).
+    """
+    return {
+        "schema_version": "2.0",
+        "plan_file": str(plan_path),
+        "plan_hash": plan_hash,
+        "transport_status": transport_status,
+        "classification": classification,
+        "binding_status": binding_status,
+        "raw_result_path": raw_result_path,
+        "raw_result_hash": raw_result_hash,
+        "claude_verdict": claude_verdict,
+        "codex_verdict": codex_verdict,
+        "codex_review_status": codex_review_status,
+        "review_run_status": review_run_status,
+        "gd_review_decision": decision,
+        "merge_reason": merge_reason,
+    }
+
+
+def _write_loop_report_file(output_dir: Path, payload: dict) -> Path:
+    """Stamp recorded_at, write output_dir/loop_report_{ts}.json, return path.
+
+    Filename 'loop_report_{ts}.json' is what router globs at :401
+    ('loop_report_*.json'). Uses a defensive copy so the caller's dict is not
+    mutated when recorded_at is stamped.
+    """
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    out = dict(payload)
+    out["recorded_at"] = ts
+    output_dir.mkdir(parents=True, exist_ok=True)
+    report_path = output_dir / f"loop_report_{ts}.json"
+    report_path.write_text(json.dumps(out, indent=2, ensure_ascii=False), encoding="utf-8")
+    return report_path
+
+
+def _latest_codex_evidence(output_dir: Path, last_round: int) -> tuple[Path | None, str, str | None, str | None]:
+    """Locate the most recent codex mapped result produced by _run_bridge_job.
+
+    _run_bridge_job writes bridge-r{round}-{lens}-mapped.json (:582) per lens.
+    Prefer the primary lens codex_A; fall back to codex_B. Returns
+    (path, codex_verdict, review_run_status, evidence_hash):
+      - path is non-None whenever a mapped file EXISTS (even if unparseable), so
+        'no file' (transport_failed) is distinguished from 'file present but
+        unparseable' (wrapper_schema_fail) — aligning convergence with
+        _consume_and_merge's classification (:843-885), which was the pre-fix
+        divergence flagged in the altitude review.
+      - evidence_hash is pre-computed so the caller need not re-read the file.
+    Returns (None, 'FAILED', None, None) when no artifact exists for the round.
+    """
+    saw_malformed: tuple[Path, str] | None = None
+    for lens in ("codex_A", "codex_B"):
+        candidate = output_dir / f"bridge-r{last_round}-{lens}-mapped.json"
+        if candidate.exists():
+            raw = candidate.read_bytes()
+            h = hashlib.sha256(raw).hexdigest()
+            try:
+                mapped = json.loads(raw.decode("utf-8"))
+                verdict = str(mapped.get("gd_review_decision", "FAILED")).strip().upper()
+                run_status = mapped.get("review_run_status")
+                return candidate, verdict or "FAILED", run_status, h
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                # File exists but unparseable. Remember it (path non-None → wrapper_schema_fail
+                # downstream) but keep trying the other lens — codex_A and codex_B are
+                # independent bridge runs; a corrupt codex_A must not discard a valid codex_B.
+                if saw_malformed is None:
+                    saw_malformed = (candidate, h)
+                continue
+    if saw_malformed is not None:
+        # A mapped file existed but NO lens parsed → evidence present but unusable.
+        # _codex_review_status_from_evidence maps (present, FAILED, None) → wrapper_schema_fail.
+        candidate, h = saw_malformed
+        return candidate, "FAILED", None, h
+    return None, "FAILED", None, None
+
+
+def _write_convergence_exit_report(
+    output_dir: Path,
+    plan_path: Path,
+    base_decision: str,
+    merge_reason: str,
+    last_round: int,
+    claude_verdict: str,
+) -> Path:
+    """Aggregate codex evidence into loop_report_{ts}.json at a convergence exit.
+
+    Called from the 4 convergence exits (A/B APPROVED, C/D CONVERGENCE_TIMEOUT)
+    BEFORE return/sys.exit, so router :401 glob finds the codex evidence instead
+    of N/A. base_decision ∈ {APPROVED (A/B), REQUIRES_CHANGES (C/D)}.
+
+    Conflict arbitration (SC-4): the exit's base decision is constrained by codex
+    evidence state. A readable-but-failed codex result (wrapper_schema_fail), a
+    constrained result (requires_changes), or a missing result (transport_failed)
+    MUST NOT yield APPROVED — fail-closed:
+      codex_review_status == transport_failed      → decision FAILED
+      codex_review_status in {wrapper_schema_fail,  → decision REQUIRES_CHANGES
+                              requires_changes}
+      completed                                     → keep base decision
+    So an exit that wants APPROVED but finds codex verdict FAILED / degraded /
+    REQUIRES_CHANGES never reports 'completed'.
+
+    claude_verdict is recorded for audit only — it does NOT participate in
+    arbitration: Claude's findings are already merged into baseline_findings
+    earlier in the loop (:1181), so the codex evidence state is the sole
+    arbiter at this exit. (Differs from _consume_and_merge, where claude_verdict
+    is a separate input that can override — there findings aren't pre-merged.)
+    """
+    evidence_path, codex_verdict, run_status, evidence_hash = _latest_codex_evidence(output_dir, last_round)
+    evidence_present = evidence_path is not None
+    codex_review_status = _codex_review_status_from_evidence(evidence_present, codex_verdict, run_status)
+
+    decision = base_decision
+    if codex_review_status == "transport_failed":
+        decision = "FAILED"
+    elif codex_review_status in ("wrapper_schema_fail", "requires_changes"):
+        decision = "REQUIRES_CHANGES"
+
+    transport_status = "transport_ok" if evidence_present else "transport_failed"
+    # classification = coarse(codex_review_status), consistent with the precise
+    # status rather than raw file-readability (which would report transport_ok
+    # for a present-but-FAILED result, contradicting codex_review_status).
+    classification = "wrapper_schema_fail" if codex_review_status == "wrapper_schema_fail" else transport_status
+    raw_result_path = str(evidence_path) if evidence_present else None
+    raw_result_hash = evidence_hash  # pre-computed by _latest_codex_evidence (no re-read)
+    payload = _build_loop_report_payload(
+        plan_path=plan_path,
+        plan_hash=_sha256_file(plan_path),
+        decision=decision,
+        transport_status=transport_status,
+        classification=classification,
+        codex_verdict=codex_verdict,
+        claude_verdict=claude_verdict,
+        merge_reason=merge_reason,
+        raw_result_path=raw_result_path,
+        raw_result_hash=raw_result_hash,
+        codex_review_status=codex_review_status,
+        review_run_status=run_status,
+    )
+    return _write_loop_report_file(output_dir, payload)
+
+
+def _return_from_convergence_exit(report_path: Path) -> int:
+    """Return process status from the report decision, not the pre-arbitration branch."""
+    try:
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        decision = str(report.get("gd_review_decision", "FAILED")).strip().upper()
+    except Exception as exc:
+        print(f"CONVERGENCE_REPORT_UNREADABLE: {exc}", flush=True)
+        return 1
+    print(decision, flush=True)
+    return 0 if decision == "APPROVED" else 1
+
+
 def _consume_and_merge(
     plan_path: Path,
     output_dir: Path,
@@ -805,7 +981,6 @@ def _consume_and_merge(
     SC-4: malformed raw → wrapper_schema_fail; missing raw → transport_failed.
     SC-5: stale target hash → stale_target_hash, not APPROVED.
     """
-    import datetime
     print("=== gd-review-merge-and-fix-loop: consumption path (Plan 1) ===")
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -913,26 +1088,40 @@ def _consume_and_merge(
         merged_decision = "REQUIRES_CHANGES"
         merge_reason = f"fallback: codex={codex_verdict} claude={claude_verdict}"
 
-    now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    report = {
-        "schema_version": "2.0",
-        "plan_file": str(plan_path),
-        "plan_hash": current_plan_hash,
-        "transport_status": transport_status,
-        "classification": classification,
-        "binding_status": binding_status,
-        "raw_result_path": raw_result_path_str,
-        "raw_result_hash": str(raw_result_hash) if raw_result_hash else None,
-        "claude_verdict": claude_verdict,
-        "codex_verdict": codex_verdict,
-        "gd_review_decision": merged_decision,
-        "merge_reason": merge_reason,
-        "recorded_at": now,
-    }
-
-    report_fname = f"loop_report_{now}.json"
-    report_path = output_dir / report_fname
-    report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+    # Derive codex_review_status via the SAME evidence triple as the convergence
+    # loop (SC-2/SC-3): consumption path and convergence exit must produce
+    # identical codex_review_status semantics. evidence_present = a codex result
+    # file existed (transport_ok parsed OR wrapper_schema_fail malformed).
+    codex_review_status = _codex_review_status_from_evidence(
+        evidence_present=(classification != "transport_failed"),
+        codex_verdict=codex_verdict,
+        run_status=codex_run_status,
+    )
+    if codex_review_status == "wrapper_schema_fail":
+        classification = "wrapper_schema_fail"
+    if merged_decision == "APPROVED":
+        if codex_review_status == "transport_failed":
+            merged_decision = "FAILED"
+            merge_reason = "codex_review_status=transport_failed: cannot approve without codex evidence"
+        elif codex_review_status in ("wrapper_schema_fail", "requires_changes"):
+            merged_decision = "REQUIRES_CHANGES"
+            merge_reason = f"codex_review_status={codex_review_status}: clean approval not allowed"
+    payload = _build_loop_report_payload(
+        plan_path=plan_path,
+        plan_hash=current_plan_hash,
+        decision=merged_decision,
+        transport_status=transport_status,
+        classification=classification,
+        codex_verdict=codex_verdict,
+        claude_verdict=claude_verdict,
+        merge_reason=merge_reason,
+        raw_result_path=raw_result_path_str,
+        raw_result_hash=str(raw_result_hash) if raw_result_hash else None,
+        codex_review_status=codex_review_status,
+        review_run_status=codex_run_status,
+        binding_status=binding_status,
+    )
+    report_path = _write_loop_report_file(output_dir, payload)
     print(f"LOOP_REPORT_WRITTEN: {report_path}")
     print(f"gd_review_decision={merged_decision}")
     print(f"transport_status={transport_status}")
@@ -1064,6 +1253,7 @@ def run_production_plan(
     # silently treat it as zero findings (that would let a missing/corrupt
     # self-review masquerade as "Claude found nothing"). Abort the loop.
     findings_claude: list[dict] = []
+    claude_verdict = "FAILED"
     if claude_review_path is not None:
         cp = Path(claude_review_path)
         if not cp.exists():
@@ -1077,6 +1267,7 @@ def run_production_plan(
                 f"--claude-review unreadable/invalid JSON ({claude_review_path}): {exc}")
             sys.exit(1)
         findings_claude = cr.get("findings", [])
+        claude_verdict = str(cr.get("gd_review_decision", "FAILED")).strip().upper()
 
     baseline_findings = merge_findings_union(findings_codex_a, findings_codex_b, findings_claude)
     _write_baseline(output_dir, baseline_findings, invocation_id=invocation_id)
@@ -1087,8 +1278,12 @@ def run_production_plan(
 
     # Early exit: no findings at all after round 1.
     if not baseline_findings:
-        print("APPROVED", flush=True)
-        return 0
+        report_path = _write_convergence_exit_report(
+            output_dir, plan_path, "APPROVED",
+            merge_reason="round 1: no baseline findings",
+            last_round=1, claude_verdict=claude_verdict,
+        )
+        return _return_from_convergence_exit(report_path)
 
     # --- Rounds 2–MAX_REVIEW_ROUNDS: SC-3 scope-constrained dual-codex loop ---
     prev_unresolved: int | None = None
@@ -1176,6 +1371,11 @@ def run_production_plan(
         )
 
         if stagnant_rounds >= 2:
+            _write_convergence_exit_report(
+                output_dir, plan_path, "REQUIRES_CHANGES",
+                merge_reason=f"CONVERGENCE_TIMEOUT: stagnant_rounds={stagnant_rounds}, unresolved={baseline_unresolved}",
+                last_round=round_num, claude_verdict=claude_verdict,
+            )
             print(
                 f"CONVERGENCE_TIMEOUT: stagnant_rounds={stagnant_rounds}, "
                 f"unresolved={baseline_unresolved}",
@@ -1184,10 +1384,19 @@ def run_production_plan(
             sys.exit(1)
 
         if baseline_unresolved == 0 and len(new_in_delta) == 0:
-            print("APPROVED", flush=True)
-            return 0
+            report_path = _write_convergence_exit_report(
+                output_dir, plan_path, "APPROVED",
+                merge_reason=f"round {round_num}: all baseline resolved, no new findings in delta",
+                last_round=round_num, claude_verdict=claude_verdict,
+            )
+            return _return_from_convergence_exit(report_path)
 
     # Exhausted MAX_REVIEW_ROUNDS without converging
+    _write_convergence_exit_report(
+        output_dir, plan_path, "REQUIRES_CHANGES",
+        merge_reason=f"CONVERGENCE_TIMEOUT: exhausted {MAX_REVIEW_ROUNDS} rounds, unresolved={prev_unresolved}",
+        last_round=MAX_REVIEW_ROUNDS, claude_verdict=claude_verdict,
+    )
     print(
         f"CONVERGENCE_TIMEOUT: exhausted {MAX_REVIEW_ROUNDS} rounds, "
         f"unresolved={prev_unresolved}",

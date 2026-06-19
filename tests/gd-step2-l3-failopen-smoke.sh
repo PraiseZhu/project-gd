@@ -145,8 +145,10 @@ with tempfile.TemporaryDirectory() as d:
             if "run-bridge" in cmd:
                 return Fake(0, f"TRANSPORT_RESULT: {transport}\n")
             if "parse-transport" in cmd:
-                Path(cmd[cmd.index("--out")+1]).write_text(
-                    json.dumps({"gd_review_decision": decision, "findings": []}))
+                payload = {"gd_review_decision": decision, "findings": []}
+                if decision is not None:
+                    payload["review_run_status"] = "completed"
+                Path(cmd[cmd.index("--out")+1]).write_text(json.dumps(payload))
                 return Fake(0, "")
             return Fake(0, "")
         return _run

@@ -33,6 +33,8 @@ REVIEW_KIND=""
 REVIEW_CWD="${PWD}"
 NO_STOP_MARKER=0
 OUT_DIR=""
+MODE="review-only"
+SEND_TIMEOUT="540"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -42,6 +44,8 @@ while [[ $# -gt 0 ]]; do
     --cwd) REVIEW_CWD="$2"; shift 2 ;;
     --out-dir) OUT_DIR="$2"; shift 2 ;;
     --no-stop-marker) NO_STOP_MARKER=1; shift ;;
+    --mode) MODE="$2"; shift 2 ;;
+    --send-timeout) SEND_TIMEOUT="$2"; shift 2 ;;
     *) echo "[REVIEW] ✗ FAILED — unknown arg: $1" >&2; exit 1 ;;
   esac
 done
@@ -109,7 +113,7 @@ CODEX_OUTPUT=""
 CODEX_EXIT=0
 
 if [[ -x "$CODEX_BIN" ]]; then
-  CODEX_OUTPUT=$("$CODEX_BIN" --cwd "$REVIEW_CWD" --mode review-only --payload-file "$CAPSULE_FILE" --timeout 540 2>&1) || CODEX_EXIT=$?
+  CODEX_OUTPUT=$("$CODEX_BIN" --cwd "$REVIEW_CWD" --mode "$MODE" --payload-file "$CAPSULE_FILE" --timeout "$SEND_TIMEOUT" 2>&1) || CODEX_EXIT=$?
 else
   CODEX_EXIT=127
 fi
@@ -418,3 +422,12 @@ if [[ -f "$WRITER_MARKER_FILE" ]] && command -v jq >/dev/null 2>&1; then
      && mv "$_MARKER_TMP" "$WRITER_MARKER_FILE" \
      || rm -f "$_MARKER_TMP"
 fi
+
+case "$VERDICT_STATUS" in
+  approved|requires_changes)
+    exit 0
+    ;;
+  *)
+    exit 1
+    ;;
+esac

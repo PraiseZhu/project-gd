@@ -608,8 +608,8 @@ def validate_mapped_schema_v2(d: dict) -> list[str]:
             if fd.get("severity") not in {"P1", "P2"}:
                 errs.append(f"findings[{i}].severity 不合法")
             sc_refs = fd.get("sc_refs")
-            if not isinstance(sc_refs, list) or not sc_refs:
-                errs.append(f"findings[{i}].sc_refs 必须非空数组")
+            if not isinstance(sc_refs, list) or (not sc_refs and d.get("review_kind") != "code_diff"):
+                errs.append(f"findings[{i}].sc_refs 必须非空数组（code_diff 除外）")
 
     mn = d["merge_notes"]
     if not isinstance(mn, dict):
@@ -756,7 +756,7 @@ def _parse_raw_to_mapped_v1(
                 {"证据": "evidence", "影响": "impact", "最小修复": "required_fix", "验收": "verify"}[cn]
             ):
                 parse_errors.append(f"finding[{i}] 缺 {cn}")
-        # SC-N 必须有 (wrapper 加严) — code_diff findings review code quality, not plan SC-IDs
+        # SC-N 关联（wrapper 加严）— code_diff findings review code quality, not plan SC-IDs.
         if not f["sc_refs"] and kind != "code_diff":
             parse_errors.append(f"finding[{i}] 缺 SC: SC-<N>（wrapper schema 加严）")
 
@@ -1259,7 +1259,7 @@ def build_capsule_text(
     # L1: Target externalized — capsule no longer inlines target_text (47KB savings on
     # Sentinel-sized plans). Reviewer must Read the path; bridge enforces via L3
     # content-evidence validator (gd-validate-review-content-evidence.py).
-    standard_text = STANDARD_PATH.read_text(encoding="utf-8") if STANDARD_PATH.exists() else "(missing)"
+    standard_hash = _sha256_file(STANDARD_PATH) if STANDARD_PATH.exists() else "(missing)"
     template_text = template_path.read_text(encoding="utf-8") if template_path.exists() else "(missing)"
     goal_text = GOAL_PATH.read_text(encoding="utf-8")[:3000] if GOAL_PATH.exists() else "(missing)"
 
@@ -1367,7 +1367,15 @@ def build_capsule_text(
         f"TEMPLATE_KIND: {template_kind_for_capsule}\n"
         f"RELATED_CONTEXT:\n{capsule_related_note}{related_summary}\n\n"
         f"## Goal Chain\n\n```\n{goal_text}\n```\n\n"
-        f"## Review Standard\n\n```\n{standard_text}\n```\n\n"
+        f"## Review Standard\n\n"
+        f"REVIEW_STANDARD_PATH: {STANDARD_PATH}\n"
+        f"REVIEW_STANDARD_HASH: {standard_hash}\n"
+        f"\n"
+        f"**MANDATORY READ STEP (Standard)** — Before producing any output, you MUST use your Read\n"
+        f"tool to open the file at REVIEW_STANDARD_PATH and consume its full content. The capsule\n"
+        f"does NOT inline the standard text; the §Review Standard rules (§8, §9.1, §10) govern\n"
+        f"your output format, 穷举义务 and fail-closed semantics. Reviewing without Read is\n"
+        f"impossible and will produce non-conformant output (detected downstream as degraded).\n\n"
         f"## Review Template ({template_path.name})\n\n"
         f"> ⚠️ **FORMAT CONSTRAINT (overrides template §2 example)**:\n"
         f"> Scope Checked 的每一行**必须**是 `| SC-N | pass/fail/n_a | <证据> |`（SC-ID 逐行）。\n"
@@ -1477,28 +1485,42 @@ def _extract_run_evidence_into_mapped(mapped: dict) -> bool:
     """
     if mapped.get("run_evidence"):
         return False
+
+    def _pytest_count(text: str, label: str) -> int | None:
+        patterns = (
+            rf"\b(\d+)\s+{label}\s+in\s+[\d.]+s\b",
+            rf"`[^`]*?(\d+)\s+{label}(?:\s+in\b|`)",
+            rf"[\"'](\d+)\s+{label}[\"']",
+            rf"\b(?:output|outputs|reported|reports|got|actual|输出|结果|复跑)[^.;。]*?(\d+)\s+{label}\b",
+        )
+        for pat in patterns:
+            m = re.search(pat, text, re.IGNORECASE)
+            if m:
+                return int(m.group(1))
+        return None
+
     extracted = []
     for finding in mapped.get("findings", []) or []:
         ev_text = finding.get("evidence", "") or ""
-        cmd_m = re.search(r"`([^`]*pytest[^`]*)`", ev_text)
+        cmd_text = "\n".join(
+            str(finding.get(k, "") or "")
+            for k in ("evidence", "verify", "required_fix")
+        )
+        cmd_m = re.search(r"`([^`]*pytest[^`]*)`", cmd_text)
         if not cmd_m:
             continue
         # Prefer pytest summary format (N X in Y.YYs); fall back to backtick/quoted
-        skip_m = (re.search(r"\b(\d+)\s+skipped\s+in\s+[\d.]+s", ev_text)
-                  or re.search(r"`[^`]*?(\d+)\s+skipped\s+in", ev_text)
-                  or re.search(r"[\"'](\d+) skipped[\"']", ev_text))
-        pass_m = (re.search(r"\b(\d+)\s+passed\s+in\s+[\d.]+s", ev_text)
-                  or re.search(r"[\"'](\d+) passed[\"']", ev_text))
-        fail_m = (re.search(r"\b(\d+)\s+failed\s+in\s+[\d.]+s", ev_text)
-                  or re.search(r"[\"'](\d+) failed[\"']", ev_text))
+        skipped_count = _pytest_count(ev_text, "skipped")
+        passed_count = _pytest_count(ev_text, "passed")
+        failed_count = _pytest_count(ev_text, "failed")
         ver_m = re.search(r"Python\s+([\d.]+)", ev_text)
-        failed_count = int(fail_m.group(1)) if fail_m else 0
+        failed_count = failed_count or 0
         extracted.append({
             "cmd": cmd_m.group(1),
             "exit": 1 if failed_count > 0 else 0,
-            "passed": int(pass_m.group(1)) if pass_m else 0,
+            "passed": passed_count or 0,
             "failed": failed_count,
-            "skipped": int(skip_m.group(1)) if skip_m else 0,
+            "skipped": skipped_count or 0,
             "skip_reason": "(extracted from Codex finding evidence)",
             "interpreter_version": f"Python {ver_m.group(1)}" if ver_m else "Python 3.x (from Codex evidence)",
         })
@@ -1506,6 +1528,128 @@ def _extract_run_evidence_into_mapped(mapped: dict) -> bool:
         mapped["run_evidence"] = extracted
         return True
     return False
+
+
+_DEEP_RUN_EVIDENCE_KINDS = {"execution_outcome", "combined"}
+_DEEP_RUN_EVIDENCE_FIELDS = (
+    "cmd",
+    "exit",
+    "passed",
+    "failed",
+    "skipped",
+    "skip_reason",
+    "interpreter_version",
+)
+
+_CODE_LINE_REF_RE = re.compile(
+    r"([A-Za-z0-9_./\-]+\.(?:py|sh|json|yaml|yml|toml|ts|tsx|js|patch|diff|md)):(\d+)(?:-(\d+))?"
+)
+
+
+def _deep_run_evidence_errors(mapped: dict, kind: str) -> list[str]:
+    """Validate deep execution/combined run_evidence without changing generic schema."""
+    if kind not in _DEEP_RUN_EVIDENCE_KINDS:
+        return []
+    run_evidence = mapped.get("run_evidence")
+    if not isinstance(run_evidence, list) or not run_evidence:
+        return ["DEEP_RUN_EVIDENCE_MISSING: run_evidence must be a non-empty array"]
+
+    errs: list[str] = []
+    approved = mapped.get("gd_review_decision") == "APPROVED"
+    for i, item in enumerate(run_evidence):
+        if not isinstance(item, dict):
+            errs.append(f"run_evidence[{i}] must be object")
+            continue
+        missing = [field for field in _DEEP_RUN_EVIDENCE_FIELDS if field not in item]
+        if missing:
+            errs.append(f"run_evidence[{i}] missing {', '.join(missing)}")
+            continue
+        try:
+            exit_code = int(item.get("exit"))
+            failed = int(item.get("failed"))
+            skipped = int(item.get("skipped"))
+        except (TypeError, ValueError):
+            errs.append(f"run_evidence[{i}] exit/failed/skipped must be integers")
+            continue
+        if skipped > 0 and not str(item.get("skip_reason") or "").strip():
+            errs.append(f"run_evidence[{i}] skipped>0 requires skip_reason")
+        if approved and (exit_code != 0 or failed > 0 or skipped > 0):
+            errs.append(
+                f"APPROVED cannot include failing/skipped run_evidence[{i}] "
+                f"(exit={exit_code}, failed={failed}, skipped={skipped})"
+            )
+    return errs
+
+
+def _deep_code_diff_evidence_errors(mapped: dict, kind: str, target_path: "Path") -> list[str]:
+    """Validate deep code_diff finding evidence has target-resolving file:line refs."""
+    if kind != "code_diff" or mapped.get("gd_review_decision") != "REQUIRES_CHANGES":
+        return []
+
+    findings = mapped.get("findings")
+    if not isinstance(findings, list) or not findings:
+        return []
+
+    target_name = target_path.name
+    target_str = str(target_path)
+    try:
+        target_line_count = len(target_path.read_text(encoding="utf-8").splitlines())
+    except Exception:
+        return [f"DEEP_CODE_LINE_EVIDENCE_TARGET_UNREADABLE: {target_path}"]
+
+    errs: list[str] = []
+    for i, finding in enumerate(findings):
+        if not isinstance(finding, dict):
+            errs.append(f"DEEP_CODE_LINE_EVIDENCE_MISSING: findings[{i}] is not object")
+            continue
+        evidence_text = "\n".join(
+            str(finding.get(k, "") or "")
+            for k in ("title", "evidence", "impact", "required_fix", "verify")
+        )
+        refs = _CODE_LINE_REF_RE.findall(evidence_text)
+        target_refs = [
+            ref for ref in refs
+            if ref[0] == target_name or target_str.endswith(ref[0])
+        ]
+        if not target_refs:
+            errs.append(
+                f"DEEP_CODE_LINE_EVIDENCE_MISSING: findings[{i}] must cite "
+                f"{target_name}:<line>"
+            )
+            continue
+        for path_ref, start_s, end_s in target_refs:
+            start = int(start_s)
+            end = int(end_s) if end_s else start
+            if start < 1 or end > target_line_count or start > end:
+                errs.append(
+                    f"DEEP_CODE_LINE_EVIDENCE_INVALID: {path_ref}:{start_s}"
+                    f"{'-' + end_s if end_s else ''} out of range "
+                    f"(target has {target_line_count} lines)"
+                )
+    return errs
+
+
+def _apply_deep_run_evidence_gate(mapped: dict, kind: str, out_path: "Path") -> bool:
+    """Fail-close mapped output when deep execution evidence is absent or invalid."""
+    errs = _deep_run_evidence_errors(mapped, kind)
+    if not errs:
+        return False
+    _apply_l3_failure(mapped, "; ".join(errs[:3]), out_path)
+    return True
+
+
+def _apply_deep_code_diff_evidence_gate(
+    mapped: dict,
+    kind: str,
+    target_path: "Path",
+    out_path: "Path",
+) -> bool:
+    """Fail-close deep code_diff findings without machine-checkable target line refs."""
+    errs = _deep_code_diff_evidence_errors(mapped, kind, target_path)
+    if not errs:
+        return False
+    _apply_l3_failure(mapped, "; ".join(errs[:3]), out_path)
+    return True
 
 
 def _build_deep_plan_capsule(kind: str, target: Path, plan_file: str | None = None) -> str:
@@ -2015,6 +2159,9 @@ def _cmd_run_bridge_inner(args: argparse.Namespace) -> int:
         mapped["plan_file_path"] = _plan_file_arg
     if _deep and mapped.get("run_evidence") and not mapped.get("tests_status_source"):
         mapped["tests_status_source"] = "deep_evidence"
+    if _deep:
+        _apply_deep_run_evidence_gate(mapped, args.kind, out_path)
+        _apply_deep_code_diff_evidence_gate(mapped, args.kind, target, out_path)
     # Write once after all deep-mode mutations
     if _deep:
         out_path.write_text(json.dumps(mapped, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -2081,6 +2228,9 @@ def cmd_parse_transport(args: argparse.Namespace) -> int:
     out_path = Path(args.out)
     if (rc := _validate_out_path(out_path)) is not None:
         return rc
+    if getattr(args, "deep", False):
+        _apply_deep_run_evidence_gate(mapped, args.kind, out_path)
+        _apply_deep_code_diff_evidence_gate(mapped, args.kind, target, out_path)
     out_path.write_text(json.dumps(mapped, ensure_ascii=False, indent=2), encoding="utf-8")
 
     # L3: content-evidence validator (SC-W1-1)
@@ -2667,6 +2817,8 @@ def main(argv: list[str]) -> int:
     p_p.add_argument("--out", required=True)
     p_p.add_argument("--compat-v1", action=argparse.BooleanOptionalAction, default=None,
                      help="execution_outcome/combined: default True; plan/code_diff: default False. Explicit flag overrides kind-based inference.")
+    p_p.add_argument("--deep", action="store_true", default=False,
+                     help="Apply deep execution/combined run_evidence fail-closed checks while parsing.")
 
     p_m = sub.add_parser("merge")
     p_m.add_argument("--claude", required=True)

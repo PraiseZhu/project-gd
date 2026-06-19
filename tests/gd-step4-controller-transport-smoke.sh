@@ -12,6 +12,10 @@
 #               not a substring grep.
 #   SC-10 T1  — review-result-writer.sh emits `[REVIEW] ✗ FAILED` when a key
 #               write (capsule copy) fails, instead of silently aborting.
+#   SC-10 T-deep — review-result-writer.sh accepts deep bridge mode/timeout args
+#               and forwards them to codex-send-wait.
+#   SC-10 T-exit — review-result-writer.sh exits non-zero when transport is
+#               unavailable, while parsed review verdicts still transport cleanly.
 #   SC-10 T-watch — watch-state.sh recent_failed_jobs uses a glob (space-safe),
 #               not `ls -r` word-splitting.
 #
@@ -26,8 +30,9 @@ CONTROLLER="$ROOT/scripts/gd-review-controller.py"
 INSTALLER="$ROOT/vendor/l3-transport/scripts/install-transport.sh"
 WRITER="$ROOT/vendor/l3-transport/scripts/review-result-writer.sh"
 WATCH_STATE="$ROOT/vendor/l3-transport/handoff/lib/watch-state.sh"
+STATE_PATHS="$ROOT/vendor/l3-transport/handoff/lib/state-paths.sh"
 
-for f in "$CONTROLLER" "$INSTALLER" "$WRITER" "$WATCH_STATE"; do
+for f in "$CONTROLLER" "$INSTALLER" "$WRITER" "$WATCH_STATE" "$STATE_PATHS"; do
   [ -f "$f" ] || { echo "MISSING: $f" >&2; exit 1; }
 done
 
@@ -236,6 +241,88 @@ if [ "$T1_RC" -ne 0 ] && echo "$T1_OUT" | grep -q '\[REVIEW\] ✗ FAILED'; then
   pass_msg "writer emits [REVIEW] ✗ FAILED on key-write failure (rc=$T1_RC)"
 else
   fail_msg "writer did not fail loud on key-write failure (rc=$T1_RC, output: $T1_OUT)"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SC-10 T-deep: bridge deep mode passes --mode workspace-write --send-timeout N.
+# The vendor writer must accept and forward those args instead of rejecting them
+# before codex-send-wait starts.
+# ─────────────────────────────────────────────────────────────────────────────
+echo "== SC-10 T-deep: writer accepts deep bridge mode/timeout args =="
+if grep -F -- '--mode) MODE="$2"; shift 2 ;;' "$WRITER" >/dev/null \
+   && grep -F -- '--send-timeout) SEND_TIMEOUT="$2"; shift 2 ;;' "$WRITER" >/dev/null \
+   && grep -F -- '--mode "$MODE"' "$WRITER" >/dev/null \
+   && grep -F -- '--timeout "$SEND_TIMEOUT"' "$WRITER" >/dev/null; then
+  pass_msg "writer accepts --mode/--send-timeout and forwards them to codex-send-wait"
+else
+  fail_msg "writer does not support deep bridge --mode/--send-timeout forwarding"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SC-10 T-paths: state-paths should align a normal shell with the installed
+# plugin data root when CLAUDE_PLUGIN_DATA is unset, while preserving explicit
+# HANDOFF_ROOT overrides for isolated tests.
+# ─────────────────────────────────────────────────────────────────────────────
+echo "== SC-10 T-paths: state-paths plugin data fallback + override =="
+TPATH_HOME="$TMP_ROOT/tpath-home"
+mkdir -p "$TPATH_HOME/.claude/plugins/data/codex-openai-codex/gd-handoff"
+TPATH_EXPECT="$TPATH_HOME/.claude/plugins/data/codex-openai-codex/gd-handoff"
+TPATH_OUT="$(HOME="$TPATH_HOME" bash -c 'unset CLAUDE_PLUGIN_DATA; . "$1"; printf "%s" "$HANDOFF_ROOT"' _ "$STATE_PATHS")"
+if [ "$TPATH_OUT" = "$TPATH_EXPECT" ]; then
+  pass_msg "state-paths defaults to plugin data gd-handoff when installed"
+else
+  fail_msg "state-paths plugin data fallback mismatch (got '$TPATH_OUT', want '$TPATH_EXPECT')"
+fi
+TPATH_ENV_OUT="$(HOME="$TPATH_HOME" bash -c 'unset CLAUDE_PLUGIN_DATA; . "$1"; env | grep "^HANDOFF_ROOT=" | cut -d= -f2-' _ "$STATE_PATHS")"
+if [ "$TPATH_ENV_OUT" = "$TPATH_EXPECT" ]; then
+  pass_msg "state-paths exports HANDOFF_ROOT for child codex-send-wait"
+else
+  fail_msg "state-paths did not export HANDOFF_ROOT (got '$TPATH_ENV_OUT', want '$TPATH_EXPECT')"
+fi
+TPATH_OVERRIDE="$TMP_ROOT/explicit-handoff"
+TPATH_OUT2="$(HOME="$TPATH_HOME" HANDOFF_ROOT="$TPATH_OVERRIDE" bash -c 'unset CLAUDE_PLUGIN_DATA; . "$1"; printf "%s" "$HANDOFF_ROOT"' _ "$STATE_PATHS")"
+if [ "$TPATH_OUT2" = "$TPATH_OVERRIDE" ]; then
+  pass_msg "state-paths preserves explicit HANDOFF_ROOT override"
+else
+  fail_msg "state-paths did not preserve HANDOFF_ROOT override (got '$TPATH_OUT2')"
+fi
+TPATH_PLUGIN_DATA="$TMP_ROOT/explicit-plugin-data"
+mkdir -p "$TPATH_PLUGIN_DATA/gd-handoff"
+TPATH_OUT3="$(HOME="$TPATH_HOME" CLAUDE_PLUGIN_DATA="$TPATH_PLUGIN_DATA" bash -c '. "$1"; printf "%s" "$HANDOFF_ROOT"' _ "$STATE_PATHS")"
+if [ "$TPATH_OUT3" = "$TPATH_PLUGIN_DATA/gd-handoff" ]; then
+  pass_msg "state-paths preserves explicit CLAUDE_PLUGIN_DATA precedence"
+else
+  fail_msg "state-paths did not preserve CLAUDE_PLUGIN_DATA precedence (got '$TPATH_OUT3')"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SC-10 T-exit: transport failure must not look successful to shell callers.
+# codex-send-wait is intentionally absent under this isolated HANDOFF_ROOT.
+# ─────────────────────────────────────────────────────────────────────────────
+echo "== SC-10 T-exit: writer transport failure exits non-zero =="
+TEXIT_ROOT="$TMP_ROOT/texit-handoff"
+TEXIT_PLUGIN="$TMP_ROOT/texit-plugin"
+TEXIT_OUTDIR="$TMP_ROOT/texit-baselines"
+mkdir -p "$TEXIT_ROOT/bin" "$TEXIT_PLUGIN" "$TEXIT_OUTDIR"
+TEXIT_CAP="$TMP_ROOT/texit-capsule.md"
+cat > "$TEXIT_CAP" <<'EOF'
+REVIEW_DOMAIN: ai_infra
+REVIEW_KIND: plan
+REVIEW_ROUND: initial
+REVIEW_DELTA_SCOPE: full_matrix
+PLAN_ALIGNMENT_PRESENT: true
+REVIEW_FOCUS: validation/runtime health
+EOF
+set +e
+TEXIT_OUT="$(HOME="$TMP_ROOT/texit-home" HANDOFF_ROOT="$TEXIT_ROOT" CLAUDE_PLUGIN_DATA="$TEXIT_PLUGIN" \
+  bash "$WRITER" --capsule-file "$TEXIT_CAP" --baseline-key texit --review-kind plan \
+    --cwd "$ROOT" --out-dir "$TEXIT_OUTDIR" --no-stop-marker 2>&1)"
+TEXIT_RC=$?
+set -e
+if [ "$TEXIT_RC" -ne 0 ] && printf '%s\n' "$TEXIT_OUT" | grep -q 'DEGRADED'; then
+  pass_msg "writer transport unavailable → non-zero exit + DEGRADED output"
+else
+  fail_msg "writer transport unavailable did not fail closed (rc=$TEXIT_RC, output: $(printf '%s' "$TEXIT_OUT" | tr '\n' '|'))"
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
