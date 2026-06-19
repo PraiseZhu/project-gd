@@ -234,3 +234,245 @@ def test_deep_outcome_template():
     for field in ("cmd", "exit", "passed", "failed", "skipped"):
         assert field in result, f"must reference {field} field in outcome template"
     assert "skip" in result.lower(), "must mention skip reason check"
+
+
+def test_deep_run_evidence_extracts_cmd_from_verify_and_counts_from_evidence():
+    """SC-17/SC-28: evidence may contain counts while verify contains the command."""
+    from gd_codex_bridge_review import _extract_run_evidence_into_mapped
+
+    mapped = {
+        "findings": [
+            {
+                "evidence": (
+                    "`outcome.json:12` says pass; rerun output `s [100%]`, "
+                    "`1 skipped in 0.01s`, `EXIT:0`."
+                ),
+                "verify": (
+                    "`python3 -m pytest fixtures/deep-review/synthetic-skip-target/ -q` "
+                    "outputs `1 passed` and no skipped tests."
+                ),
+            }
+        ]
+    }
+    assert _extract_run_evidence_into_mapped(mapped) is True
+    evidence = mapped["run_evidence"][0]
+    assert evidence["cmd"] == "python3 -m pytest fixtures/deep-review/synthetic-skip-target/ -q"
+    assert evidence["skipped"] == 1
+    assert evidence["passed"] == 0
+
+
+def test_deep_run_evidence_extracts_bare_backtick_skip_count():
+    """Live Codex often writes `1 skipped` without pytest's trailing time summary."""
+    from gd_codex_bridge_review import _extract_run_evidence_into_mapped
+
+    mapped = {
+        "findings": [
+            {
+                "evidence": (
+                    "`fixtures/deep-review/synthetic-skip-target/outcome.json:13-18`; "
+                    "复跑 `python3 -m pytest fixtures/deep-review/synthetic-skip-target/ -q -rs` "
+                    "输出 `1 skipped`, exit=0."
+                ),
+            }
+        ]
+    }
+    assert _extract_run_evidence_into_mapped(mapped) is True
+    evidence = mapped["run_evidence"][0]
+    assert evidence["cmd"] == "python3 -m pytest fixtures/deep-review/synthetic-skip-target/ -q -rs"
+    assert evidence["skipped"] == 1
+    assert evidence["passed"] == 0
+    assert evidence["failed"] == 0
+
+
+def test_deep_run_evidence_gate_rejects_approved_without_evidence():
+    """Deep execution reviews must not approve without structured run_evidence."""
+    import subprocess
+
+    bridge = os.path.join(PROJECT_ROOT, "scripts", "gd-codex-bridge-review.py")
+    raw = """# Code Review Result
+
+VERDICT: APPROVED
+
+## Scope Checked
+
+| Facet | Result | Evidence |
+|-------|--------|----------|
+| execution evidence | pass | Looks good |
+
+## Findings
+
+## Residual Risk
+
+none
+"""
+    with tempfile.TemporaryDirectory() as td:
+        raw_path = Path(td) / "raw.md"
+        out_path = Path(td) / "mapped.json"
+        raw_path.write_text(raw, encoding="utf-8")
+        r = subprocess.run(
+            [
+                sys.executable,
+                bridge,
+                "parse-transport",
+                "--kind",
+                "execution_outcome",
+                "--target",
+                "reports/example/execution-outcome.json",
+                "--raw-result",
+                str(raw_path),
+                "--out",
+                str(out_path),
+                "--compat-v1",
+                "--deep",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        assert r.returncode != 0
+        mapped = json.loads(out_path.read_text(encoding="utf-8"))
+        assert mapped["gd_review_decision"] == "FAILED"
+        assert mapped["review_run_status"] == "degraded"
+        assert "DEEP_RUN_EVIDENCE_MISSING" in json.dumps(mapped, ensure_ascii=False)
+
+
+def test_deep_run_evidence_gate_rejects_approved_with_skips():
+    """APPROVED cannot coexist with skipped deep evidence."""
+    from gd_codex_bridge_review import _deep_run_evidence_errors
+
+    mapped = {
+        "gd_review_decision": "APPROVED",
+        "run_evidence": [
+            {
+                "cmd": "python3 -m pytest -q",
+                "exit": 0,
+                "passed": 1,
+                "failed": 0,
+                "skipped": 1,
+                "skip_reason": "dependency unavailable",
+                "interpreter_version": "Python 3.13.12",
+            }
+        ],
+    }
+    errs = _deep_run_evidence_errors(mapped, "execution_outcome")
+    assert any("APPROVED cannot include" in err for err in errs)
+
+
+def test_deep_code_diff_gate_rejects_finding_without_target_line():
+    """Deep code_diff findings must cite the reviewed target with file:line evidence."""
+    import subprocess
+
+    bridge = os.path.join(PROJECT_ROOT, "scripts", "gd-codex-bridge-review.py")
+    raw = """# Code Review Result
+
+VERDICT: REQUIRES_CHANGES
+
+## Scope Checked
+
+| Facet | Result | Evidence |
+|-------|--------|----------|
+| semantic behavior | fail | Counter logic is wrong |
+
+## Findings
+
+### Finding 1 [P1] wrong counter semantics
+问题: Counter returns the wrong value.
+证据: The failing branch is described, but no target line is cited.
+影响: L3 code review can report a bug without proving it read the file.
+最小修复: Fix the counter branch.
+验收: Re-run the semantic test.
+
+## Residual Risk
+
+none
+"""
+    with tempfile.TemporaryDirectory() as td:
+        target = Path(td) / "buggy_counter.py"
+        raw_path = Path(td) / "raw.md"
+        out_path = Path(td) / "mapped.json"
+        target.write_text("def count(items):\n    return len(items) + 1\n", encoding="utf-8")
+        raw_path.write_text(raw, encoding="utf-8")
+        r = subprocess.run(
+            [
+                sys.executable,
+                bridge,
+                "parse-transport",
+                "--kind",
+                "code_diff",
+                "--target",
+                str(target),
+                "--raw-result",
+                str(raw_path),
+                "--out",
+                str(out_path),
+                "--compat-v1",
+                "--deep",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        assert r.returncode != 0
+        mapped = json.loads(out_path.read_text(encoding="utf-8"))
+        assert mapped["gd_review_decision"] == "FAILED"
+        assert mapped["review_run_status"] == "degraded"
+        assert "DEEP_CODE_LINE_EVIDENCE_MISSING" in json.dumps(mapped, ensure_ascii=False)
+
+
+def test_deep_code_diff_gate_accepts_target_line_evidence():
+    """Deep code_diff accepts REQUIRES_CHANGES when every finding cites target:line."""
+    import subprocess
+
+    bridge = os.path.join(PROJECT_ROOT, "scripts", "gd-codex-bridge-review.py")
+    with tempfile.TemporaryDirectory() as td:
+        target = Path(td) / "buggy_counter.py"
+        raw_path = Path(td) / "raw.md"
+        out_path = Path(td) / "mapped.json"
+        target.write_text("def count(items):\n    return len(items) + 1\n", encoding="utf-8")
+        raw_path.write_text(
+            f"""# Code Review Result
+
+VERDICT: REQUIRES_CHANGES
+
+## Scope Checked
+
+| Facet | Result | Evidence |
+|-------|--------|----------|
+| semantic behavior | fail | `{target.name}:2` returns an off-by-one count |
+
+## Findings
+
+### Finding 1 [P1] wrong counter semantics
+问题: Counter returns the wrong value.
+证据: `{target.name}:2` adds one to the actual length.
+影响: Callers receive incorrect counts.
+最小修复: Return `len(items)` at `{target.name}:2`.
+验收: Add a semantic test covering `count([1]) == 1`.
+
+## Residual Risk
+
+none
+""",
+            encoding="utf-8",
+        )
+        r = subprocess.run(
+            [
+                sys.executable,
+                bridge,
+                "parse-transport",
+                "--kind",
+                "code_diff",
+                "--target",
+                str(target),
+                "--raw-result",
+                str(raw_path),
+                "--out",
+                str(out_path),
+                "--compat-v1",
+                "--deep",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        assert r.returncode != 0
+        mapped = json.loads(out_path.read_text(encoding="utf-8"))
+        assert mapped["gd_review_decision"] == "REQUIRES_CHANGES"
+        assert mapped["review_run_status"] == "completed"

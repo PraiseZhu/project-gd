@@ -105,6 +105,44 @@ REVIEW_KIND_TO_TARGET_ROLE = {
     "combined": "combined_bundle",
 }
 
+def codex_review_status_from_evidence(
+    evidence_present: bool,
+    codex_verdict: str,
+    run_status: str | None,
+) -> str:
+    """Map a codex evidence triple → route_report.codex_review_status (SSOT).
+
+    Shared by the plan path (gd-review-merge-and-fix-loop.py convergence +
+    consumption) and the execution/combined paths (gd-review-router.py Path A/B)
+    so both derive codex_review_status identically — prevents the P1 mislabel
+    where a readable mapped file carrying a FAILED verdict or a degraded run
+    was silently reported as 'completed'.
+
+    transport_ok (file readable) does NOT mean the codex review succeeded.
+    fail-closed matrix:
+      ① no evidence file          → transport_failed
+      ② file present, FAILED       → wrapper_schema_fail
+         verdict, missing/unknown   (codex produced an unusable result)
+         run state, or degraded/
+         failed_to_run/failed run
+      ③ file + APPROVED + clean    → completed
+      ④ file + REQUIRES_CHANGES    → requires_changes
+         + clean run
+    """
+    if not evidence_present:
+        return "transport_failed"
+    if run_status == "completed_with_constraint":
+        return "requires_changes"
+    if run_status != "completed":
+        return "wrapper_schema_fail"
+    if codex_verdict == "APPROVED":
+        return "completed"
+    if codex_verdict == "REQUIRES_CHANGES":
+        return "requires_changes"
+    # FAILED / unknown verdict on a readable file = unusable codex result.
+    return "wrapper_schema_fail"
+
+
 def dump_json() -> str:
     """Return contract as JSON string for docs/fixture generation only."""
     import json

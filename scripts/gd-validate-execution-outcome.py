@@ -66,6 +66,22 @@ _VERIFY = re.compile(
     r"-\s+verify\s*\(method:\s*([^)]+)\)\s*:\s*`([^`]+)`",
     re.MULTILINE | re.DOTALL,
 )
+# F7 fix: also match §8a SC verification matrix YAML entries:
+#   {sc: SC-1, cmd: "...", expect: "..."}  or  - {sc: SC-1, cmd: "..."}
+# These appear in the verify[] arrays inside task-packet YAML blocks and in
+# the §8a table inline YAML.  We capture the sc ref and the cmd value.
+_VERIFY_YAML = re.compile(
+    r"\{[^}]*\bsc:\s*(SC-[\d]+(?:[.\-][\w]+)*)\b[^}]*\bcmd:\s*[\"']([^\"']+)[\"'][^}]*\}",
+    re.MULTILINE | re.DOTALL,
+)
+# Matches the §8a matrix table row:  | SC-N | cmd text | expect |
+# We extract sc ref and the cmd column (column 2).
+_VERIFY_TABLE = re.compile(
+    r"^\|[^|]*\|\s*(SC-[\d]+(?:[.\-][\w]+)*)\s*\|[^|]*\|([^|]+)\|",
+    re.MULTILINE,
+)
+# Backtick-quoted command inside a table cell: `cmd`
+_BACKTICK_CMD = re.compile(r"`([^`]+)`")
 # Markers that indicate a command requires real external resources
 _INTEGRATION_MARKERS = (
     "-m integration",
@@ -103,42 +119,79 @@ def _classify_gate(method_str: str, cmd: str) -> str:
     for marker in _INTEGRATION_MARKERS:
         if marker in cmd:
             return GATE_INTEGRATION
+    # Natural-language descriptions (Chinese characters) are not shell-executable.
+    # Format 3 (table) now only emits backtick-quoted commands, so this guard mainly
+    # catches Format 2 (YAML) entries whose cmd field is a prose description.
+    # Phase 2 skips GATE_EXECUTION entries without requiring not_run status.
+    if any(
+        "㐀" <= ch <= "䶿"   # CJK Extension A
+        or "一" <= ch <= "鿿"  # CJK Unified Ideographs
+        or "豈" <= ch <= "﫿"  # CJK Compatibility Ideographs
+        for ch in cmd
+    ):
+        return GATE_EXECUTION
     return GATE_BUILD
 
 
 def extract_sc_verify_cmds(plan_path: Path) -> list[dict]:
-    """SC-1: extract {sc_ref, cmd, method, gate_type} from a plan markdown file."""
+    """SC-1 / F7 fix: extract {sc_ref, cmd, method, gate_type} from a plan markdown.
+
+    Supports three formats found in GD master plans:
+    1. Inline verify blocks:  - verify (method: command): `cmd`
+    2. §5c task-packet YAML:  {sc: SC-N, cmd: "...", ...}
+    3. §8a matrix table row:  | SC-N | cmd text | expect |
+    """
     text = plan_path.read_text(encoding="utf-8")
     results: list[dict] = []
+    seen_cmds: set[tuple[str, str]] = set()  # (sc_ref, cmd) dedup
+
+    def _add(sc_ref: str, cmd: str, method: str = "command") -> None:
+        cmd = cmd.strip()
+        if not cmd or len(cmd) < 3:
+            return
+        if _SHELL_INJECT_RE.search(cmd):
+            print(
+                f"  WARN: {sc_ref} verify command contains injection-risk pattern "
+                f"($() / backtick / pipe-to-shell) — omitting from rerun; "
+                f"cmd={cmd[:80]}",
+                file=sys.stderr,
+            )
+            return
+        key = (sc_ref, cmd)
+        if key in seen_cmds:
+            return
+        seen_cmds.add(key)
+        results.append({
+            "sc_ref": sc_ref,
+            "cmd": cmd,
+            "method": method,
+            "gate_type": _classify_gate(method, cmd),
+        })
+
+    # Format 1: inline verify blocks inside SC list items
     sc_positions = list(_SC_HDR.finditer(text))
     for idx, sc_match in enumerate(sc_positions):
-        sc_ref = sc_match.group(1)  # e.g. "SC-1" or "SC-6.2"
+        sc_ref = sc_match.group(1)
         block_start = sc_match.end()
         block_end = sc_positions[idx + 1].start() if idx + 1 < len(sc_positions) else len(text)
         block = text[block_start:block_end]
         for v_match in _VERIFY.finditer(block):
-            method_str = v_match.group(1).strip()
-            cmd = v_match.group(2).strip()
-            # Altitude fix: validate for injection patterns at parse time (not at
-            # execute time). Malicious plan content is caught here so validate_verify_rerun
-            # receives only pre-vetted entries.
-            if _SHELL_INJECT_RE.search(cmd):
-                print(
-                    f"  WARN: {sc_ref} verify command contains injection-risk pattern "
-                    f"($() / backtick / pipe-to-shell) — omitting from rerun; "
-                    f"cmd={cmd[:80]}",
-                    file=sys.stderr,
-                )
-                continue
-            gate_type = _classify_gate(method_str, cmd)
-            results.append(
-                {
-                    "sc_ref": sc_ref,
-                    "cmd": cmd,
-                    "method": method_str,
-                    "gate_type": gate_type,
-                }
-            )
+            _add(sc_ref, v_match.group(2), v_match.group(1).strip())
+
+    # Format 2: §5c task-packet YAML  {sc: SC-N, cmd: "..."}
+    for m in _VERIFY_YAML.finditer(text):
+        _add(m.group(1), m.group(2))
+
+    # Format 3: §8a matrix table  | SC-N | cmd_col | expect_col |
+    # Only extract backtick-quoted content (`cmd`) as executable commands.
+    # Bare prose descriptions are not executable and are deliberately excluded —
+    # they are verified by child executor smoke tests, not Phase 2 direct re-execution.
+    for m in _VERIFY_TABLE.finditer(text):
+        sc_ref = m.group(1).strip()
+        cmd_col = m.group(2)
+        for bt in _BACKTICK_CMD.finditer(cmd_col):
+            _add(sc_ref, bt.group(1))
+
     return results
 
 
@@ -231,12 +284,18 @@ def validate_verify_rerun(
             # If declared not_run / n_a, that's correct — no further check
             continue
 
-        # SC-3: build-gate items — rerun and compare
-        if declared in ("not_run", "n_a"):
-            # Executor said it didn't run; that's allowed for build_gate only if
-            # a not_run_reason is provided. We can't enforce reason here without
-            # schema change, so accept it.
+        # GATE_EXECUTION: needs full pipeline context (e.g. Chinese prose descriptions
+        # from §5c YAML that aren't shell-executable). Skip silently — these are
+        # verified by child executor smoke tests, not Phase 2 direct re-execution.
+        if gate_type == GATE_EXECUTION:
             continue
+
+        # SC-4 (V3): build-gate command declared not_run/n_a must NOT be silently
+        # accepted. build_gate commands are by definition safe to rerun (that is the
+        # whole reason for the classification), so a not_run declaration here is a
+        # fail-open hole — the executor skipped a gate it should have run. Rerun it
+        # and report what the declaration should have been (pass/fail) per real exit.
+        rerun_for_not_run = declared in ("not_run", "n_a")
 
         # Injection check was moved to extract_sc_verify_cmds (parse time); entries
         # reaching here are pre-vetted. Run the command directly.
@@ -261,7 +320,19 @@ def validate_verify_rerun(
             continue
 
         expected_pass = actual_exit == 0
-        if declared == "pass" and not expected_pass:
+        if rerun_for_not_run:
+            # SC-4 (V3): build_gate was declared not_run/n_a but is rerunnable. We
+            # reran it; the declaration should reflect the real result, not not_run.
+            should_be = "pass" if expected_pass else "fail"
+            snippet_err = result.stderr[:200].strip()
+            errors.append(
+                f"{sc_ref}: build_gate declared {declared!r} but is rerunnable and "
+                f"actually exited {actual_exit} — should be declared {should_be!r} "
+                f"(build_gate verify must not be left not_run)\n"
+                f"  cmd:    {cmd[:100]}\n"
+                f"  stderr: {snippet_err}"
+            )
+        elif declared == "pass" and not expected_pass:
             snippet_out = result.stdout[:200].strip()
             snippet_err = result.stderr[:200].strip()
             errors.append(
@@ -428,6 +499,17 @@ def main() -> int:
     # Phase 1: schema validation
     errors, data = validate_schema(outcome_path)
 
+    # SC-4 (V4): if Phase 2 was requested (--plan-file) but a schema flaw blocks it,
+    # surface PHASE2_SKIPPED loudly instead of silently dropping the verify-rerun.
+    # Otherwise a single schema blemish would quietly disable the strongest gate
+    # (actual command rerun) while still printing a PASS-shaped phase1 result.
+    if args.plan_files and errors:
+        print(
+            "PHASE2_SKIPPED: schema validation failed; verify-rerun not executed "
+            f"({len(errors)} schema error(s)) — fix schema then re-run with --plan-file",
+            file=sys.stderr,
+        )
+
     # Phase 2: verify-rerun (only when --plan-file supplied)
     if args.plan_files and not errors:
         # SC-4: locate Python ≥3.11
@@ -478,15 +560,30 @@ def main() -> int:
                 if isinstance(sc, dict) and "sc_ref" in sc:
                     raw = sc["sc_ref"]
                     norm = _normalize_sc_ref(raw)
-                    if norm in sc_declared and sc_first_raw.get(norm) != raw:
-                        print(
-                            f"  WARN: sc_ref '{raw}' normalises to '{norm}' which is "
-                            f"already in sc_acceptance (from '{sc_first_raw[norm]}') "
-                            "— later value overwrites earlier",
-                            file=sys.stderr,
-                        )
+                    if norm in sc_declared:
+                        # SC-4 (P2-dup): a duplicate sc_ref must NOT silently
+                        # overwrite the first declaration (last-wins could mask a
+                        # failing first entry behind a later pass). Keep the FIRST
+                        # value and warn loudly so the conflict is visible.
+                        if sc.get("status", "") != sc_declared[norm]:
+                            print(
+                                f"  WARN DUPLICATE_SC_REF: sc_ref '{raw}' normalises to "
+                                f"'{norm}' which is already declared "
+                                f"'{sc_declared[norm]}' (from '{sc_first_raw.get(norm)}') "
+                                f"with conflicting status '{sc.get('status', '')}' "
+                                "— keeping FIRST declaration, ignoring later",
+                                file=sys.stderr,
+                            )
+                        else:
+                            print(
+                                f"  WARN DUPLICATE_SC_REF: sc_ref '{raw}' normalises to "
+                                f"'{norm}' which is already declared "
+                                f"(from '{sc_first_raw.get(norm)}') — keeping first",
+                                file=sys.stderr,
+                            )
+                        continue
                     sc_declared[norm] = sc.get("status", "")
-                    sc_first_raw.setdefault(norm, raw)
+                    sc_first_raw[norm] = raw
 
         # SC-2 + SC-3: classify and rerun
         rerun_errors = validate_verify_rerun(

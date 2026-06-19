@@ -60,6 +60,33 @@ CODEX_RAW_EVIDENCE = [
 ]
 
 
+def extract_raw_result_path(line: str) -> str:
+    """Extract a raw_result_path value from one report line.
+
+    Handles two on-disk shapes seen in real reports:
+      - text  :  codex_raw_result_path: /Users/.../result.md
+      - JSON  :  "codex_raw_result_path": "/Users/.../result.md",
+
+    The JSON form quotes both key and value and appends a trailing comma as an
+    object-member separator. Splitting on the first ':' yields the key portion
+    (possibly quoted); everything after the FIRST ':' that follows the key token
+    is the value. We then peel surrounding quotes and any trailing comma so the
+    path resolves cleanly (tolerating a trailing comma rather than failing).
+    """
+    # Split off the value: take everything after the first colon that separates
+    # the key from the value. For JSON the key is '"..."' so the first ':' still
+    # lands right after the closing key-quote.
+    if ":" not in line:
+        return ""
+    value = line.split(":", 1)[1].strip().rstrip(",").strip()
+    # Peel one layer of surrounding matched quotes (JSON string value).
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in ("\"", "'"):
+        value = value[1:-1]
+    else:
+        value = value.strip("\"'")
+    return value.strip()
+
+
 def classify_report(report_path: Path) -> dict:
     """Classify a single review report into a trust tier.
 
@@ -94,17 +121,23 @@ def classify_report(report_path: Path) -> dict:
             has_codex_evidence = True
             result["evidence"].append(marker)
 
-    # Check for raw result file references
+    # Check for raw result file references.
+    # Tolerates both plain text form  (raw_result_path: /path/to/file)
+    # and JSON form                   ("raw_result_path": "/path/to/file",)
+    # — JSON keys/values are quoted and JSON object members carry a trailing comma,
+    # which the naive ".strip('\"')" path-extraction failed to peel off, leaving a
+    # path like '/path/file",' that never resolved → trusted reports misclassified.
     for line in text.splitlines():
         if "raw_result_path" in line or "codex_raw_result_path" in line:
             try:
-                path_part = line.split(":", 1)[1].strip().strip('"').strip("'")
-                candidate = Path(path_part)
+                raw_path = extract_raw_result_path(line)
+            except (IndexError, ValueError):
+                raw_path = ""
+            if raw_path:
+                candidate = Path(raw_path)
                 if candidate.exists():
                     result["has_raw_file"] = True
                     result["raw_file_path"] = str(candidate)
-            except (IndexError, ValueError):
-                pass
 
     # Check for legacy untrusted markers
     has_legacy_markers = False

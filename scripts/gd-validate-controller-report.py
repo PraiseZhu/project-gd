@@ -26,6 +26,11 @@ import os
 import sys
 from pathlib import Path
 
+# Canonical schema (single source of truth for field whitelist /
+# additionalProperties:false enforcement). Hash/closure checks that the schema
+# cannot express stay in the hand-written validators below.
+_SCHEMA_PATH = Path(__file__).resolve().parent.parent / "schema" / "gd-controller-report.schema.json"
+
 # ---------------------------------------------------------------------------
 # Required fields
 # ---------------------------------------------------------------------------
@@ -157,11 +162,69 @@ def _validate_v11(report: dict, report_path: Path) -> tuple[int, str]:
 # ---------------------------------------------------------------------------
 # Unified validate entry point
 # ---------------------------------------------------------------------------
+def _schema_structural_errors(report: dict) -> list[str]:
+    """SC-8 V9: run the canonical schema (additionalProperties:false) against the
+    report so unknown/extra fields are rejected instead of silently accepted.
+
+    Returns a list of error strings (empty == ok). When jsonschema is
+    unavailable we emit a stderr WARN and return [] (the hand-written checks
+    still run, but additionalProperties cannot be enforced without the library —
+    surfaced rather than silent)."""
+    try:
+        schema = json.loads(_SCHEMA_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"WARN: controller-report schema unreadable ({exc}); "
+              "skipping additionalProperties enforcement", file=sys.stderr)
+        return []
+    try:
+        import jsonschema
+        validator = jsonschema.Draft7Validator(schema)
+        return [
+            f"{'/'.join(str(x) for x in e.path) or '<root>'}: {e.message}"
+            for e in sorted(validator.iter_errors(report), key=lambda e: list(e.path))
+        ]
+    except ImportError:
+        pass  # fall through to hand-written checks below
+
+    # F3 fix (SC-8 V9/V11): jsonschema not available — enforce the two most
+    # dangerous fail-open gaps with hand-written checks so the validator does
+    # not silently accept broken reports in production environments that lack
+    # the library (e.g. /usr/bin/python3 3.9.6).
+    errs: list[str] = []
+    # V9: additionalProperties — reject any key not declared in the schema.
+    allowed_keys = set(schema.get("properties", {}).keys())
+    if allowed_keys:
+        for key in report:
+            if key not in allowed_keys:
+                errs.append(
+                    f"<root>: Additional properties are not allowed "
+                    f"('{key}' was unexpected)"
+                )
+    # V11: boolean fields must be actual booleans, not strings.
+    bool_fields = [
+        k for k, v in schema.get("properties", {}).items()
+        if isinstance(v, dict) and v.get("type") == "boolean"
+    ]
+    for field in bool_fields:
+        if field in report and not isinstance(report[field], bool):
+            errs.append(
+                f"{field}: must be boolean, got {type(report[field]).__name__!r} "
+                f"(value={report[field]!r})"
+            )
+    return errs
+
+
 def validate_report(report: dict, report_path: Path = Path(".")) -> tuple[int, str]:
     """Validate a parsed controller-report dict. Returns (exit_code, message)."""
     missing = find_missing_required_field(report)
     if missing is not None:
         return 2, f"CONTROLLER_REPORT_INVALID: missing_required_field ({missing})"
+
+    # SC-8 V9: reject extra/unknown fields via the canonical schema before the
+    # hash/closure semantic checks run.
+    schema_errs = _schema_structural_errors(report)
+    if schema_errs:
+        return 2, f"CONTROLLER_REPORT_INVALID: schema_violation ({schema_errs[0]})"
 
     version = report.get("schema_version", "")
     if version == "1.1":

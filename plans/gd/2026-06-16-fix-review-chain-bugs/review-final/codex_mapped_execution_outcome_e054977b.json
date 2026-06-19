@@ -1,0 +1,22 @@
+{
+  "template_kind": "gd-execution-outcome-review",
+  "reviewer": "codex",
+  "review_target": "/Users/praise/AI-Agent/Claude/projects/Project GD/plans/gd/2026-06-16-fix-review-chain-bugs/exec/execution-outcome-aggregate.json",
+  "review_kind": "execution_outcome",
+  "review_run_status": "degraded",
+  "gd_review_decision": "FAILED",
+  "scope_checked": [
+    {
+      "facet": "raw markdown structure",
+      "result": "pass",
+      "evidence": "writer-validated; verdict=APPROVED"
+    }
+  ],
+  "findings": [],
+  "merge_notes": {
+    "conflict_with_other_reviewer": false,
+    "degraded_reason": "L3 content-evidence validator rejected review: ERROR: FAKE_EVIDENCE_DETECTED: APPROVED verdict — SCOPE_CHECKED section has no SC-IDs\nL3_RESULT: FAKE_EVIDENCE_DETECTED (1 error(s), verdict=APPROVED)"
+  },
+  "residual_risk": [],
+  "timestamp": "2026-06-16T12:19:54Z"
+}

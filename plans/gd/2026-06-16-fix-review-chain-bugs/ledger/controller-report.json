@@ -1,0 +1,42 @@
+{
+  "schema_version": "1.0",
+  "run_mode": "live",
+  "started_at": "2026-06-16T04:50:00Z",
+  "finished_at": "2026-06-16T04:59:06Z",
+  "aggregate_path": "n_a",
+  "manifest_path": "plans/gd/2026-06-16-fix-review-chain-bugs/dispatch-map.json",
+  "primary_gate": {
+    "verdict": "APPROVED",
+    "blocking": []
+  },
+  "secondary_gate": {
+    "verdict": "n_a",
+    "blocking": []
+  },
+  "gate_consistent": true,
+  "dirty_detected": false,
+  "jobs": [
+    {
+      "queue_job_id": "t1-shared-infra",
+      "target_role": "plan",
+      "primary_target": "plans/gd/2026-06-16-fix-review-chain-bugs/proposals/shared-infra/proposal.md",
+      "bridge_exit": 0,
+      "bridge_stderr_path": null,
+      "bridge_stderr_summary": "none",
+      "raw_verdict": "APPROVED",
+      "mapped_status": "approved",
+      "aggregate_bucket": "planning_proposal_validated"
+    },
+    {
+      "queue_job_id": "t2-l3-internal",
+      "target_role": "plan",
+      "primary_target": "plans/gd/2026-06-16-fix-review-chain-bugs/proposals/l3-internal/proposal.md",
+      "bridge_exit": 0,
+      "bridge_stderr_path": null,
+      "bridge_stderr_summary": "none",
+      "raw_verdict": "APPROVED",
+      "mapped_status": "approved",
+      "aggregate_bucket": "planning_proposal_validated"
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "template_kind": "gd-execution-outcome-review",
+  "reviewer": "codex",
+  "review_target": "/Users/praise/AI-Agent/Claude/projects/Project GD/plans/gd/2026-06-16-fix-review-chain-bugs/exec/execution-outcome-aggregate.json",
+  "review_kind": "execution_outcome",
+  "review_run_status": "completed",
+  "gd_review_decision": "REQUIRES_CHANGES",
+  "scope_checked": [
+    {
+      "facet": "raw markdown structure",
+      "result": "pass",
+      "evidence": "writer-validated; verdict=REQUIRES_CHANGES"
+    }
+  ],
+  "findings": [
+    {
+      "severity": "P1",
+      "title": "越界写入仍被标为 owned-only",
+      "sc_refs": [
+        "SC-11"
+      ],
+      "evidence": "`plans/gd/2026-06-16-fix-review-chain-bugs/exec/execution-outcome-aggregate.json:119-123`；`exec/merge-report-wave3.md:19-20` 明确该测试文件不在任何 step owned_paths。",
+      "impact": "owned_paths 审计不可信，后续 baseline/merge 可能把越界写入当作合规完成态。",
+      "required_fix": "将 `tests/gd-review2-output-coverage-smoke.sh` 纳入明确 owned/deliverable/modified 清单，或撤回该写入；同时修正 `owned_paths_writes_only` 与 out-of-scope 记账。",
+      "verify": "`jq '.owned_paths_writes_only,.out_of_scope_writes' execution-outcome-aggregate.json` 显示 owned-only 与越界清单一致。"
+    },
+    {
+      "severity": "P1",
+      "title": "verify 复跑链路为空仍通过",
+      "sc_refs": [
+        "SC-4"
+      ],
+      "evidence": "`jq` 输出 `has_verify_results=false`；`python3 scripts/gd-validate-execution-outcome.py --plan-file ... execution-outcome-aggregate.json` 输出 `VERIFY_RERUN: extracted 0 verify entries` 且 `exit=0`。",
+      "impact": "13 条 SC 的 pass 主要依赖 prose evidence，核心验证缺失，无法可靠判断执行结果符合计划。",
+      "required_fix": "让 execution outcome 记录每条 SC 的实际 `verify_results[].cmd/stdout/exit`，或修 validator 在 plan verify 提取为 0 时 fail-closed。",
+      "verify": "同一 validator 命令输出提取到非 0 verify entries，并对失败 verify 返回非 0。"
+    }
+  ],
+  "merge_notes": {
+    "conflict_with_other_reviewer": false
+  },
+  "residual_risk": [],
+  "timestamp": "2026-06-16T11:33:48Z"
+}
