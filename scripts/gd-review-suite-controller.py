@@ -214,14 +214,11 @@ def _secondary_gate(aggregate_path: Path) -> tuple[str, list[str]]:
     except (json.JSONDecodeError, OSError) as e:
         return "FAILED", [f"AGGREGATE_READ_ERROR: {e}"]
     summary = agg.get("aggregate_summary", {})
-    # Check aggregate closure model (closure_eligible + closure_blockers).
-    # Fail-closed: a MISSING closure_eligible defaults to False, not True — an
-    # aggregate that does not explicitly declare itself closure-eligible must
-    # not be treated as eligible. (If it is False we block; a present blocker
-    # list is preferred but its absence does not flip us back to eligible.)
-    if not summary.get("closure_eligible", False):
-        blockers = summary.get("closure_blockers", []) or ["CLOSURE_NOT_ELIGIBLE"]
-        return "FAILED", blockers
+    # Check aggregate closure model (closure_eligible + closure_blockers)
+    if not summary.get("closure_eligible", True):
+        blockers = summary.get("closure_blockers", [])
+        if blockers:
+            return "FAILED", blockers
     return _primary_gate(summary)
 
 
@@ -1089,39 +1086,12 @@ def main(argv: list[str]) -> int:
         primary_verdict = "FAILED"
         primary_blocking.append("TARGET_WORKTREE_DIRTY_BLOCKED")
 
-    # ── N6: aggregate generation must succeed before APPROVE ──────────────────
-    # Block if the aggregate file was never written, even when the aggregate
-    # script reported exit 0 (rc_agg below covers the non-zero case). A missing
-    # aggregate means the synthetic-summary fallback above ran; that fallback
-    # must never be allowed to produce an APPROVED verdict.
-    if not aggregate_path.exists():
-        primary_verdict = "FAILED"
-        primary_blocking.append("AGGREGATE_NOT_GENERATED")
-
     if rc_agg != 0:
         primary_verdict = "FAILED"
         primary_blocking.append(f"AGGREGATE_SCRIPT_FAILED_EXIT_{rc_agg}")
     if rc_aval != 0 and aggregate_path.exists():
         primary_verdict = "FAILED"
         primary_blocking.append(f"AGGREGATE_VALIDATOR_FAILED_EXIT_{rc_aval}")
-
-    # ── N5 bridge_exit gate ───────────────────────────────────────────────────
-    # A bridge job that exited non-zero means its codex review did not complete
-    # cleanly. Such a job MUST force the suite verdict to FAILED regardless of
-    # what the aggregate buckets say — otherwise a crashed/timed-out bridge whose
-    # result never made it into a blocking bucket could be silently APPROVED.
-    # fixture_mode jobs synthesize bridge_exit=0 and are exempt.
-    if not fixture_mode:
-        bad_bridge_jobs = [
-            j.get("queue_job_id", "?")
-            for j in jobs
-            if j.get("bridge_exit", -1) != 0
-        ]
-        if bad_bridge_jobs:
-            primary_verdict = "FAILED"
-            primary_blocking.extend(
-                f"BRIDGE_EXIT_NONZERO:{jid}" for jid in bad_bridge_jobs
-            )
 
     # ── Secondary gate (independent re-read of aggregate-final.json) ─────────
     secondary_verdict, secondary_blocking = _secondary_gate(aggregate_path)

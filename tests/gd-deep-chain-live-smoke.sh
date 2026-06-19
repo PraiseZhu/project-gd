@@ -45,7 +45,7 @@ if ! command -v codex >/dev/null 2>&1; then
   echo "PRECOND_FAIL: codex CLI not on PATH — live smoke needs the deep chain online"
   exit 3
 fi
-if ! launchctl list com.praise.codex-watch >/dev/null 2>&1; then
+if ! launchctl list 2>/dev/null | grep -q com.praise.codex-watch; then
   echo "PRECOND_FAIL: codex-watch daemon not running"
   exit 3
 fi

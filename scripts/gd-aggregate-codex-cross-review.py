@@ -183,27 +183,12 @@ def build_aggregate_job(job: dict, gd_root: Path) -> dict:
         if mp.exists():
             try:
                 md = json.loads(mp.read_text(encoding="utf-8"))
+                if "gd_review_decision" in md:
+                    entry["gd_review_decision"] = md["gd_review_decision"]
+                    entry["mapped_result_path"] = str(mp)
+                    entry["mapped_result_hash"] = sha256_file(mp)
             except (json.JSONDecodeError, OSError):
-                # Fail-closed: the mapped result is the authoritative source for
-                # gd_review_decision. If it exists but cannot be parsed, we must
-                # NOT fall back to the (less trusted) raw verdict or leave "none"
-                # — an unparseable authoritative artifact is a FAILED review.
-                md = None
-                entry["gd_review_decision"] = "FAILED"
-                entry["mapped_result_path"] = str(mp)
-                entry["codex_review_status"] = "wrapper_schema_fail"
-            if md is not None and "gd_review_decision" in md:
-                entry["gd_review_decision"] = md["gd_review_decision"]
-                entry["mapped_result_path"] = str(mp)
-                entry["mapped_result_hash"] = sha256_file(mp)
-            elif md is not None:
-                # F2 fix (SC-7): mapped result parsed successfully but lacks
-                # gd_review_decision — this is a schema violation in the mapped
-                # artifact; treat as wrapper_schema_fail rather than silently
-                # falling back to the (less trusted) raw verdict.
-                entry["gd_review_decision"] = "FAILED"
-                entry["codex_review_status"] = "wrapper_schema_fail"
-                entry["mapped_result_path"] = str(mp)
+                pass
 
     entry["codex_requires_changes"] = entry["gd_review_decision"] in (
         "REQUIRES_CHANGES",

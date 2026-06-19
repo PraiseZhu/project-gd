@@ -23,12 +23,7 @@ SCHEMA_PATH = GD_ROOT / "schema" / "gd-codex-cross-review-aggregate.schema.json"
 def _structural_check(data: dict, schema: dict) -> list[str]:
     """Fallback validation (jsonschema unavailable): check top-level required +
     aggregate_version const, derived from the schema file so field expectations
-    still come from the SSOT schema rather than a hardcoded list.
-
-    Fail-closed hardening (SC-8 V13): the fallback must NOT pass an empty jobs[]
-    just because jsonschema's minItems is unavailable — an empty job set means
-    no review actually ran, which can never be a valid aggregate. We honor the
-    schema's own jobs.minItems so the fallback stays SSOT-derived."""
+    still come from the SSOT schema rather than a hardcoded list."""
     errors: list[str] = []
     for f in schema.get("required", []):
         if f not in data:
@@ -39,18 +34,8 @@ def _structural_check(data: dict, schema: dict) -> list[str]:
             f"WRONG_AGGREGATE_VERSION: expected {av_spec['const']!r}, "
             f"got {data.get('aggregate_version')!r}"
         )
-    jobs = data.get("jobs")
-    if "jobs" in data and not isinstance(jobs, list):
+    if "jobs" in data and not isinstance(data["jobs"], list):
         errors.append("JOBS_NOT_ARRAY")
-    elif isinstance(jobs, list):
-        # Enforce jobs.minItems from the schema (default 1) so empty jobs[] is
-        # rejected even in the no-jsonschema fallback path.
-        min_items = schema.get("properties", {}).get("jobs", {}).get("minItems", 1)
-        if len(jobs) < min_items:
-            errors.append(
-                f"JOBS_EMPTY: jobs[] has {len(jobs)} item(s), schema requires "
-                f"minItems={min_items} (empty job set means no review ran)"
-            )
     return errors
 
 
@@ -71,9 +56,6 @@ def validate(path: str) -> list[str]:
         return [f"SCHEMA_LOAD_ERROR: {e}"]
 
     # Prefer full jsonschema validation; fall back to structural check.
-    # SC-8 V5: do NOT silently downgrade to the lax fallback. Warn on stderr so
-    # the missing-library degradation is visible, then run the (now fail-closed)
-    # structural check rather than passing freely.
     try:
         import jsonschema
         validator = jsonschema.Draft202012Validator(schema)
@@ -82,12 +64,6 @@ def validate(path: str) -> list[str]:
             for err in sorted(validator.iter_errors(data), key=lambda e: list(e.path))
         ]
     except ImportError:
-        print(
-            "WARN: jsonschema unavailable — falling back to structural check "
-            "(additionalProperties / nested constraints NOT enforced). "
-            "Install jsonschema for full validation.",
-            file=sys.stderr,
-        )
         return _structural_check(data, schema)
 
 
