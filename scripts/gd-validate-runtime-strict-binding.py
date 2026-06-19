@@ -186,10 +186,15 @@ def validate_strict_binding(text: str) -> tuple[int, list[str], list[str]]:
         calls = find_validator_calls(b["body"], cfg["validator_names"])
 
         if not calls:
-            warnings.append(
-                f"line {b['start_line']}-{b['end_line']}: stage={stage!r} anchor "
-                f"contains no validator call matching {sorted(cfg['validator_names'])} "
-                f"(informational only)"
+            # SC-8 V2: an anchor block that declares a required stage but holds
+            # no matching validator call is an empty shell — the anchor claims
+            # the runtime check exists but binds nothing. For a configured
+            # (required) stage this must FAIL closed, not be a soft warning.
+            errors.append(
+                f"EMPTY_ANCHOR_NO_VALIDATOR: line {b['start_line']}-{b['end_line']}: "
+                f"stage={stage!r} anchor contains no validator call matching "
+                f"{sorted(cfg['validator_names'])} — anchor asserts a runtime "
+                f"check but binds none"
             )
             continue
 

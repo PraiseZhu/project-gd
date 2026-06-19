@@ -120,14 +120,36 @@ queue_counts() {
 recent_failed_jobs() {
   local limit="${1:-3}"
   local count=0
-  for sf in $(ls -r "${HANDOFF_ACTIVE}"/*.status 2>/dev/null); do
-    [[ -f "$sf" ]] || continue
-    local st
+  # Glob iteration (not `ls -r` parsed by word-splitting): a status path
+  # containing a space — e.g. under "/Users/.../Project GD/..." — would be
+  # mis-split by the old `for sf in $(ls -r ...)`, slicing one job into several
+  # bogus tokens and corrupting the failed-job list. The glob preserves each
+  # path as a single word. "newest first" is recovered by sorting on mtime via
+  # `stat -f '%m'` (BSD/macOS) with a portable epoch fallback, all space-safe.
+  local sf st mtime
+  local sorted
+  # Build "<mtime>\t<path>" lines for every *.status, then sort numerically
+  # descending (newest first). Guard the no-match case so the glob literal
+  # ("...*.status") is skipped rather than treated as a real file.
+  sorted=$(
+    for sf in "${HANDOFF_ACTIVE}"/*.status; do
+      [[ -f "$sf" ]] || continue
+      mtime=$(stat -f '%m' "$sf" 2>/dev/null || stat -c '%Y' "$sf" 2>/dev/null || echo 0)
+      printf '%s\t%s\n' "$mtime" "$sf"
+    done | sort -rn -k1,1
+  )
+  # Read back one path per line (IFS=tab keeps spaces in the path intact).
+  while IFS=$'\t' read -r mtime sf; do
+    [[ -n "$sf" && -f "$sf" ]] || continue
     st=$(cat "$sf" 2>/dev/null || true)
     if [[ "$st" == "failed" ]]; then
       basename "${sf%.status}"
       count=$((count+1))
       [[ $count -ge $limit ]] && break
     fi
-  done
+  done <<< "$sorted"
+  # Explicit success: under `set -e` in a caller, the trailing `read` returning
+  # non-zero at EOF (no more lines) would otherwise make this function exit 1
+  # even on a perfectly successful enumeration.
+  return 0
 }

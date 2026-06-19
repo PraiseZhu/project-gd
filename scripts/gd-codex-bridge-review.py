@@ -69,18 +69,19 @@ TEMPLATE_BY_KIND_V2 = {
 }
 # Back-compat alias (kept so any legacy reference still resolves to v1 map).
 TEMPLATE_BY_KIND = TEMPLATE_BY_KIND_V1
-# HOME resolved at runtime (脱开发者用户名) so these guards/runtime refs work on the
-# installer's machine. WRITER_PATH keeps its explicit env override; SEND_WAIT_PATH
-# honors ${HANDOFF_BIN} (set by handoff/lib/state-paths.sh) before falling back.
+# HOME resolved at runtime (脱开发者用户名) so this works on the installer's
+# machine. WRITER_PATH defaults to the LIVE transport, NOT the legacy ~/.claude
+# install: the writer runs directly from vendor (CLAUDE.md §6) and reaches the
+# daemon's ${CLAUDE_PLUGIN_DATA}/gd-handoff dir via its own state-paths.sh. The
+# old default (~/.claude/scripts/review-result-writer.sh) pointed at a stale,
+# daemon-less copy and made every live review fail with a silent
+# "codex-send-wait exit 1". GD_WRITER_PATH_OVERRIDE still wins.
 WRITER_PATH = Path(
     os.environ.get(
         "GD_WRITER_PATH_OVERRIDE",
-        os.path.expanduser("~/.claude/scripts/review-result-writer.sh"),
+        str(GD_PROJECT_ROOT / "vendor" / "l3-transport" / "scripts" / "review-result-writer.sh"),
     )
 )
-SEND_WAIT_PATH = Path(
-    os.environ.get("HANDOFF_BIN", os.path.expanduser("~/.claude/handoff/bin"))
-) / "codex-send-wait"
 
 FIXTURES_DIR = GD_PROJECT_ROOT / "fixtures" / "review-bridge"
 SIDECAR_FIXTURES_DIR = GD_PROJECT_ROOT / "fixtures" / "review-sidecar"
@@ -607,8 +608,8 @@ def validate_mapped_schema_v2(d: dict) -> list[str]:
             if fd.get("severity") not in {"P1", "P2"}:
                 errs.append(f"findings[{i}].severity 不合法")
             sc_refs = fd.get("sc_refs")
-            if not isinstance(sc_refs, list) or not sc_refs:
-                errs.append(f"findings[{i}].sc_refs 必须非空数组")
+            if not isinstance(sc_refs, list) or (not sc_refs and d.get("review_kind") != "code_diff"):
+                errs.append(f"findings[{i}].sc_refs 必须非空数组（code_diff 除外）")
 
     mn = d["merge_notes"]
     if not isinstance(mn, dict):
@@ -755,7 +756,7 @@ def _parse_raw_to_mapped_v1(
                 {"证据": "evidence", "影响": "impact", "最小修复": "required_fix", "验收": "verify"}[cn]
             ):
                 parse_errors.append(f"finding[{i}] 缺 {cn}")
-        # SC-N 必须有 (wrapper 加严) — code_diff findings review code quality, not plan SC-IDs
+        # SC-N 关联（wrapper 加严）— code_diff findings review code quality, not plan SC-IDs.
         if not f["sc_refs"] and kind != "code_diff":
             parse_errors.append(f"finding[{i}] 缺 SC: SC-<N>（wrapper schema 加严）")
 
@@ -1076,6 +1077,15 @@ _EXECUTION_ARTIFACT_KINDS: frozenset[str] = frozenset({
 })
 
 
+def _kind_requires_l3(kind: str) -> bool:
+    """Return True when the L3 content-evidence validator should run for this review kind.
+
+    code_diff / execution_outcome / combined are execution-artifact reviews whose
+    SCOPE_CHECKED does not carry plan SC-IDs; L3 SC-ID evidence check does not apply.
+    """
+    return kind not in _EXECUTION_ARTIFACT_KINDS
+
+
 def _review_focus_for_kind(kind: str) -> str:
     """T6 SC-6.1: return a kind-specific REVIEW_FOCUS string (not hardcoded).
 
@@ -1122,6 +1132,37 @@ def _assert_not_capsule_target(kind: str, target: Path) -> None:
             "For code_diff use the .patch file; for execution_outcome use the result JSON; "
             "for combined use the diff or bundle descriptor."
         )
+    if target.is_dir():
+        raise ValueError(
+            f"CODE_DIFF_TARGET_MUST_BE_FILE: --kind={kind!r} received a directory as "
+            f"--target ({target}). Pass a regular file (e.g. a .patch file for code_diff, "
+            "a result JSON for execution_outcome). Directories cannot be hashed or read "
+            "as review targets."
+        )
+
+
+def _assert_out_is_file_path(out_path: Path) -> None:
+    """Guard: raise ValueError when --out points to an existing directory."""
+    if out_path.is_dir():
+        raise ValueError(
+            f"OUT_PATH_MUST_BE_FILE: --out received a directory ({out_path}). "
+            "Pass a file path for the output JSON/capsule, not a directory."
+        )
+
+
+def _validate_out_path(out_path: Path) -> "int | None":
+    """Validate --out path and ensure parent directory exists.
+
+    Returns 2 (CLI error exit code) if out_path is a directory; None on success.
+    Prints a diagnostic to stderr on failure.
+    """
+    try:
+        _assert_out_is_file_path(out_path)
+    except ValueError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 2
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    return None
 
 
 def _related_context_summary(related_context: list[dict] | None) -> str:
@@ -1218,7 +1259,7 @@ def build_capsule_text(
     # L1: Target externalized — capsule no longer inlines target_text (47KB savings on
     # Sentinel-sized plans). Reviewer must Read the path; bridge enforces via L3
     # content-evidence validator (gd-validate-review-content-evidence.py).
-    standard_text = STANDARD_PATH.read_text(encoding="utf-8") if STANDARD_PATH.exists() else "(missing)"
+    standard_hash = _sha256_file(STANDARD_PATH) if STANDARD_PATH.exists() else "(missing)"
     template_text = template_path.read_text(encoding="utf-8") if template_path.exists() else "(missing)"
     goal_text = GOAL_PATH.read_text(encoding="utf-8")[:3000] if GOAL_PATH.exists() else "(missing)"
 
@@ -1326,7 +1367,15 @@ def build_capsule_text(
         f"TEMPLATE_KIND: {template_kind_for_capsule}\n"
         f"RELATED_CONTEXT:\n{capsule_related_note}{related_summary}\n\n"
         f"## Goal Chain\n\n```\n{goal_text}\n```\n\n"
-        f"## Review Standard\n\n```\n{standard_text}\n```\n\n"
+        f"## Review Standard\n\n"
+        f"REVIEW_STANDARD_PATH: {STANDARD_PATH}\n"
+        f"REVIEW_STANDARD_HASH: {standard_hash}\n"
+        f"\n"
+        f"**MANDATORY READ STEP (Standard)** — Before producing any output, you MUST use your Read\n"
+        f"tool to open the file at REVIEW_STANDARD_PATH and consume its full content. The capsule\n"
+        f"does NOT inline the standard text; the §Review Standard rules (§8, §9.1, §10) govern\n"
+        f"your output format, 穷举义务 and fail-closed semantics. Reviewing without Read is\n"
+        f"impossible and will produce non-conformant output (detected downstream as degraded).\n\n"
         f"## Review Template ({template_path.name})\n\n"
         f"> ⚠️ **FORMAT CONSTRAINT (overrides template §2 example)**:\n"
         f"> Scope Checked 的每一行**必须**是 `| SC-N | pass/fail/n_a | <证据> |`（SC-ID 逐行）。\n"
@@ -1436,28 +1485,42 @@ def _extract_run_evidence_into_mapped(mapped: dict) -> bool:
     """
     if mapped.get("run_evidence"):
         return False
+
+    def _pytest_count(text: str, label: str) -> int | None:
+        patterns = (
+            rf"\b(\d+)\s+{label}\s+in\s+[\d.]+s\b",
+            rf"`[^`]*?(\d+)\s+{label}(?:\s+in\b|`)",
+            rf"[\"'](\d+)\s+{label}[\"']",
+            rf"\b(?:output|outputs|reported|reports|got|actual|输出|结果|复跑)[^.;。]*?(\d+)\s+{label}\b",
+        )
+        for pat in patterns:
+            m = re.search(pat, text, re.IGNORECASE)
+            if m:
+                return int(m.group(1))
+        return None
+
     extracted = []
     for finding in mapped.get("findings", []) or []:
         ev_text = finding.get("evidence", "") or ""
-        cmd_m = re.search(r"`([^`]*pytest[^`]*)`", ev_text)
+        cmd_text = "\n".join(
+            str(finding.get(k, "") or "")
+            for k in ("evidence", "verify", "required_fix")
+        )
+        cmd_m = re.search(r"`([^`]*pytest[^`]*)`", cmd_text)
         if not cmd_m:
             continue
         # Prefer pytest summary format (N X in Y.YYs); fall back to backtick/quoted
-        skip_m = (re.search(r"\b(\d+)\s+skipped\s+in\s+[\d.]+s", ev_text)
-                  or re.search(r"`[^`]*?(\d+)\s+skipped\s+in", ev_text)
-                  or re.search(r"[\"'](\d+) skipped[\"']", ev_text))
-        pass_m = (re.search(r"\b(\d+)\s+passed\s+in\s+[\d.]+s", ev_text)
-                  or re.search(r"[\"'](\d+) passed[\"']", ev_text))
-        fail_m = (re.search(r"\b(\d+)\s+failed\s+in\s+[\d.]+s", ev_text)
-                  or re.search(r"[\"'](\d+) failed[\"']", ev_text))
+        skipped_count = _pytest_count(ev_text, "skipped")
+        passed_count = _pytest_count(ev_text, "passed")
+        failed_count = _pytest_count(ev_text, "failed")
         ver_m = re.search(r"Python\s+([\d.]+)", ev_text)
-        failed_count = int(fail_m.group(1)) if fail_m else 0
+        failed_count = failed_count or 0
         extracted.append({
             "cmd": cmd_m.group(1),
             "exit": 1 if failed_count > 0 else 0,
-            "passed": int(pass_m.group(1)) if pass_m else 0,
+            "passed": passed_count or 0,
             "failed": failed_count,
-            "skipped": int(skip_m.group(1)) if skip_m else 0,
+            "skipped": skipped_count or 0,
             "skip_reason": "(extracted from Codex finding evidence)",
             "interpreter_version": f"Python {ver_m.group(1)}" if ver_m else "Python 3.x (from Codex evidence)",
         })
@@ -1465,6 +1528,128 @@ def _extract_run_evidence_into_mapped(mapped: dict) -> bool:
         mapped["run_evidence"] = extracted
         return True
     return False
+
+
+_DEEP_RUN_EVIDENCE_KINDS = {"execution_outcome", "combined"}
+_DEEP_RUN_EVIDENCE_FIELDS = (
+    "cmd",
+    "exit",
+    "passed",
+    "failed",
+    "skipped",
+    "skip_reason",
+    "interpreter_version",
+)
+
+_CODE_LINE_REF_RE = re.compile(
+    r"([A-Za-z0-9_./\-]+\.(?:py|sh|json|yaml|yml|toml|ts|tsx|js|patch|diff|md)):(\d+)(?:-(\d+))?"
+)
+
+
+def _deep_run_evidence_errors(mapped: dict, kind: str) -> list[str]:
+    """Validate deep execution/combined run_evidence without changing generic schema."""
+    if kind not in _DEEP_RUN_EVIDENCE_KINDS:
+        return []
+    run_evidence = mapped.get("run_evidence")
+    if not isinstance(run_evidence, list) or not run_evidence:
+        return ["DEEP_RUN_EVIDENCE_MISSING: run_evidence must be a non-empty array"]
+
+    errs: list[str] = []
+    approved = mapped.get("gd_review_decision") == "APPROVED"
+    for i, item in enumerate(run_evidence):
+        if not isinstance(item, dict):
+            errs.append(f"run_evidence[{i}] must be object")
+            continue
+        missing = [field for field in _DEEP_RUN_EVIDENCE_FIELDS if field not in item]
+        if missing:
+            errs.append(f"run_evidence[{i}] missing {', '.join(missing)}")
+            continue
+        try:
+            exit_code = int(item.get("exit"))
+            failed = int(item.get("failed"))
+            skipped = int(item.get("skipped"))
+        except (TypeError, ValueError):
+            errs.append(f"run_evidence[{i}] exit/failed/skipped must be integers")
+            continue
+        if skipped > 0 and not str(item.get("skip_reason") or "").strip():
+            errs.append(f"run_evidence[{i}] skipped>0 requires skip_reason")
+        if approved and (exit_code != 0 or failed > 0 or skipped > 0):
+            errs.append(
+                f"APPROVED cannot include failing/skipped run_evidence[{i}] "
+                f"(exit={exit_code}, failed={failed}, skipped={skipped})"
+            )
+    return errs
+
+
+def _deep_code_diff_evidence_errors(mapped: dict, kind: str, target_path: "Path") -> list[str]:
+    """Validate deep code_diff finding evidence has target-resolving file:line refs."""
+    if kind != "code_diff" or mapped.get("gd_review_decision") != "REQUIRES_CHANGES":
+        return []
+
+    findings = mapped.get("findings")
+    if not isinstance(findings, list) or not findings:
+        return []
+
+    target_name = target_path.name
+    target_str = str(target_path)
+    try:
+        target_line_count = len(target_path.read_text(encoding="utf-8").splitlines())
+    except Exception:
+        return [f"DEEP_CODE_LINE_EVIDENCE_TARGET_UNREADABLE: {target_path}"]
+
+    errs: list[str] = []
+    for i, finding in enumerate(findings):
+        if not isinstance(finding, dict):
+            errs.append(f"DEEP_CODE_LINE_EVIDENCE_MISSING: findings[{i}] is not object")
+            continue
+        evidence_text = "\n".join(
+            str(finding.get(k, "") or "")
+            for k in ("title", "evidence", "impact", "required_fix", "verify")
+        )
+        refs = _CODE_LINE_REF_RE.findall(evidence_text)
+        target_refs = [
+            ref for ref in refs
+            if ref[0] == target_name or target_str.endswith(ref[0])
+        ]
+        if not target_refs:
+            errs.append(
+                f"DEEP_CODE_LINE_EVIDENCE_MISSING: findings[{i}] must cite "
+                f"{target_name}:<line>"
+            )
+            continue
+        for path_ref, start_s, end_s in target_refs:
+            start = int(start_s)
+            end = int(end_s) if end_s else start
+            if start < 1 or end > target_line_count or start > end:
+                errs.append(
+                    f"DEEP_CODE_LINE_EVIDENCE_INVALID: {path_ref}:{start_s}"
+                    f"{'-' + end_s if end_s else ''} out of range "
+                    f"(target has {target_line_count} lines)"
+                )
+    return errs
+
+
+def _apply_deep_run_evidence_gate(mapped: dict, kind: str, out_path: "Path") -> bool:
+    """Fail-close mapped output when deep execution evidence is absent or invalid."""
+    errs = _deep_run_evidence_errors(mapped, kind)
+    if not errs:
+        return False
+    _apply_l3_failure(mapped, "; ".join(errs[:3]), out_path)
+    return True
+
+
+def _apply_deep_code_diff_evidence_gate(
+    mapped: dict,
+    kind: str,
+    target_path: "Path",
+    out_path: "Path",
+) -> bool:
+    """Fail-close deep code_diff findings without machine-checkable target line refs."""
+    errs = _deep_code_diff_evidence_errors(mapped, kind, target_path)
+    if not errs:
+        return False
+    _apply_l3_failure(mapped, "; ".join(errs[:3]), out_path)
+    return True
 
 
 def _build_deep_plan_capsule(kind: str, target: Path, plan_file: str | None = None) -> str:
@@ -1588,6 +1773,8 @@ def cmd_build_capsule(args: argparse.Namespace) -> int:
         return 2
 
     out = Path(args.out)
+    if (rc := _validate_out_path(out)) is not None:
+        return rc
     out.write_text(capsule, encoding="utf-8")
     print(f"capsule 写入: {out}")
     print(f"target_hash: {target_hash}")
@@ -1698,6 +1885,8 @@ def _cmd_run_bridge_inner(args: argparse.Namespace) -> int:
     target = Path(args.target)
     cwd = Path(args.cwd)
     out_path = Path(args.out)
+    if (rc := _validate_out_path(out_path)) is not None:
+        return rc
     compat_v1 = _resolve_compat_v1(args.kind, getattr(args, "compat_v1", None))
 
     related = _load_related_context(getattr(args, "related_context", None))
@@ -1869,7 +2058,11 @@ def _cmd_run_bridge_inner(args: argparse.Namespace) -> int:
     # parse-transport path). Fail-closed on failure, timeout, missing script, or
     # missing target (F2+F5 fix). Also updates source_of_truth_decision.value (F-R6-2).
     # code_diff findings review code quality rather than plan SC-IDs; L3 skipped.
-    if args.kind not in {"code_diff"}:
+    # execution_outcome / combined: Codex reviews execution artifacts (sc_acceptance,
+    # exec_status, deliverables) whose SCOPE_CHECKED section lists execution dimensions
+    # (not plan SC-IDs). The L3 content-evidence SC-ID requirement is not applicable
+    # to execution reviews — skip to avoid false-rejecting valid execution APPROVED.
+    if _kind_requires_l3(args.kind):
         l3_script = GD_PROJECT_ROOT / "scripts" / "gd-validate-review-content-evidence.py"
         target_for_l3 = Path(args.target)
         raw_path_for_l3 = Path(result_path)
@@ -1966,6 +2159,9 @@ def _cmd_run_bridge_inner(args: argparse.Namespace) -> int:
         mapped["plan_file_path"] = _plan_file_arg
     if _deep and mapped.get("run_evidence") and not mapped.get("tests_status_source"):
         mapped["tests_status_source"] = "deep_evidence"
+    if _deep:
+        _apply_deep_run_evidence_gate(mapped, args.kind, out_path)
+        _apply_deep_code_diff_evidence_gate(mapped, args.kind, target, out_path)
     # Write once after all deep-mode mutations
     if _deep:
         out_path.write_text(json.dumps(mapped, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -1976,7 +2172,10 @@ def _cmd_run_bridge_inner(args: argparse.Namespace) -> int:
     print(f"GD_REVIEW_DECISION: {decision}")
     print(f"MAPPED_RESULT: {out_path}")
     print(f"TRANSPORT_RESULT: {result_path}")
-    return 0 if decision == "APPROVED" else (1 if decision == "FAILED" else 0)
+    # SC-1 (bridge N9): fail-closed exit code. Only APPROVED is a pass (0);
+    # REQUIRES_CHANGES and FAILED must both surface a non-zero exit so callers
+    # cannot mistake "changes required" / "failed" for a green review.
+    return 0 if decision == "APPROVED" else 1
 
 
 def _apply_l3_failure(mapped: dict, reason: str, out_path: "Path") -> None:
@@ -2027,6 +2226,11 @@ def cmd_parse_transport(args: argparse.Namespace) -> int:
         _extract_run_evidence_into_mapped(mapped)
 
     out_path = Path(args.out)
+    if (rc := _validate_out_path(out_path)) is not None:
+        return rc
+    if getattr(args, "deep", False):
+        _apply_deep_run_evidence_gate(mapped, args.kind, out_path)
+        _apply_deep_code_diff_evidence_gate(mapped, args.kind, target, out_path)
     out_path.write_text(json.dumps(mapped, ensure_ascii=False, indent=2), encoding="utf-8")
 
     # L3: content-evidence validator (SC-W1-1)
@@ -2035,7 +2239,9 @@ def cmd_parse_transport(args: argparse.Namespace) -> int:
     # is an aggregate-level bucket, not a review_run_status enum value (F1 fix).
     # Timeout, exceptions, missing script/target are all fail-closed (F2+F5 fix).
     # code_diff findings review code quality rather than plan SC-IDs; L3 skipped.
-    if args.kind not in {"code_diff"}:
+    # execution_outcome / combined: SCOPE_CHECKED lists execution dimensions, not
+    # plan SC-IDs; the SC-ID evidence requirement does not apply.
+    if _kind_requires_l3(args.kind):
         l3_script = GD_PROJECT_ROOT / "scripts" / "gd-validate-review-content-evidence.py"
         _l3_pre_fail = False
         _l3_pre_reason = ""
@@ -2082,7 +2288,9 @@ def cmd_parse_transport(args: argparse.Namespace) -> int:
     if errs:
         for e in errs[:5]:
             print(f"  parse-error: {e}", file=sys.stderr)
-    return 0 if decision == "APPROVED" else (1 if decision == "FAILED" else 0)
+    # SC-1 (bridge N9): fail-closed exit code — only APPROVED is a pass (0);
+    # REQUIRES_CHANGES and FAILED must both return non-zero.
+    return 0 if decision == "APPROVED" else 1
 
 
 def _merge_decision(claude: dict, codex: dict) -> tuple[str, str, str]:
@@ -2237,14 +2445,16 @@ def cmd_merge(args: argparse.Namespace) -> int:
         )
 
     out_path = Path(args.out)
+    if (rc := _validate_out_path(out_path)) is not None:
+        return rc
     out_path.write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"MERGED_DECISION: {merged['gd_review_decision']}")
     print(f"MERGED_STATUS: {merged['review_run_status']}")
     print(f"MERGED_REASON: {merged['merge_notes'].get('arbitration_reason', 'N/A')[:120]}")
     print(f"OUT: {out_path}")
-    return 0 if merged["gd_review_decision"] == "APPROVED" else (
-        1 if merged["gd_review_decision"] == "FAILED" else 0
-    )
+    # SC-1 (bridge N9): fail-closed exit code — only APPROVED is a pass (0);
+    # REQUIRES_CHANGES and FAILED must both return non-zero.
+    return 0 if merged["gd_review_decision"] == "APPROVED" else 1
 
 
 def cmd_self_test(args: argparse.Namespace) -> int:
@@ -2607,6 +2817,8 @@ def main(argv: list[str]) -> int:
     p_p.add_argument("--out", required=True)
     p_p.add_argument("--compat-v1", action=argparse.BooleanOptionalAction, default=None,
                      help="execution_outcome/combined: default True; plan/code_diff: default False. Explicit flag overrides kind-based inference.")
+    p_p.add_argument("--deep", action="store_true", default=False,
+                     help="Apply deep execution/combined run_evidence fail-closed checks while parsing.")
 
     p_m = sub.add_parser("merge")
     p_m.add_argument("--claude", required=True)

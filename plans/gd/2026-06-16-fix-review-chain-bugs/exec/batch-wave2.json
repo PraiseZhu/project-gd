@@ -1,0 +1,54 @@
+{
+  "batch_id": "batch-fix-review-chain-bugs-20260616-wave2",
+  "dispatch_id": "fix-review-chain-bugs-20260616",
+  "wave_ref": "w2",
+  "batch_created_at": "2026-06-16T09:09:17Z",
+  "execution_mode": "agent_exec",
+  "task_results": [
+    {
+      "task_id": "step-2-l3-failopen",
+      "track_ref": "step-2-l3-failopen",
+      "exec_status": "completed",
+      "not_run_reason": null,
+      "deliverables_produced": [
+        {"path": "scripts/gd-review-merge-and-fix-loop.py", "kind": "file", "verified": true},
+        {"path": "scripts/gd-review-router.py", "kind": "file", "verified": true},
+        {"path": "scripts/gd-review-suite-controller.py", "kind": "file", "verified": true},
+        {"path": "scripts/gd-aggregate-codex-cross-review.py", "kind": "file", "verified": true},
+        {"path": "tests/gd-step2-l3-failopen-smoke.sh", "kind": "file", "verified": true}
+      ],
+      "verify_results": [
+        {"sc_ref": "SC-5", "method": "command", "cmd": "bash tests/gd-step2-l3-failopen-smoke.sh: N1 bridge job 失败返非空 FAILED；N2 两 subprocess returncode 检查；N8 self-review 加载失败中止；#3 未改 finding 不 resolved", "result": "PASS", "exit_code": 0},
+        {"sc_ref": "SC-6", "method": "command", "cmd": "python3 scripts/gd-review-router.py --self-test PASS；decision=None/FAILED 映射 wrapper_schema_fail+FAILED；returncode≠0 不取 APPROVED；坏 descriptor 独立 failure_code", "result": "PASS", "exit_code": 0},
+        {"sc_ref": "SC-7", "method": "command", "cmd": "bridge_exit≠0 强制 FAILED；aggregate 缺失 blocking；closure_eligible 缺失默认 False；aggregate mapped 解析失败 decision→FAILED", "result": "PASS", "exit_code": 0}
+      ],
+      "gd_execution_status_json": {
+        "task_id": "step-2-l3-failopen",
+        "exec_status": "completed",
+        "sc_results": {"SC-5": "pass", "SC-6": "pass", "SC-7": "pass"}
+      }
+    },
+    {
+      "task_id": "step-4-shared-controller-transport",
+      "track_ref": "step-4-shared-controller-transport",
+      "exec_status": "completed",
+      "not_run_reason": null,
+      "deliverables_produced": [
+        {"path": "scripts/gd-review-controller.py", "kind": "file", "verified": true},
+        {"path": "vendor/l3-transport/scripts/install-transport.sh", "kind": "file", "verified": true},
+        {"path": "vendor/l3-transport/scripts/review-result-writer.sh", "kind": "file", "verified": true},
+        {"path": "vendor/l3-transport/handoff/lib/watch-state.sh", "kind": "file", "verified": true},
+        {"path": "tests/gd-step4-controller-transport-smoke.sh", "kind": "file", "verified": true}
+      ],
+      "verify_results": [
+        {"sc_ref": "SC-9", "method": "command", "cmd": "N7 fut.result() 异常转 CONVERGENCE_TIMEOUT 不崩 (n7.py 断言 exit 0)；N10 git-delta 失败注 diff_unavailable:true 不伪造增量 (n10.py + 控制组 n10ctrl.py)；6 controller selftest PASS", "result": "PASS", "exit_code": 0},
+        {"sc_ref": "SC-10", "method": "command", "cmd": "#13 launchctl list \"$label\" 精确查；T1 writer 关键写失败输出 [REVIEW] ✗ FAILED；T-watch glob 遍历空格安全；bash tests/gd-transport-sweep-smoke.sh PASS；WRITER_PATH 指 vendor (a12d384)", "result": "PASS", "exit_code": 0}
+      ],
+      "gd_execution_status_json": {
+        "task_id": "step-4-shared-controller-transport",
+        "exec_status": "completed",
+        "sc_results": {"SC-9": "pass", "SC-10": "pass"}
+      }
+    }
+  ]
+}

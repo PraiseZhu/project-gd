@@ -1,0 +1,20 @@
+{
+  "schema_version": "2.0",
+  "router_invocation_id": "router-20260616T100049Z-975c2483",
+  "mode": "live",
+  "review_target_kind": "plan_only",
+  "decision": "FAILED",
+  "validator_signature": {
+    "validator": "gd-validate-route-report.py",
+    "schema_version": "2.0"
+  },
+  "recorded_at": "2026-06-16T10:10:53Z",
+  "plan_ref": "plans/gd/2026-06-16-fix-review-chain-bugs/master-plan.md",
+  "plan_hash": "071d88fb09ba6d0209300a322d71b804ba79f3b39f93b5a0cababc19d752295b",
+  "raw_result_path": null,
+  "raw_result_hash": null,
+  "claude_review_origin": "supplied",
+  "downstream_loop_report_path": null,
+  "downstream_returncode": 1,
+  "findings": []
+}

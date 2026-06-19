@@ -109,15 +109,17 @@ PYEOF
 # fully delegated to scripts/gd-finalize-codex-watch-job.py which keeps the
 # fcntl.flock held for the entire critical section (cancel-check + mv +
 # status write + event emit), then releases atomically on exit.
-PHASE_B_FINALIZE_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/../bin/gd-finalize-codex-watch-job.py"
-# Fall back to project script path if helper not under handoff/
-if [[ ! -f "$PHASE_B_FINALIZE_HELPER" ]]; then
-  PHASE_B_FINALIZE_HELPER="/Users/praise/Library/Mobile Documents/com~apple~CloudDocs/Claude Code/Project GD/scripts/gd-finalize-codex-watch-job.py"
-fi
+# Resolve helper relative to this script (distributable: no hardcoded paths).
+# gd-finalize-codex-watch-job.py ships alongside codex-watch in handoff/bin/.
+PHASE_B_FINALIZE_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/gd-finalize-codex-watch-job.py"
 
 finalize_batch_job() {
   # Args: <base> <batch_id> <queue_job_id> <raw_status: done|failed> <result_tmp_or_empty>
   local base="$1" batch_id="$2" queue_job_id="$3" raw_status="$4" result_tmp="$5"
+  if [[ ! -f "$PHASE_B_FINALIZE_HELPER" ]]; then
+    echo "[codex-watch] WARN: finalize helper missing ($PHASE_B_FINALIZE_HELPER); batch $queue_job_id finalize skipped (fail-closed, helper not yet shipped)" >&2
+    return 0
+  fi
   python3 "$PHASE_B_FINALIZE_HELPER" \
     --base "$base" \
     --batch-run-id "$batch_id" \
@@ -135,6 +137,9 @@ read_meta_field() {
 }
 
 # count_running_workers: counts <job>.worker.running marker files in HANDOFF_ACTIVE.
+# Stale markers left by a daemon that died mid-job are cleared by
+# sweep_stale_worker_markers() at daemon startup (shlock guarantees no worker is
+# live at that point), so a plain count here is correct and bash 3.2-safe.
 count_running_workers() {
   local n=0
   shopt -s nullglob
@@ -144,6 +149,26 @@ count_running_workers() {
   done
   shopt -u nullglob
   echo "$n"
+}
+
+# sweep_stale_worker_markers: remove ALL *.worker.running markers at daemon
+# startup. shlock guarantees this is the only daemon instance, so no worker is
+# actually running yet — any marker present is a leak from a previous daemon that
+# died mid-job (healthcheck kickstart, SIGKILL, crash) before its worker could
+# finalize. Leaving them permanently inflates count_running_workers and can wedge
+# dispatch once >= MAX_PARALLEL leak. bash 3.2-safe (no $BASHPID / arrays).
+sweep_stale_worker_markers() {
+  shopt -s nullglob
+  local f n=0
+  for f in "${HANDOFF_ACTIVE}"/*.worker.running; do
+    rm -f "$f"
+    n=$((n + 1))
+  done
+  shopt -u nullglob
+  if [[ $n -gt 0 ]]; then
+    log "Swept ${n} stale worker.running marker(s) at startup"
+  fi
+  return 0
 }
 
 set_status() {
@@ -389,7 +414,11 @@ process_capsule() {
   queue_job_id=$(read_meta_field "$meta" "QUEUE_JOB_ID")
   [[ -z "$queue_job_id" ]] && queue_job_id="$job_id"
 
-  # Worker running marker (used by main loop for capacity counting)
+  # Worker running marker (used by main loop for capacity counting).
+  # NOTE: must stay bash 3.2-safe — the daemon runs under /bin/bash 3.2 where
+  # $BASHPID is undefined and would crash this worker subshell under `set -u`,
+  # leaving the job stuck at status=running. Stale markers from an abnormally
+  # killed daemon are cleared by sweep_stale_worker_markers() on next startup.
   : > "$worker_running_marker"
 
   if [[ -n "$batch_id" ]]; then
@@ -475,6 +504,19 @@ maybe_backoff() {
     attempt=$((attempt + 1))
     # Refresh heartbeat before each attempt so healthcheck doesn't falsely kickstart
     date +%s > "$HANDOFF_HEARTBEAT"
+    # Transport-healthcheck-flap fix: ALSO refresh this job's status-file mtime
+    # per attempt. The healthcheck stuck detector (codex-watch-healthcheck) measures
+    # (now - status mtime), NOT the heartbeat. The status mtime is set once at
+    # try_claim; without a per-attempt refresh a legitimate retry chain
+    # (CODEX_EXEC_TIMEOUT x max_attempts, up to ~480s) accumulates past
+    # STUCK_TASK_MAX_AGE=300, so the healthcheck false-kills a job that is still
+    # progressing — even one that then completes (observed: job completes on
+    # attempt 2 but was already reset to failed at 300s). Re-writing "running"
+    # resets the stuck-clock to per-attempt, mirroring the heartbeat refresh above.
+    # Invariant (asserted in tests/gd-transport-healthcheck-flap-smoke.sh):
+    # STUCK_TASK_MAX_AGE must exceed CODEX_EXEC_TIMEOUT so a single attempt never
+    # trips the stuck detector.
+    set_status "$base" "running"
 
     # GAP-1: select provider for this attempt (round-robin through chain)
     local provider_idx=$(( (attempt - 1) % chain_len ))
@@ -653,6 +695,10 @@ run_foreground() {
   # Plan 9 Phase B: write daemon config snapshot for runner probe
   write_config_snapshot
 
+  # Clear stale worker.running markers left by a previously killed daemon
+  # (shlock above guarantees we're the only instance → no live workers yet).
+  sweep_stale_worker_markers
+
   cleanup() {
     local current_pid="$$"
     if [[ -f "$HANDOFF_PID" ]]; then
@@ -713,6 +759,8 @@ start_daemon() {
 
 _run_loop() {
   trap 'rm -f "$HANDOFF_PID" "$HANDOFF_LOCK" "$HANDOFF_HEARTBEAT"; log "Stopped"; exit 0' TERM INT
+  # Clear stale worker.running markers left by a previously killed daemon.
+  sweep_stale_worker_markers
   while true; do
     date +%s > "$HANDOFF_HEARTBEAT"
     # Plan 9 Phase B: bounded-concurrency dispatcher

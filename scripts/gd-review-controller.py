@@ -67,6 +67,7 @@ import sys
 import tempfile
 import time
 import uuid
+from concurrent.futures import Future
 from pathlib import Path
 from typing import Any
 
@@ -81,6 +82,36 @@ LINE_DEDUP_WINDOW = 3  # line±3 per spec SC-7.1
 
 # Default D7 large-delta thresholds (configurable via CLI)
 DEFAULT_ROUND2_FANOUT_THRESHOLD_LINES = 150
+
+# ---------------------------------------------------------------------------
+# code_diff diff materialization
+# ---------------------------------------------------------------------------
+
+def _materialize_code_diff_target(
+    diff_text: str,
+    output_dir: Path,
+    round_num: int,
+    diff_unavailable: bool,
+) -> "Path | None":
+    """Write diff_text to a .patch file for use as code_diff bridge --target.
+
+    Returns the Path to the written file, or None when the diff is unavailable
+    (diff_unavailable=True) or the working tree is genuinely clean (empty diff).
+    diff_text is pre-computed by the caller (take_delta_snapshot); this function
+    only writes it to disk. Returns None for clean/unavailable — caller decides
+    how to handle (Round 1: CONVERGENCE_TIMEOUT; Round N+: keep prior target).
+    """
+    if diff_unavailable:
+        return None
+    if not diff_text.strip():
+        # Genuinely clean working tree — no diff to review.
+        return None
+    output_dir.mkdir(parents=True, exist_ok=True)
+    patch_path = output_dir / f"code_diff_round{round_num}.patch"
+    patch_path.write_text(diff_text, encoding="utf-8")
+    return patch_path
+
+
 DEFAULT_ROUND2_FANOUT_THRESHOLD_FILES = 5
 
 # Maximum rounds before hard stop (safety ceiling beyond CONVERGENCE_TIMEOUT)
@@ -91,6 +122,34 @@ CODEX_SIMPLIFY_TIMEOUT_SEC = 600
 
 # Upper bound on local git operations (guards against index-lock stalls).
 GIT_OP_TIMEOUT_SEC = 30
+
+# Upper bound on a single round's codex future. The bridge already enforces its
+# own subprocess timeout (420s / 1800s deep); this is the controller-side ceiling
+# on fut.result() so a wedged future never blocks the whole loop indefinitely.
+# Deep mode (1800s bridge) + parse overhead → 2000s headroom.
+ROUND_FUTURE_TIMEOUT_SEC = 2000
+
+def _run_futures_or_exit(
+    fut_a: Future[Any],
+    fut_b: Future[Any],
+    label: str,
+) -> tuple[Any, Any]:
+    """Resolve two concurrent futures; emit CONVERGENCE_TIMEOUT and exit(1) on any failure."""
+    try:
+        result_a = fut_a.result(timeout=ROUND_FUTURE_TIMEOUT_SEC)
+        result_b = fut_b.result(timeout=ROUND_FUTURE_TIMEOUT_SEC)
+        return result_a, result_b
+    except Exception as exc:  # noqa: BLE001 — any failure must fail closed
+        for _f in (fut_a, fut_b):
+            _f.cancel()
+        print(
+            f"CONVERGENCE_TIMEOUT: {label} "
+            f"({type(exc).__name__}: {str(exc)[:200]})",
+            file=sys.stderr,
+        )
+        print("CONVERGENCE_TIMEOUT")
+        sys.exit(1)
+
 
 # Round 1 codex_A lens emphasis order (SC-7.1)
 LENS_A_EMPHASIS = (
@@ -125,52 +184,137 @@ def _severity_rank(s: str) -> int:
 # Delta snapshot via git stash create (no commit)
 # ---------------------------------------------------------------------------
 
-def take_delta_snapshot(cwd: Path) -> tuple[str | None, str]:
+def _append_untracked_diff(cwd: Path, diff_text: str) -> str:
+    """Append untracked files as pseudo-diff so code_diff review covers them.
+
+    ``git diff HEAD`` excludes untracked files; without this a multi-file review
+    silently misses newly-added files. Best-effort: any git error keeps the
+    tracked diff_text unchanged. Never touches the git index (no ``git add -N``).
+    """
+    try:
+        uf_r = subprocess.run(
+            ["git", "ls-files", "--others", "--exclude-standard"],
+            cwd=str(cwd), capture_output=True, text=True, timeout=GIT_OP_TIMEOUT_SEC,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return diff_text
+    if uf_r.returncode != 0:
+        return diff_text
+    parts = [diff_text]
+    for uf in (uf_r.stdout or "").splitlines():
+        uf = uf.strip()
+        if not uf:
+            continue
+        try:
+            nd_r = subprocess.run(
+                ["git", "diff", "--no-index", "--", "/dev/null", uf],
+                cwd=str(cwd), capture_output=True, text=True, timeout=GIT_OP_TIMEOUT_SEC,
+            )
+        except (subprocess.TimeoutExpired, OSError):
+            continue
+        # git diff --no-index exits 1 when the two paths differ (expected for a
+        # real new file); stdout is the pseudo-diff regardless of exit code.
+        if nd_r.stdout:
+            parts.append(nd_r.stdout)
+    return "".join(parts)
+
+
+def take_delta_snapshot(cwd: Path) -> tuple[str | None, str, bool]:
     """
     Run ``git stash create`` to snapshot current working tree state.
-    Returns (stash_tree_ish, diff_text).
+    Returns (stash_tree_ish, diff_text, diff_unavailable).
     On clean tree (empty stash output) falls back to HEAD blob hash.
     Controller NEVER writes to the git history (stash create only).
+
+    diff_text = tracked changes (``git diff HEAD``) + untracked new files as
+    pseudo-diff (``_append_untracked_diff``, best-effort). Three downstream
+    consumers share this exact semantics: ``compute_delta_size`` (D7 fanout),
+    DELTA_SCOPE capsule injection, and ``_materialize_code_diff_target``. So
+    fanout decision and the materialized .patch stay consistent on what was
+    actually reviewed (including newly-added files).
+
+    SC-9 N10 (fail-closed): a non-zero ``git stash create`` exit OR a non-zero
+    ``git diff HEAD`` exit OR a TimeoutExpired means the real delta could NOT be
+    obtained. The controller MUST NOT silently substitute an empty diff_text
+    (which would look like a clean / tiny delta and steer the D7 fanout decision
+    toward dispatch=1). Instead the third tuple element ``diff_unavailable`` is
+    set True; callers fan out conservatively and inject ``diff_unavailable: true``
+    into the capsule rather than fabricating a fake "clean tree" delta.
     """
-    r = subprocess.run(
-        ["git", "stash", "create"],
-        cwd=str(cwd), capture_output=True, text=True, timeout=GIT_OP_TIMEOUT_SEC,
-    )
+    diff_unavailable = False
+
+    try:
+        r = subprocess.run(
+            ["git", "stash", "create"],
+            cwd=str(cwd), capture_output=True, text=True, timeout=GIT_OP_TIMEOUT_SEC,
+        )
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        print(
+            f"[controller] WARNING: git stash create errored ({exc}); "
+            "marking delta unavailable (fail-closed, no fake clean-tree delta)",
+            file=sys.stderr,
+        )
+        return None, "", True
+
     snapshot_ref = (r.stdout or "").strip() or None
 
     # git stash create returns 0 with empty stdout on a clean tree, but a
     # non-zero exit is a REAL failure that must NOT be silently coerced into
     # the clean-tree HEAD fallback — doing so would mask the error and feed a
-    # bogus "clean tree" delta into the D7 fanout decision.
+    # bogus "clean tree" delta into the D7 fanout decision. Fail closed: flag
+    # the delta as unavailable.
     if r.returncode != 0:
         print(
             f"[controller] WARNING: git stash create failed (exit {r.returncode}): "
-            f"{(r.stderr or '').strip()[:200]} — falling back to HEAD blob",
+            f"{(r.stderr or '').strip()[:200]} — marking delta unavailable (fail-closed)",
             file=sys.stderr,
         )
+        diff_unavailable = True
 
     # Compute diff for DELTA_SCOPE capsule field
-    diff_lines_r = subprocess.run(
-        ["git", "diff", "HEAD"],
-        cwd=str(cwd), capture_output=True, text=True, timeout=GIT_OP_TIMEOUT_SEC,
-    )
+    try:
+        diff_lines_r = subprocess.run(
+            ["git", "diff", "HEAD"],
+            cwd=str(cwd), capture_output=True, text=True, timeout=GIT_OP_TIMEOUT_SEC,
+        )
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        print(
+            f"[controller] WARNING: git diff HEAD errored ({exc}); "
+            "marking delta unavailable (fail-closed)",
+            file=sys.stderr,
+        )
+        # snapshot_ref may still be valid from stash create, but the delta we
+        # would feed the fanout decision is unknown → fail closed.
+        return snapshot_ref, "", True
+
     if diff_lines_r.returncode != 0:
         print(
             f"[controller] WARNING: git diff HEAD failed (exit {diff_lines_r.returncode}): "
-            f"{(diff_lines_r.stderr or '').strip()[:200]}",
+            f"{(diff_lines_r.stderr or '').strip()[:200]} — marking delta unavailable (fail-closed)",
             file=sys.stderr,
         )
-    diff_text = diff_lines_r.stdout or ""
+        diff_unavailable = True
+        diff_text = ""
+    else:
+        diff_text = diff_lines_r.stdout or ""
+    # Append untracked (not-yet-added) files as pseudo-diff so code_diff review
+    # covers newly-added files too. git diff HEAD excludes them. Best-effort:
+    # on failure keeps the tracked diff_text unchanged.
+    if not diff_unavailable:
+        diff_text = _append_untracked_diff(cwd, diff_text)
 
     if snapshot_ref is None:
         # Clean working tree: use HEAD tree hash as stable blob reference
-        head_r = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=str(cwd), capture_output=True, text=True, timeout=GIT_OP_TIMEOUT_SEC,
-        )
-        snapshot_ref = head_r.stdout.strip() or "HEAD"
+        try:
+            head_r = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=str(cwd), capture_output=True, text=True, timeout=GIT_OP_TIMEOUT_SEC,
+            )
+            snapshot_ref = head_r.stdout.strip() or "HEAD"
+        except (subprocess.TimeoutExpired, OSError):
+            snapshot_ref = "HEAD"
 
-    return snapshot_ref, diff_text
+    return snapshot_ref, diff_text, diff_unavailable
 
 
 def compute_delta_size(diff_text: str) -> tuple[int, int]:
@@ -337,7 +481,15 @@ def _invoke_bridge_mapped(
         "--live-transport",
     ]
     # SC-11/SC-32: deep mode — add --deep flag, --queue-job-id, --plan-file; timeout ≥1800s
-    bridge_timeout = 420
+    # Transport-healthcheck-flap fix (timeout-layer ordering): the controller's
+    # bridge_timeout wraps `run-bridge`, which internally polls codex-send-wait
+    # (CODEX_SEND_WAIT_TIMEOUT=540s). The daemon's worst-case budget is
+    # max_attempts(2) x CODEX_EXEC_TIMEOUT(240) ≈ 480s. The old 420s killed
+    # run-bridge BEFORE a legitimate daemon retry could finish (observed: job
+    # completes on attempt 2 at ~433s, but controller timed out at 420s →
+    # CONVERGENCE_TIMEOUT on a job that actually succeeded). Order must hold:
+    # daemon_budget(~480) < send_wait(540) < controller bridge_timeout(600).
+    bridge_timeout = 600
     if deep:
         run_args.append("--deep")
         bridge_timeout = 1800
@@ -408,7 +560,29 @@ def run_round1(
     """
     from concurrent.futures import ThreadPoolExecutor
 
-    snapshot_ref, diff_text = take_delta_snapshot(cwd)
+    snapshot_ref, diff_text, _diff_unavailable = take_delta_snapshot(cwd)
+
+    # code_diff: materialize diff_text → .patch file so bridge gets a real file target.
+    # run_branch_a passes target=cwd (directory) as a sentinel; replace it here.
+    # Skip in stub mode: the selftest stub returns findings directly and never
+    # touches the bridge, so effective_target is unused — running materialization
+    # there would couple the selftest to the real working-tree diff state.
+    effective_target = target
+    if kind == "code_diff" and stub_dispatch is None:
+        patch = _materialize_code_diff_target(
+            diff_text, output_dir, round_num=1, diff_unavailable=_diff_unavailable,
+        )
+        if patch is None:
+            # Genuinely clean tree or diff unavailable — nothing to review.
+            print(
+                "[controller] code_diff Round 1: no diff to review "
+                f"(diff_unavailable={_diff_unavailable}, diff_text empty={not diff_text.strip()}); "
+                "emitting CONVERGENCE_TIMEOUT",
+                file=sys.stderr,
+            )
+            print("CONVERGENCE_TIMEOUT")
+            raise SystemExit(1)
+        effective_target = patch
 
     if stub_dispatch is not None:
         # Selftest stub path — no real codex
@@ -418,7 +592,7 @@ def run_round1(
     else:
         def _call_a() -> list[dict]:
             m = _invoke_bridge_mapped(
-                kind=kind, target=target, cwd=cwd, output_dir=output_dir,
+                kind=kind, target=effective_target, cwd=cwd, output_dir=output_dir,
                 invocation_id=invocation_id,
                 lens_emphasis=LENS_A_EMPHASIS,
                 review_round=1,
@@ -428,7 +602,7 @@ def run_round1(
 
         def _call_b() -> list[dict]:
             m = _invoke_bridge_mapped(
-                kind=kind, target=target, cwd=cwd, output_dir=output_dir,
+                kind=kind, target=effective_target, cwd=cwd, output_dir=output_dir,
                 invocation_id=invocation_id,
                 lens_emphasis=LENS_B_EMPHASIS,
                 review_round=1,
@@ -436,12 +610,19 @@ def run_round1(
             )
             return _extract_findings_from_mapped(m)
 
-        # Use codex exec --ephemeral via bridge; max_parallel=2 (bounded ThreadPoolExecutor)
+        # Use codex exec --ephemeral via bridge; max_parallel=2 (bounded ThreadPoolExecutor).
+        # SC-9 N7 (fail-closed): an unhandled exception out of fut.result()
+        # (bridge timeout, RuntimeError on transport failure, etc.) would
+        # otherwise propagate a raw stack trace and crash the whole controller
+        # process — making the review neither APPROVED nor a clean
+        # CONVERGENCE_TIMEOUT. Catch it, emit CONVERGENCE_TIMEOUT, and exit 1 so
+        # the parent gate sees a deterministic terminal signal.
         with ThreadPoolExecutor(max_workers=2) as pool:
             fut_a = pool.submit(_call_a)
             fut_b = pool.submit(_call_b)
-            a_findings = fut_a.result()
-            b_findings = fut_b.result()
+            a_findings, b_findings = _run_futures_or_exit(
+                fut_a, fut_b, "Round 1 codex dispatch failed/timed out"
+            )
 
     baseline = merge_findings_union(a_findings, b_findings, claude_findings)
     return baseline, snapshot_ref
@@ -473,11 +654,16 @@ def run_round_n(
     """
     from concurrent.futures import ThreadPoolExecutor
 
-    snapshot_ref, diff_text = take_delta_snapshot(cwd)
+    snapshot_ref, diff_text, diff_unavailable = take_delta_snapshot(cwd)
     delta_lines, delta_files = compute_delta_size(diff_text)
 
-    # D7: large delta → fanout to 2 codex jobs this round
-    large_delta = (delta_lines > threshold_lines) or (delta_files > threshold_files)
+    # D7: large delta → fanout to 2 codex jobs this round.
+    # SC-9 N10 (fail-closed): when the real delta could not be obtained we have
+    # NO basis to decide the delta is "small" — defaulting to dispatch=1 would be
+    # a silent fail-open on a possibly-large change. Treat unavailable delta as
+    # large_delta so we fan out conservatively (dispatch=2) and the capsule
+    # carries diff_unavailable instead of a fabricated empty/clean delta.
+    large_delta = diff_unavailable or (delta_lines > threshold_lines) or (delta_files > threshold_files)
 
     # Build capsule injection fields (SC-7.7)
     scope_constraint = (
@@ -486,28 +672,50 @@ def run_round_n(
         "Do NOT re-judge whether baseline findings are problems. "
         "Do NOT re-audit unchanged code outside the delta."
     )
-    delta_scope_text = (
-        f"DELTA_SCOPE: {delta_lines} lines changed across {delta_files} files.\n"
-        f"--- diff summary ---\n{diff_text[:4000]}"
-    )
+    if diff_unavailable:
+        # Never inject a fake "0 lines / clean tree" delta. Make the downstream
+        # reviewer aware the delta is unknown so it does not assume a no-op change.
+        delta_scope_text = (
+            "DELTA_SCOPE: diff_unavailable: true "
+            "(git delta could not be obtained; treat full target as in-scope, "
+            "do NOT assume a clean/empty delta)."
+        )
+    else:
+        delta_scope_text = (
+            f"DELTA_SCOPE: {delta_lines} lines changed across {delta_files} files.\n"
+            f"--- diff summary ---\n{diff_text[:4000]}"
+        )
     baseline_json_str = json.dumps(baseline_findings, ensure_ascii=False, indent=2)
 
     if stub_dispatch is not None:
         returned = stub_dispatch.round_n_findings(round_num=round_num, large_delta=large_delta)
         dispatch_count = 2 if large_delta else 1
         stub_dispatch.record_dispatch_count(dispatch_count)
-        # Record capsule fields for SC-7.7 verification
+        # Record capsule fields for SC-7.7 verification (+ N10 diff_unavailable flag)
         stub_dispatch.record_capsule_fields({
             "REVIEW_ROUND": round_num,
             "BASELINE_FINDINGS": baseline_json_str,
             "DELTA_SCOPE": delta_scope_text,
             "SCOPE_CONSTRAINT": scope_constraint,
+            "DIFF_UNAVAILABLE": diff_unavailable,
         })
         return returned, snapshot_ref, dispatch_count
 
+    # code_diff: materialize tracked+untracked diff → .patch for bridge target.
+    effective_target = target
+    if kind == "code_diff":
+        patch = _materialize_code_diff_target(
+            diff_text, output_dir, round_num=round_num, diff_unavailable=diff_unavailable,
+        )
+        if patch is not None:
+            effective_target = patch
+        # If patch is None (clean tree / unavailable), effective_target stays as
+        # cwd (a directory); bridge's is_dir() guard will raise CODE_DIFF_TARGET_MUST_BE_FILE
+        # which propagates as CONVERGENCE_TIMEOUT — same fail-closed outcome as Round 1.
+
     # H5: neutral lens for Round 2+ single codex — no REVIEW_LENS_EMPHASIS bias
     common_kwargs = dict(
-        kind=kind, target=target, cwd=cwd, output_dir=output_dir,
+        kind=kind, target=effective_target, cwd=cwd, output_dir=output_dir,
         invocation_id=invocation_id,
         review_round=round_num,
         baseline_findings=baseline_findings,
@@ -529,13 +737,25 @@ def run_round_n(
         with ThreadPoolExecutor(max_workers=2) as pool:
             fut_a = pool.submit(_call_a)
             fut_b = pool.submit(_call_b)
-            a_f = fut_a.result()
-            b_f = fut_b.result()
+            a_f, b_f = _run_futures_or_exit(
+                fut_a, fut_b, f"Round {round_num} codex dispatch failed/timed out"
+            )
         returned = merge_findings_union(a_f, b_f, [])
         return returned, snapshot_ref, 2
     else:
-        # Single neutral codex (no REVIEW_LENS_EMPHASIS)
-        m = _invoke_bridge_mapped(**common_kwargs)  # type: ignore[arg-type]
+        # Single neutral codex (no REVIEW_LENS_EMPHASIS).
+        # SC-9 N7 (fail-closed): _invoke_bridge_mapped raises RuntimeError on
+        # transport failure; convert to a deterministic CONVERGENCE_TIMEOUT.
+        try:
+            m = _invoke_bridge_mapped(**common_kwargs)  # type: ignore[arg-type]
+        except Exception as exc:  # noqa: BLE001 — any failure must fail closed
+            print(
+                f"CONVERGENCE_TIMEOUT: Round {round_num} codex dispatch failed "
+                f"({type(exc).__name__}: {str(exc)[:200]})",
+                file=sys.stderr,
+            )
+            print("CONVERGENCE_TIMEOUT")
+            sys.exit(1)  # single-future path — no second future to cancel
         returned = _extract_findings_from_mapped(m)
         return returned, snapshot_ref, 1
 

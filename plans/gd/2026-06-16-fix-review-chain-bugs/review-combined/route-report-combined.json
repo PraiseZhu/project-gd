@@ -1,0 +1,33 @@
+{
+  "schema_version": "2.0",
+  "router_invocation_id": "review-combined-20260616T103500Z",
+  "mode": "live",
+  "review_target_kind": "execution_only_no_code",
+  "decision": "REQUIRES_CHANGES",
+  "validator_signature": {
+    "validator": "gd-validate-route-report.py",
+    "schema_version": "2.0"
+  },
+  "recorded_at": "2026-06-16T10:35:00Z",
+  "claude_review_origin": "skill_orchestrated",
+  "raw_result_path": "/Users/praise/.claude/plugins/data/codex-openai-codex/gd-review-baselines/gd-plan-master-plan-md-ea63a778c60f/result-20260616T100855Z.md",
+  "raw_result_hash": "e3a9cd05c1ce34a75b00c0ddfc326c27334341aa1c97282ecbde9923e915690a",
+  "codex_review_status": "transport_failed",
+  "codex_review_kind": "execution_outcome",
+  "codex_raw_result_path": null,
+  "codex_raw_result_hash": null,
+  "codex_mapped_result_path": null,
+  "codex_mapped_result_hash": null,
+  "outcome_validator_status": "PASS",
+  "execution_artifact_ref": "plans/gd/2026-06-16-fix-review-chain-bugs/exec/execution-outcome-aggregate.json",
+  "execution_artifact_hash": "74b3c7363f02f22ed884fa4abc181f4c597337a421bdf94bc60424b3a7715b00",
+  "child_review_ledger_path": "plans/gd/2026-06-16-fix-review-chain-bugs/review2/loop-report.md",
+  "findings": [
+    {
+      "reviewer": "transport",
+      "severity": "error",
+      "description": "Codex execution_outcome review transport_failed: WATCH_STUCK x2 (320s/327s). Codex worker starts but never returns on execution_outcome capsule. Per gd.md: missing Codex result → REQUIRES_CHANGES. Note: Codex plan review (same session) gave APPROVED; issue is execution_outcome capsule format/API timeout, not code quality."
+    }
+  ],
+  "notes": "H4b outcome validator: PASS. Claude child A (code correctness): APPROVED. Claude child B (SC coverage): APPROVED after adversarial verification. Codex plan review: APPROVED (indirect execution evidence). Codex execution_outcome: transport_failed (WATCH_STUCK). REQUIRES_CHANGES per gd.md transport_failed rule."
+}
