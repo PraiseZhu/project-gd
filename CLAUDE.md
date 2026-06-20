@@ -2,14 +2,14 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-> ⚠️ 文档版本：本 CLAUDE.md 反映 **v7 `/gd` 生产链路**（2026-06，gd.md lock_revision=22）。`README.md` 已更新到 v7 三档体系（仅残留少量 `/rev` 措辞，大体当前）；`PROJECT_GOAL.md` 仍停留在 v6 "lab-only `/rev`" 阶段（2026-05-09），**已过时**——架构与约束以本文件 + `commands/gd.md` + `docs/gd-changelog.md` 为准。
+> ⚠️ 文档版本：本 CLAUDE.md 反映 **v7 `/gd` 生产链路**（2026-06，gd.md lock_revision=23）。`README.md` 已更新到 v7 三档体系（仅残留少量 `/rev` 措辞，大体当前）；`PROJECT_GOAL.md` 仍停留在 v6 "lab-only `/rev`" 阶段（2026-05-09），**已过时**——架构与约束以本文件 + `commands/gd.md` + `docs/gd-changelog.md` 为准。
 
 ## 项目定位
 
 Project GD（Goal-Driven Anti-Fill Lab）已从最初的 lab-only `/rev` 实验，演进为**生产级 `/gd` Claude-first Goal-Driven 多 Agent review 链路**，替代旧 `/review` 成为主链路。目标不变：用 Goal-Driven + Anti-Fill 长模板机制，减少"格式完整但计划不具体"的 AI 填表问题。
 
 权威源：
-- `commands/gd.md` — `/gd` 实现（Plan H lock_revision=22；rev1–rev22 见 changelog）
+- `commands/gd.md` — `/gd` 实现（Plan H lock_revision=23；rev1–rev22 见 changelog）
 - `docs/gd-v7-project-goal.md` — v7 目标源（GOAL_SOURCE）
 - `prompts/gd-review-standard.md` — review 标准唯一真源（GD_STANDARD，运行时经 `${CLAUDE_PLUGIN_ROOT}/prompts/`）
 - `docs/gd-changelog.md` — 完整 revision 历史
