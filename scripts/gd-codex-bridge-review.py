@@ -790,10 +790,13 @@ def _parse_raw_to_mapped_v1(
     # SC-1: APPROVED exhaustiveness gate — Scope Checked rows must cover all SC-IDs in target.
     if verdict == "APPROVED":
         expected_sc_count = _count_sc_ids_in_target(target_str)
+        # ABC 收尾: sc_rows 提取与 count 同口径认 T-N——count 认 T0-T7（结构化），
+        # raw 的 `| T0 | pass |` 表行也须计入，否则 codex 按引导写 T-N 行却被数成 0 → 误判 SHALLOW。
+        # 旧正则只 `^\| SC-N \|`，不认 `^\| T0 \|`。现 SC-ID + T-N 表行都算。
         sc_rows_in_raw = len({
             m.group(1)
             for m in re.finditer(
-                r"^\|\s*(" + SC_ID_RE.pattern + r")\s*\|",
+                r"^\|\s*(" + SC_ID_RE.pattern + r"|T\d+)\s*\|",
                 raw_text,
                 re.MULTILINE,
             )

@@ -33,3 +33,4 @@
 {"source":"scripts/lib/__init__.py","target":"~/.claude/scripts/lib/__init__.py","method":"direct_cp","ledger_scope":"sync_script_to_live","note":"import dep lib pkg"}
 {"source":"scripts/lib/path_classification.py","target":"~/.claude/scripts/lib/path_classification.py","method":"direct_cp","ledger_scope":"sync_script_to_live","note":"import dep lib"}
 {"source":"scripts/lib/sc_extraction.py","target":"~/.claude/scripts/lib/sc_extraction.py","method":"direct_cp","ledger_scope":"sync_script_to_live","note":"import dep lib"}
+{"source":"scripts/gd-validate-review-content-evidence.py","target":"~/.claude/scripts/gd-validate-review-content-evidence.py","method":"direct_cp","ledger_scope":"sync_script_to_live","note":"L3 content-evidence validator (ABC fix: structured target/broad review + T-N scope), added 2026-06-20"}
