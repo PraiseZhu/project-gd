@@ -148,6 +148,62 @@ def test_v2_code_diff_empty_sc_refs_legacy_exception():
     check(errs == [], "code_diff accepts empty sc_refs")
 
 
+def test_project_style_sc_ids_are_counted_and_extracted(tmp_path):
+    print("[SC-ID grammar] project-style IDs")
+    plan = tmp_path / "plan.md"
+    plan.write_text(
+        "\n".join([
+            "# Plan",
+            "- [ ] SC-L1-1 first",
+            "  - verify (method: command): `echo l1`",
+            "- [ ] SC-Rpt-1 report",
+            "  - verify (method: command): `echo rpt`",
+            "- [ ] SC-Log-Fmt logs",
+            "  - verify (method: command): `echo log`",
+        ]),
+        encoding="utf-8",
+    )
+    check(_bridge._count_sc_ids_in_target(str(plan)) == 3, "counts non-numeric project SC IDs")
+    summary = _bridge._extract_plan_sc_verify_summary(str(plan))
+    check("SC-L1-1" in summary and "SC-Rpt-1" in summary and "SC-Log-Fmt" in summary,
+          "extracts verify commands for project SC IDs")
+
+
+def test_v1_approved_scope_checked_accepts_project_style_sc_ids(tmp_path):
+    print("[v1 parser] APPROVED scope checked project-style SC IDs")
+    plan = tmp_path / "plan.md"
+    plan.write_text(
+        "\n".join([
+            "# Plan",
+            "- [ ] SC-L1-1 first",
+            "- [ ] SC-Rpt-1 report",
+            "- [ ] SC-Log-Fmt logs",
+        ]),
+        encoding="utf-8",
+    )
+    raw = """# Plan Review Result
+
+VERDICT: APPROVED
+
+## Scope Checked
+
+| SC-ID | 结论 | 证据 |
+|-------|------|------|
+| SC-L1-1 | pass | ok |
+| SC-Rpt-1 | pass | ok |
+| SC-Log-Fmt | pass | ok |
+
+## Findings
+
+## Residual Risk
+
+none
+"""
+    mapped, errs = _bridge.parse_raw_to_mapped("plan", str(plan), raw, compat_v1=True)
+    check(errs == [], f"no shallow-review error for project SC IDs: {errs}")
+    check(mapped["gd_review_decision"] == "APPROVED", "APPROVED preserved")
+
+
 def main():
     test_v1_execution_outcome_empty_sc_refs_fail_closed()
     test_v1_code_diff_empty_sc_refs_legacy_exception()

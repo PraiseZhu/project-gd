@@ -237,8 +237,8 @@ def test_deep_outcome_template():
 
 
 def test_deep_run_evidence_extracts_cmd_from_verify_and_counts_from_evidence():
-    """SC-17/SC-28: evidence may contain counts while verify contains the command."""
-    from gd_codex_bridge_review import _extract_run_evidence_into_mapped
+    """SC-17/SC-28: prose extraction is retained only as weak diagnostic hints."""
+    from gd_codex_bridge_review import _deep_run_evidence_errors, _extract_run_evidence_into_mapped
 
     mapped = {
         "findings": [
@@ -259,11 +259,14 @@ def test_deep_run_evidence_extracts_cmd_from_verify_and_counts_from_evidence():
     assert evidence["cmd"] == "python3 -m pytest fixtures/deep-review/synthetic-skip-target/ -q"
     assert evidence["skipped"] == 1
     assert evidence["passed"] == 0
+    assert evidence["evidence_source"] == "extracted_from_finding_prose"
+    errs = _deep_run_evidence_errors(mapped, "execution_outcome")
+    assert any("weak" in err for err in errs)
 
 
 def test_deep_run_evidence_extracts_bare_backtick_skip_count():
     """Live Codex often writes `1 skipped` without pytest's trailing time summary."""
-    from gd_codex_bridge_review import _extract_run_evidence_into_mapped
+    from gd_codex_bridge_review import _deep_run_evidence_errors, _extract_run_evidence_into_mapped
 
     mapped = {
         "findings": [
@@ -282,6 +285,9 @@ def test_deep_run_evidence_extracts_bare_backtick_skip_count():
     assert evidence["skipped"] == 1
     assert evidence["passed"] == 0
     assert evidence["failed"] == 0
+    assert evidence["evidence_source"] == "extracted_from_finding_prose"
+    errs = _deep_run_evidence_errors(mapped, "execution_outcome")
+    assert any("weak" in err for err in errs)
 
 
 def test_deep_run_evidence_gate_rejects_approved_without_evidence():
@@ -344,17 +350,69 @@ def test_deep_run_evidence_gate_rejects_approved_with_skips():
         "run_evidence": [
             {
                 "cmd": "python3 -m pytest -q",
+                "cwd": "/tmp/project",
                 "exit": 0,
                 "passed": 1,
                 "failed": 0,
                 "skipped": 1,
                 "skip_reason": "dependency unavailable",
                 "interpreter_version": "Python 3.13.12",
+                "evidence_source": "command_rerun",
+                "stdout_excerpt": "1 skipped in 0.01s",
             }
         ],
     }
     errs = _deep_run_evidence_errors(mapped, "execution_outcome")
     assert any("APPROVED cannot include" in err for err in errs)
+
+
+def test_deep_run_evidence_gate_accepts_real_transcript_fields():
+    """Deep execution run_evidence must be real transcript evidence, not prose-derived."""
+    from gd_codex_bridge_review import _deep_run_evidence_errors
+
+    mapped = {
+        "gd_review_decision": "APPROVED",
+        "run_evidence": [
+            {
+                "cmd": "python3 -m pytest -q",
+                "cwd": "/tmp/project",
+                "exit": 0,
+                "passed": 3,
+                "failed": 0,
+                "skipped": 0,
+                "skip_reason": "",
+                "interpreter_version": "Python 3.13.12",
+                "evidence_source": "command_rerun",
+                "stdout_excerpt": "3 passed in 0.10s",
+            }
+        ],
+    }
+    assert _deep_run_evidence_errors(mapped, "execution_outcome") == []
+
+
+def test_deep_run_evidence_gate_rejects_prose_derived_even_with_counts():
+    """Prose-derived run_evidence is not a real command transcript."""
+    from gd_codex_bridge_review import _deep_run_evidence_errors
+
+    mapped = {
+        "gd_review_decision": "APPROVED",
+        "run_evidence": [
+            {
+                "cmd": "python3 -m pytest -q",
+                "cwd": "/tmp/project",
+                "exit": 0,
+                "passed": 3,
+                "failed": 0,
+                "skipped": 0,
+                "skip_reason": "",
+                "interpreter_version": "Python 3.13.12",
+                "evidence_source": "extracted_from_finding_prose",
+                "stdout_excerpt": "3 passed in 0.10s",
+            }
+        ],
+    }
+    errs = _deep_run_evidence_errors(mapped, "execution_outcome")
+    assert any("weak" in err for err in errs)
 
 
 def test_deep_code_diff_gate_rejects_finding_without_target_line():

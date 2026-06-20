@@ -39,6 +39,9 @@ from pathlib import Path
 # ----------------------------- Paths ----------------------------- #
 
 GD_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(GD_PROJECT_ROOT / "scripts"))
+from lib.sc_extraction import SC_ID_RE, extract_sc_ids  # noqa: E402
+
 SCHEMA_PATH_V1 = GD_PROJECT_ROOT / "schema" / "gd-review-result.schema.json"
 SCHEMA_PATH_V2 = GD_PROJECT_ROOT / "schema" / "gd-review-result-v2.schema.json"
 # Backward-compat alias (legacy code may still reference SCHEMA_PATH).
@@ -279,7 +282,7 @@ def _get_title_by_kind(kind: str, compat_v1: bool) -> str:
         return TITLE_BY_KIND_V1[kind]
     return TITLE_BY_KIND_V2[kind]
 REQUIRED_FINDING_FIELDS_CN = ["问题", "证据", "影响", "最小修复", "验收"]
-SC_REF_RE = re.compile(r"\b(?:[A-Za-z][A-Za-z0-9]*-)?SC-[A-Za-z]*[0-9]+(?:-[0-9]+)?\b")
+SC_REF_RE = SC_ID_RE
 VERDICT_LINE_RE = re.compile(r"^VERDICT:\s*(APPROVED|REQUIRES_CHANGES)\s*$", re.MULTILINE)
 BARE_VERDICT_ANY_RE = re.compile(r"^(VERDICT|REV_VERDICT)\s*:", re.MULTILINE)
 TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$")
@@ -364,14 +367,14 @@ def _new_run_id() -> str:
     return f"{ts}-{secrets.token_hex(3)}"
 
 
-# SC-1: count unique top-level SC-N IDs in a plan file for exhaustiveness gate.
-# Only checklist-style definitions (`- [ ] SC-N(...)` / `- [x] SC-N`) count —
+# SC-1: count unique top-level SC IDs in a plan file for exhaustiveness gate.
+# Only checklist-style definitions (`- [ ] SC-...` / `- [x] SC-...`) count —
 # prose mentions like `spec SC-003` must not inflate the expected row count.
-_PLAN_SC_ID_RE = re.compile(r"^- \[[ xX]\] SC-(\d+)\b", re.MULTILINE)
+_PLAN_SC_ID_RE = re.compile(r"^\s*-\s*\[[ xX]\]\s*(" + SC_ID_RE.pattern + r")\b", re.MULTILINE)
 
 
 def _count_sc_ids_in_target(target_path: str) -> int:
-    """Return number of unique SC-<N> checklist definitions in target plan."""
+    """Return number of unique checklist SC-ID definitions in target plan."""
     try:
         text = Path(target_path).read_text(encoding="utf-8")
         return len(set(_PLAN_SC_ID_RE.findall(text)))
@@ -555,7 +558,7 @@ def validate_mapped_schema_v1(d: dict) -> list[str]:
                     errs.append(f"findings[{i}].sc_refs 必须非空数组（code_diff 除外）")
                 else:
                     for sc_ref in fd["sc_refs"]:
-                        if not isinstance(sc_ref, str) or not re.match(r"^(?:[A-Za-z][A-Za-z0-9]*-)?SC-[A-Za-z]*[0-9]+(?:-[0-9]+)?$", sc_ref):
+                        if not isinstance(sc_ref, str) or not SC_ID_RE.fullmatch(sc_ref):
                             errs.append(f"findings[{i}].sc_refs 含不合法 {sc_ref!r}")
 
     mn = d["merge_notes"]
@@ -782,7 +785,14 @@ def _parse_raw_to_mapped_v1(
     # SC-1: APPROVED exhaustiveness gate — Scope Checked rows must cover all SC-IDs in target.
     if verdict == "APPROVED":
         expected_sc_count = _count_sc_ids_in_target(target_str)
-        sc_rows_in_raw = len(re.findall(r"^\|\s*SC-\d+", raw_text, re.MULTILINE))
+        sc_rows_in_raw = len({
+            m.group(1)
+            for m in re.finditer(
+                r"^\|\s*(" + SC_ID_RE.pattern + r")\s*\|",
+                raw_text,
+                re.MULTILINE,
+            )
+        })
         if expected_sc_count > 0 and sc_rows_in_raw < expected_sc_count:
             reason = (
                 f"SHALLOW_REVIEW_APPROVED: Scope Checked 表仅 {sc_rows_in_raw} 行"
@@ -1521,7 +1531,7 @@ def build_capsule_text(
         f"impossible and will produce non-conformant output (detected downstream as degraded).\n\n"
         f"## Review Template ({template_path.name})\n\n"
         f"> ⚠️ **FORMAT CONSTRAINT (overrides template §2 example)**:\n"
-        f"> Scope Checked 的每一行**必须**是 `| SC-N | pass/fail/n_a | <证据> |`（SC-ID 逐行）。\n"
+        f"> Scope Checked 的每一行**必须**是 `| <target 中真实 SC-ID> | pass/fail/n_a | <证据> |`（SC-ID 逐行）。\n"
         f"> 绝对禁止 facet/维度行（如 `| 审计划完整性 |`）——它们不被 validator 计入，判 SHALLOW_REVIEW → degraded。\n"
         f"> 见下方 Reviewer Instructions 中的 CRITICAL OVERRIDE 说明。\n\n"
         f"```\n{template_text}\n```\n\n"
@@ -1552,32 +1562,31 @@ def build_capsule_text(
         f"- 按 §Review Standard 给出 review\n"
         f"- 输出 raw markdown，必须含: 行首 'VERDICT: APPROVED' 或 'VERDICT: REQUIRES_CHANGES'\n"
         f"- 标题: '# {title_for_kind}'；包含 'Scope Checked' / '## Findings' / '## Residual Risk' 段\n"
-        f"- 每个 Finding 含 severity 标记 + 'SC: SC-<N>' 行 + 5 中文字段 (问题/证据/影响/最小修复/验收)\n"
+        f"- 每个 Finding 含 severity 标记 + `SC: <target 中真实 SC-ID>` 行 + 5 中文字段 (问题/证据/影响/最小修复/验收)\n"
         f"- REQUIRES_CHANGES 必须含 ≥1 ### Finding\n"
         f"- **每条 finding 必须 evidence: 含真实 path:line 引用**（L3 validator 会校验行号指向 target 真实内容）\n"
-        f"- **每条 finding 的 sc_refs / SC-<N> 必须是 target 中真实存在的 SC-ID**（L3 validator 会校验；"
+        f"- **每条 finding 的 sc_refs / SC 行必须是 target 中真实存在的 SC-ID**（L3 validator 会校验；"
         f"引用 target 不存在的 SC-ID 判 FAKE_EVIDENCE_DETECTED）。"
         f"若 finding 是跨 SC 的结构性问题（如缺字段、格式不符），挑一个 **target 中真实存在**、"
         f"且该问题最直接影响的 SC-ID 来挂；**绝不臆造或硬编码编号**（target 的 SC 编号体系各异，"
-        f"如 SC-1 / SC-2.5 / SC-6.4 等，必须按本 target 实际 SC 选）。\n"
+        f"如 SC-1 / SC-W1-1 / SC-L1-1 / SC-Rpt-1 / SC-Log-Fmt 等，必须按本 target 实际 SC 选）。\n"
         f"- ⚠️ **CRITICAL OVERRIDE（覆盖模板格式）**: '## Scope Checked' 行格式**强制为 SC-ID 逐行**，"
         f"无论 VERDICT 是 APPROVED 还是 REQUIRES_CHANGES 都必须遵守。"
         f"**绝对禁止**用 facet/维度行（如 `| 审计划完整性 | pass |`、`| anti-fill | pass |`）替代 SC-ID 行——"
         f"这是 SHALLOW_REVIEW，L3 validator 直接判 degraded，APPROVED 变 FAILED。"
-        f"SC-ID 格式**严格**为 `SC-<数字>`（大写 SC + 连字符，例 `SC-1`、`SC-14`）；"
+        f"SC-ID 格式必须严格复用 target 中真实 ID（大写 SC + 连字符，可含字母/数字段，例 `SC-1`、`SC-L1-1`、`SC-Rpt-1`、`SC-Log-Fmt`）；"
         f"**禁止**写成 `SC1` / `sc-1` / `SC 1`。**强制模板**（必须照此格式，不得用其他格式）：\n"
         f"  ## Scope Checked\n"
         f"  | SC-ID | 结论 | 证据(≤30字) |\n"
         f"  |-------|------|-------------|\n"
-        f"  | SC-1 | pass | <证据> |\n"
-        f"  | SC-2 | pass | <证据> |\n"
-        f"  | SC-3 | pass | <证据> |\n"
-        f"  ...（本计划共 SC-1~SC-11，11 行，逐条覆盖）\n"
-        f"  | SC-11 | pass | <证据> |\n"
+        f"  | SC-L1-1 | pass | <证据> |\n"
+        f"  | SC-Rpt-1 | pass | <证据> |\n"
+        f"  | SC-Log-Fmt | pass | <证据> |\n"
+        f"  ...（按本 target 实际 SC-ID 逐条覆盖）\n"
         f"  注意：只有 SC-ID 行才被 validator 识别，facet 行一律不计入覆盖数。\n"
         f"- **REVIEW_FOCUS 与 Scope Checked 的关系（粘合规则）**："
         f"REVIEW_FOCUS 描述的是审查侧重维度，你可按这些维度组织审查内容；"
-        f"但 Scope Checked 表的**行格式必须逐 SC-ID 落行**（每行 `| SC-N | ...`），"
+        f"但 Scope Checked 表的**行格式必须逐 SC-ID 落行**（每行 `| <真实 SC-ID> | ...`），"
         f"可选加第三列标注该 SC 所属 REVIEW_FOCUS 维度（如 `fail-closed`）作为组织辅助，"
         f"但不得用 facet 维度行替代 SC-ID 行。"
         f"**只输出 facet 维度行而不输出 SC-ID 行 = SHALLOW_REVIEW，validator 判 degraded。**\n"
@@ -1597,7 +1606,7 @@ def _extract_plan_sc_verify_summary(plan_file_path: str) -> str:
     """SC-33: Extract SC verify commands from plan markdown for deep capsule."""
     try:
         text = Path(plan_file_path).read_text(encoding="utf-8")
-        sc_hdr = re.compile(r"^\s*-\s*\[[ xX]\]\s*(SC-[\d]+(?:[.\-][\w]+)*)", re.MULTILINE)
+        sc_hdr = re.compile(r"^\s*-\s*\[[ xX]\]\s*(" + SC_ID_RE.pattern + r")\b", re.MULTILINE)
         verify_re = re.compile(r"-\s+verify\s*\(method:\s*([^)]+)\)\s*:\s*`([^`]+)`", re.MULTILINE | re.DOTALL)
         entries = []
         sc_positions = list(sc_hdr.finditer(text))
@@ -1614,11 +1623,13 @@ def _extract_plan_sc_verify_summary(plan_file_path: str) -> str:
 
 
 def _extract_run_evidence_into_mapped(mapped: dict) -> bool:
-    """SC-17/SC-28: extract structured run_evidence from finding-evidence prose.
+    """SC-17/SC-28: extract weak run_evidence hints from finding prose.
 
-    Codex may report pytest output inside a finding's `evidence` text rather than as
-    a structured run_evidence array. This helper parses cmd / passed / failed / skipped /
-    interpreter_version out of that prose and populates mapped['run_evidence'] in place.
+    Codex may report pytest output inside a finding's `evidence` text rather
+    than as a structured run_evidence array. This helper keeps those hints for
+    diagnosis, but marks them evidence_source=extracted_from_finding_prose.
+    Deep execution/combined gates reject that source; prose is not proof that a
+    command actually ran.
 
     Called from BOTH run-bridge and parse-transport (canonical raw→mapped path) so the
     router subcommand — which consumes parse-transport's mapped output — also benefits.
@@ -1660,12 +1671,14 @@ def _extract_run_evidence_into_mapped(mapped: dict) -> bool:
         failed_count = failed_count or 0
         extracted.append({
             "cmd": cmd_m.group(1),
+            "cwd": "",
             "exit": 1 if failed_count > 0 else 0,
             "passed": passed_count or 0,
             "failed": failed_count,
             "skipped": skipped_count or 0,
             "skip_reason": "(extracted from Codex finding evidence)",
             "interpreter_version": f"Python {ver_m.group(1)}" if ver_m else "Python 3.x (from Codex evidence)",
+            "evidence_source": "extracted_from_finding_prose",
         })
     if extracted:
         mapped["run_evidence"] = extracted
@@ -1676,13 +1689,16 @@ def _extract_run_evidence_into_mapped(mapped: dict) -> bool:
 _DEEP_RUN_EVIDENCE_KINDS = {"execution_outcome", "combined"}
 _DEEP_RUN_EVIDENCE_FIELDS = (
     "cmd",
+    "cwd",
     "exit",
     "passed",
     "failed",
     "skipped",
     "skip_reason",
     "interpreter_version",
+    "evidence_source",
 )
+_WEAK_RUN_EVIDENCE_SOURCES = {"", "extracted_from_finding_prose", "codex_finding_prose"}
 
 _CODE_LINE_REF_RE = re.compile(
     r"([A-Za-z0-9_./\-]+\.(?:py|sh|json|yaml|yml|toml|ts|tsx|js|patch|diff|md)):(\d+)(?:-(\d+))?"
@@ -1714,6 +1730,16 @@ def _deep_run_evidence_errors(mapped: dict, kind: str) -> list[str]:
         except (TypeError, ValueError):
             errs.append(f"run_evidence[{i}] exit/failed/skipped must be integers")
             continue
+        source = str(item.get("evidence_source") or "").strip()
+        if source in _WEAK_RUN_EVIDENCE_SOURCES:
+            errs.append(
+                f"run_evidence[{i}] evidence_source={source or '<missing>'} is weak; "
+                "deep review requires real command transcript evidence"
+            )
+        if not str(item.get("cwd") or "").strip():
+            errs.append(f"run_evidence[{i}] cwd must be a non-empty execution directory")
+        if not any(str(item.get(k) or "").strip() for k in ("stdout_excerpt", "stdout_path", "output", "stderr_excerpt")):
+            errs.append(f"run_evidence[{i}] requires stdout_excerpt/stdout_path/output/stderr_excerpt")
         if skipped > 0 and not str(item.get("skip_reason") or "").strip():
             errs.append(f"run_evidence[{i}] skipped>0 requires skip_reason")
         if approved and (exit_code != 0 or failed > 0 or skipped > 0):
@@ -1840,7 +1866,9 @@ def _build_deep_outcome_capsule(kind: str, target: Path, plan_file: str | None =
         f"\n## 深度结果审查要求（SC-4）\n\n"
         f"**必须：提供真实运行证据（run_evidence）**\n\n"
         f"须真实执行各 verify 命令，并将运行结果以 run_evidence 数组形式报告：\n\n"
-        f"cmd / exit / passed / failed / skipped / skip_reason / interpreter_version\n\n"
+        f"cmd / cwd / exit / passed / failed / skipped / skip_reason / interpreter_version / evidence_source / stdout_excerpt(或 stdout_path/output)\n\n"
+        f"evidence_source 必须指向真实执行记录（如 writer_transcript / command_rerun / verifier_artifact）；"
+        f"不得使用 extracted_from_finding_prose。\n\n"
         f"**跳过必查因（SC-4 必须）**：skipped > 0 时，须在 skip_reason 中说明具体跳过原因。\n\n"
         f"**run_evidence 须放入 JSON block 的 run_evidence 数组字段中。**\n"
         + plan_section

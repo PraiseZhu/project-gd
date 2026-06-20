@@ -62,6 +62,7 @@ import datetime
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -129,6 +130,10 @@ GIT_OP_TIMEOUT_SEC = 30
 # Deep mode (1800s bridge) + parse overhead → 2000s headroom.
 ROUND_FUTURE_TIMEOUT_SEC = 2000
 
+BRIDGE_FAILURE_CATEGORY = "bridge_failure"
+CONTROLLER_FINAL_REPORT = "controller-final-report.json"
+_RUN_FAILURE_STATUSES = {"degraded", "failed", "failed_to_run", "transport_failed", "wrapper_schema_fail"}
+
 def _run_futures_or_exit(
     fut_a: Future[Any],
     fut_b: Future[Any],
@@ -195,6 +200,324 @@ def gen_id() -> str:
 
 def _severity_rank(s: str) -> int:
     return {"P1": 2, "P2": 1}.get(s, 0)
+
+
+def _norm_path(p: object) -> str:
+    return str(p or "").strip().lstrip("./").lower()
+
+
+def _hash_file_if_present(path: Path) -> str | None:
+    if not path.is_file():
+        return None
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _target_hash_for_resolution(kind: str, target: Path) -> str | None:
+    """Hash the stable review target when it is a file.
+
+    code_diff uses the worktree delta instead of a target file hash; execution
+    outcome and combined reviews can also resolve by updating the execution
+    artifact itself.
+    """
+    if kind == "code_diff":
+        return None
+    return _hash_file_if_present(target)
+
+
+def _modified_files_from_diff(diff_text: str) -> set[str]:
+    files: set[str] = set()
+    for line in diff_text.splitlines():
+        if line.startswith("diff --git "):
+            parts = line.split()
+            if len(parts) >= 4:
+                files.add(_norm_path(parts[3][2:] if parts[3].startswith("b/") else parts[3]))
+        elif line.startswith("+++ b/"):
+            files.add(_norm_path(line[len("+++ b/"):]))
+        elif line.startswith("--- a/"):
+            files.add(_norm_path(line[len("--- a/"):]))
+    files.discard("/dev/null")
+    return {f for f in files if f}
+
+
+_PATH_LINE_RE = re.compile(
+    r"([A-Za-z0-9_./\-]+\.(?:md|py|sh|json|yaml|yml|toml|ts|tsx|js|patch|diff)):(\d+)"
+)
+
+
+def _finding_referenced_files(finding: dict) -> set[str]:
+    refs: set[str] = set()
+    direct_file = _norm_path(finding.get("file"))
+    if direct_file and not direct_file.startswith("<bridge:"):
+        refs.add(direct_file)
+    text = "\n".join(
+        str(finding.get(k, "") or "")
+        for k in ("evidence", "impact", "required_fix", "verify", "title")
+    )
+    for path_ref, _line in _PATH_LINE_RE.findall(text):
+        refs.add(_norm_path(path_ref))
+    return refs
+
+
+def _sha256_text(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _round_meta(
+    *,
+    kind: str,
+    target: Path,
+    snapshot_ref: str | None,
+    diff_text: str,
+    diff_unavailable: bool,
+    dispatch_count: int,
+) -> dict:
+    return {
+        "snapshot_ref": snapshot_ref,
+        "diff_unavailable": diff_unavailable,
+        "diff_hash": None if diff_unavailable else _sha256_text(diff_text),
+        "modified_files": sorted(_modified_files_from_diff(diff_text)) if not diff_unavailable else [],
+        "target_hash": _target_hash_for_resolution(kind, target),
+        "dispatch_count": dispatch_count,
+    }
+
+
+def _bridge_failure_finding(
+    *,
+    round_num: int,
+    source: str,
+    mapped: dict | None = None,
+    reason: str | None = None,
+) -> dict:
+    mapped = mapped or {}
+    meta = mapped.get("_controller_meta", {}) if isinstance(mapped.get("_controller_meta"), dict) else {}
+    status = str(mapped.get("review_run_status", "") or "missing").strip() or "missing"
+    decision = str(mapped.get("gd_review_decision", "") or "missing").strip() or "missing"
+    degraded_reason = ""
+    merge_notes = mapped.get("merge_notes")
+    if isinstance(merge_notes, dict):
+        degraded_reason = str(merge_notes.get("degraded_reason") or "")
+    msg = reason or degraded_reason or f"mapped status={status}, decision={decision}"
+    return {
+        "id": f"BRIDGE-FAIL-r{round_num}-{source}",
+        "severity": "P1",
+        "title": "Codex bridge/mapped review failed",
+        "sc_refs": [],
+        "file": f"<bridge:{source}>",
+        "line": None,
+        "category": BRIDGE_FAILURE_CATEGORY,
+        "status": "unresolved",
+        "source": source,
+        "bridge_failure": True,
+        "review_run_status": status,
+        "gd_review_decision": decision,
+        "mapped_result_path": meta.get("mapped_result_path"),
+        "evidence": msg,
+        "impact": "L2 controller cannot treat a failed/degraded Codex review as an empty clean review.",
+        "required_fix": "Fix the bridge/wrapper/schema/run-evidence failure and rerun the review.",
+        "verify": "Rerun /review2 so mapped review_run_status=completed and gd_review_decision is not FAILED.",
+    }
+
+
+def _controller_failure_finding(*, stage: str, reason: str) -> dict:
+    return _bridge_failure_finding(
+        round_num=0,
+        source=f"controller:{stage}",
+        reason=reason,
+    )
+
+
+def _mapped_requires_bridge_failure(mapped: dict) -> tuple[bool, str]:
+    status = str(mapped.get("review_run_status", "") or "").strip().lower()
+    decision = str(mapped.get("gd_review_decision", "") or "").strip().upper()
+    if not status:
+        return True, "mapped review_run_status missing"
+    if not decision:
+        return True, "mapped gd_review_decision missing"
+    if decision == "FAILED":
+        return True, f"mapped gd_review_decision=FAILED (run_status={status})"
+    if status in _RUN_FAILURE_STATUSES:
+        return True, f"mapped review_run_status={status} (decision={decision})"
+    return False, ""
+
+
+def _has_bridge_failure(findings: list[dict]) -> bool:
+    return any(
+        bool(f.get("bridge_failure")) or str(f.get("category", "")).strip() == BRIDGE_FAILURE_CATEGORY
+        for f in findings
+    )
+
+
+def _collect_controller_mapped_results(output_dir: Path) -> list[dict]:
+    results: list[dict] = []
+    for path in sorted(output_dir.rglob("codex_mapped_*.json")):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception as exc:  # noqa: BLE001
+            results.append({"path": str(path), "read_error": str(exc)})
+            continue
+        results.append({
+            "path": str(path),
+            "review_kind": data.get("review_kind"),
+            "review_run_status": data.get("review_run_status"),
+            "gd_review_decision": data.get("gd_review_decision"),
+            "findings_count": len(data.get("findings", []) or []),
+            "run_evidence_count": len(data.get("run_evidence", []) or []),
+            "bridge_failure": _mapped_requires_bridge_failure(data)[0],
+            "degraded_reason": (
+                data.get("merge_notes", {}).get("degraded_reason")
+                if isinstance(data.get("merge_notes"), dict)
+                else None
+            ),
+        })
+    return results
+
+
+def _read_json_if_present(path: Path) -> dict | None:
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _write_controller_final_report(
+    *,
+    output_dir: Path,
+    invocation_id: str,
+    branch_label: str,
+    kind: str,
+    target: Path,
+    cwd: Path,
+    final_verdict: str,
+    exit_reason: str,
+    baseline: list[dict],
+    rounds: list[dict],
+    initial_state: dict,
+    final_state: dict,
+) -> Path:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    mapped_results = _collect_controller_mapped_results(output_dir)
+    report = {
+        "schema_version": "1.0",
+        "generated_at": now_iso(),
+        "controller_invocation_id": invocation_id,
+        "branch": branch_label,
+        "review_kind": kind,
+        "cwd": str(cwd),
+        "target": str(target),
+        "final_verdict": final_verdict,
+        "exit_reason": exit_reason,
+        "baseline_unresolved_count": sum(1 for f in baseline if f.get("status") == "unresolved"),
+        "new_delta_unresolved_count": sum(1 for f in baseline if f.get("new_in_delta") and f.get("status") == "unresolved"),
+        "bridge_failure_count": sum(1 for f in baseline if f.get("bridge_failure")),
+        "initial_state": initial_state,
+        "final_state": final_state,
+        "rounds": rounds,
+        "baseline_findings": baseline,
+        "mapped_results": mapped_results,
+    }
+    path = output_dir / CONTROLLER_FINAL_REPORT
+    path.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return path
+
+
+def _write_combined_controller_final_report(
+    *,
+    output_dir: Path,
+    invocation_id: str,
+    cwd: Path,
+    target: Path,
+    final_verdict: str,
+    exit_reason: str,
+    branch_a_report_path: Path | None = None,
+    branch_b_report_path: Path | None = None,
+    simplify_status: dict | None = None,
+    failure_stage: str | None = None,
+    failure_evidence: str | None = None,
+) -> Path:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    branch_a_report = _read_json_if_present(branch_a_report_path) if branch_a_report_path else None
+    branch_b_report = _read_json_if_present(branch_b_report_path) if branch_b_report_path else None
+    baseline_reports = [r for r in (branch_a_report, branch_b_report) if isinstance(r, dict)]
+    baseline_findings = [
+        finding
+        for report in baseline_reports
+        for finding in list(report.get("baseline_findings", []) or [])
+    ]
+    rounds = []
+    for label, report in (("branch_a", branch_a_report), ("branch_b", branch_b_report)):
+        if not isinstance(report, dict):
+            continue
+        rounds.append({
+            "branch": label,
+            "report_path": str(branch_a_report_path if label == "branch_a" else branch_b_report_path),
+            "final_verdict": report.get("final_verdict"),
+            "exit_reason": report.get("exit_reason"),
+            "baseline_unresolved_count": report.get("baseline_unresolved_count"),
+            "bridge_failure_count": report.get("bridge_failure_count"),
+            "new_delta_unresolved_count": report.get("new_delta_unresolved_count"),
+            "mapped_results_count": len(report.get("mapped_results", []) or []),
+        })
+    if failure_stage:
+        rounds.append({
+            "branch": "combined",
+            "stage": failure_stage,
+            "final_verdict": "REQUIRES_CHANGES",
+            "exit_reason": exit_reason,
+            "failure_evidence": failure_evidence,
+        })
+    report = {
+        "schema_version": "1.0",
+        "generated_at": now_iso(),
+        "controller_invocation_id": invocation_id,
+        "branch": "combined",
+        "review_kind": "combined",
+        "cwd": str(cwd),
+        "target": str(target),
+        "final_verdict": final_verdict,
+        "exit_reason": exit_reason,
+        "baseline_unresolved_count": sum(
+            int(report.get("baseline_unresolved_count") or 0)
+            for report in baseline_reports
+        ) if final_verdict != "APPROVED" else 0,
+        "new_delta_unresolved_count": sum(
+            int(report.get("new_delta_unresolved_count") or 0)
+            for report in baseline_reports
+        ) if final_verdict != "APPROVED" else 0,
+        "bridge_failure_count": sum(
+            int(report.get("bridge_failure_count") or 0)
+            for report in baseline_reports
+        ),
+        "initial_state": {
+            "branch_a_report_path": str(branch_a_report_path) if branch_a_report_path else None,
+            "branch_b_report_path": str(branch_b_report_path) if branch_b_report_path else None,
+        },
+        "final_state": {
+            "branch_a_report_path": str(branch_a_report_path) if branch_a_report_path else None,
+            "branch_b_report_path": str(branch_b_report_path) if branch_b_report_path else None,
+            "branch_a_report_loaded": branch_a_report is not None,
+            "branch_b_report_loaded": branch_b_report is not None,
+            "simplify_status": simplify_status or {},
+            "failure_stage": failure_stage,
+            "failure_evidence": failure_evidence,
+        },
+        "rounds": rounds,
+        "baseline_findings": baseline_findings,
+        "mapped_results": _collect_controller_mapped_results(output_dir),
+        "combined_reports": {
+            "branch_a": branch_a_report,
+            "branch_b": branch_b_report,
+        },
+    }
+    path = output_dir / CONTROLLER_FINAL_REPORT
+    path.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return path
 
 
 # ---------------------------------------------------------------------------
@@ -553,16 +876,43 @@ def _invoke_bridge_mapped(
         raise RuntimeError(f"parse-transport failed: {r_parse.stderr[:300]!r}")
 
     mapped = json.loads(mapped_out.read_text(encoding="utf-8"))
+    mapped["_controller_meta"] = {
+        "mapped_result_path": str(mapped_out),
+        "transport_result_path": str(transport_raw),
+        "review_round": review_round,
+        "lens_tag": _lens_tag,
+        "source": _lens_tag or f"round_{review_round}",
+    }
     return mapped
 
 
-def _extract_findings_from_mapped(mapped: dict) -> list[dict]:
+def _extract_findings_from_mapped(
+    mapped: dict,
+    *,
+    source: str,
+    round_num: int,
+) -> list[dict]:
     """
     Extract findings[] from a bridge mapped JSON.
     Controller consumes only pre-validated mapped JSON — no raw regex parsing (SC-7.2).
     review_run_status and gd_review_decision are read from the mapped dict directly.
     """
-    return list(mapped.get("findings", []) or [])
+    needs_bridge_failure, reason = _mapped_requires_bridge_failure(mapped)
+    if needs_bridge_failure:
+        return [
+            _bridge_failure_finding(
+                round_num=round_num,
+                source=source,
+                mapped=mapped,
+                reason=reason,
+            )
+        ]
+    findings = []
+    for f in list(mapped.get("findings", []) or []):
+        item = dict(f)
+        item.setdefault("source", source)
+        findings.append(item)
+    return findings
 
 
 # ---------------------------------------------------------------------------
@@ -580,7 +930,8 @@ def run_round1(
     deep: bool = False,
     queue_job_id: str | None = None,
     plan_file: str | None = None,
-) -> tuple[list[dict], str | None]:
+    include_meta: bool = False,
+) -> tuple[list[dict], str | None] | tuple[list[dict], str | None, dict]:
     """
     Dispatch codex_A + codex_B in parallel (max_parallel=2 per gd-review-suite-controller pattern).
     Returns (baseline_findings_list, delta_snapshot_ref).
@@ -625,7 +976,7 @@ def run_round1(
                 review_round=1,
                 deep=deep, queue_job_id=queue_job_id, plan_file=plan_file,
             )
-            return _extract_findings_from_mapped(m)
+            return _extract_findings_from_mapped(m, source="codex_A", round_num=1)
 
         def _call_b() -> list[dict]:
             m = _invoke_bridge_mapped(
@@ -635,7 +986,7 @@ def run_round1(
                 review_round=1,
                 deep=deep, queue_job_id=queue_job_id, plan_file=plan_file,
             )
-            return _extract_findings_from_mapped(m)
+            return _extract_findings_from_mapped(m, source="codex_B", round_num=1)
 
         # Use codex exec --ephemeral via bridge; max_parallel=2 (bounded ThreadPoolExecutor).
         # SC-9 N7 (fail-closed): an unhandled exception out of fut.result()
@@ -652,6 +1003,16 @@ def run_round1(
             )
 
     baseline = merge_findings_union(a_findings, b_findings, claude_findings)
+    meta = _round_meta(
+        kind=kind,
+        target=target,
+        snapshot_ref=snapshot_ref,
+        diff_text=diff_text,
+        diff_unavailable=_diff_unavailable,
+        dispatch_count=2,
+    )
+    if include_meta:
+        return baseline, snapshot_ref, meta
     return baseline, snapshot_ref
 
 
@@ -673,7 +1034,8 @@ def run_round_n(
     deep: bool = False,
     queue_job_id: str | None = None,
     plan_file: str | None = None,
-) -> tuple[list[dict], str | None, int]:
+    include_meta: bool = False,
+) -> tuple[list[dict], str | None, int] | tuple[list[dict], str | None, int, dict]:
     """
     Run Round N (N>=2).
     Returns (returned_findings, snapshot_ref, dispatch_count).
@@ -726,6 +1088,16 @@ def run_round_n(
             "SCOPE_CONSTRAINT": scope_constraint,
             "DIFF_UNAVAILABLE": diff_unavailable,
         })
+        meta = _round_meta(
+            kind=kind,
+            target=target,
+            snapshot_ref=snapshot_ref,
+            diff_text=diff_text,
+            diff_unavailable=diff_unavailable,
+            dispatch_count=dispatch_count,
+        )
+        if include_meta:
+            return returned, snapshot_ref, dispatch_count, meta
         return returned, snapshot_ref, dispatch_count
 
     # code_diff: materialize tracked+untracked diff → .patch for bridge target.
@@ -755,11 +1127,11 @@ def run_round_n(
         # D7: dispatch 2 codex jobs (A+B emphasis, scope still limited to delta)
         def _call_a() -> list[dict]:
             m = _invoke_bridge_mapped(**common_kwargs, lens_emphasis=LENS_A_EMPHASIS)  # type: ignore[arg-type]
-            return _extract_findings_from_mapped(m)
+            return _extract_findings_from_mapped(m, source="codex_A", round_num=round_num)
 
         def _call_b() -> list[dict]:
             m = _invoke_bridge_mapped(**common_kwargs, lens_emphasis=LENS_B_EMPHASIS)  # type: ignore[arg-type]
-            return _extract_findings_from_mapped(m)
+            return _extract_findings_from_mapped(m, source="codex_B", round_num=round_num)
 
         with ThreadPoolExecutor(max_workers=2) as pool:
             fut_a = pool.submit(_call_a)
@@ -768,6 +1140,16 @@ def run_round_n(
                 fut_a, fut_b, f"Round {round_num} codex dispatch failed/timed out"
             )
         returned = merge_findings_union(a_f, b_f, [])
+        meta = _round_meta(
+            kind=kind,
+            target=effective_target,
+            snapshot_ref=snapshot_ref,
+            diff_text=diff_text,
+            diff_unavailable=diff_unavailable,
+            dispatch_count=2,
+        )
+        if include_meta:
+            return returned, snapshot_ref, 2, meta
         return returned, snapshot_ref, 2
     else:
         # Single neutral codex (no REVIEW_LENS_EMPHASIS).
@@ -783,7 +1165,17 @@ def run_round_n(
             )
             print("CONVERGENCE_TIMEOUT")
             sys.exit(1)  # single-future path — no second future to cancel
-        returned = _extract_findings_from_mapped(m)
+        returned = _extract_findings_from_mapped(m, source=f"round_{round_num}", round_num=round_num)
+        meta = _round_meta(
+            kind=kind,
+            target=effective_target,
+            snapshot_ref=snapshot_ref,
+            diff_text=diff_text,
+            diff_unavailable=diff_unavailable,
+            dispatch_count=1,
+        )
+        if include_meta:
+            return returned, snapshot_ref, 1, meta
         return returned, snapshot_ref, 1
 
 
@@ -795,6 +1187,8 @@ def update_baseline_statuses(
     baseline: list[dict],
     round_findings: list[dict],
     round_num: int,
+    previous_meta: dict | None = None,
+    current_meta: dict | None = None,
 ) -> tuple[list[dict], int, int]:
     """
     Update baseline finding statuses based on Round N codex output.
@@ -804,27 +1198,85 @@ def update_baseline_statuses(
     this is a valid problem' (subjective re-judgment).
 
     A finding is marked resolved only if it does NOT appear in round_findings
-    (i.e., codex no longer reports the symptom). A finding that codex_A
-    wouldn't flag but codex_B originally reported must remain unresolved
-    if not confirmed fixed — it is never silently resolved.
+    AND the reviewed object changed since the baseline. "Not reported this
+    round" is not enough: that can be a model miss or a degraded bridge run.
 
     Returns (updated_baseline, baseline_unresolved_count, new_in_delta_count).
     """
     updated = []
+    previous_meta = previous_meta or {}
+    current_meta = current_meta or {}
+    round_had_bridge_failure = _has_bridge_failure(round_findings)
+    target_hash_before = previous_meta.get("target_hash")
+    target_hash_after = current_meta.get("target_hash")
+    diff_hash_before = previous_meta.get("diff_hash")
+    diff_hash_after = current_meta.get("diff_hash")
+    target_changed = False
+    if target_hash_before is not None or target_hash_after is not None:
+        target_changed = target_hash_before != target_hash_after
+    elif diff_hash_before is not None or diff_hash_after is not None:
+        target_changed = diff_hash_before != diff_hash_after
+    modified_files = set(current_meta.get("modified_files") or [])
     for f in baseline:
         new_f = dict(f)
         history = list(f.get("round_history", []))
         if f["status"] == "unresolved":
+            if f.get("bridge_failure") or str(f.get("category", "")).strip() == BRIDGE_FAILURE_CATEGORY:
+                history.append({
+                    "round": round_num,
+                    "status": "unresolved",
+                    "resolution_gate": "bridge_failure_never_auto_resolves",
+                })
+                new_f["round_history"] = history
+                updated.append(new_f)
+                continue
             # Check objective presence: is the symptom still reported this round?
             # (±3 line window — not exact-key membership, which the old bucket
             # test got wrong.)
             still_present = _finding_matches_any(f, round_findings)
             if not still_present:
-                new_f["status"] = "resolved"
-                new_f["resolved_in_round"] = round_num
-                history.append({"round": round_num, "status": "resolved"})
+                refs = _finding_referenced_files(f)
+                file_changed = bool(refs and refs.intersection(modified_files))
+                changed_relevant_object = target_changed and (not refs or file_changed or target_hash_after is not None)
+                can_resolve = (
+                    not round_had_bridge_failure
+                    and not current_meta.get("diff_unavailable")
+                    and changed_relevant_object
+                )
+                if can_resolve:
+                    new_f["status"] = "resolved"
+                    new_f["resolved_in_round"] = round_num
+                    new_f["resolution_evidence"] = {
+                        "round": round_num,
+                        "target_changed": target_changed,
+                        "file_changed": file_changed,
+                        "referenced_files": sorted(refs),
+                        "modified_files": sorted(modified_files),
+                        "target_hash_before": target_hash_before,
+                        "target_hash_after": target_hash_after,
+                        "diff_hash_before": diff_hash_before,
+                        "diff_hash_after": diff_hash_after,
+                    }
+                    history.append({
+                        "round": round_num,
+                        "status": "resolved",
+                        "resolution_gate": "absent_and_object_changed",
+                    })
+                else:
+                    history.append({
+                        "round": round_num,
+                        "status": "unresolved",
+                        "resolution_gate": "blocked_without_change_evidence",
+                        "round_had_bridge_failure": round_had_bridge_failure,
+                        "target_changed": target_changed,
+                        "file_changed": file_changed,
+                    })
             else:
-                history.append({"round": round_num, "status": "unresolved"})
+                history.append({
+                    "round": round_num,
+                    "status": "unresolved",
+                    "resolution_gate": "symptom_still_present",
+                })
         new_f["round_history"] = history
         updated.append(new_f)
 
@@ -884,6 +1336,7 @@ def _run_convergence_loop(
     invocation_id: str,
     baseline: list[dict],
     snap_ref: str,
+    baseline_meta: dict,
     branch_label: str,
     claude_findings: list[dict],
     threshold_lines: int,
@@ -898,6 +1351,22 @@ def _run_convergence_loop(
 
     Returns "APPROVED" or raises SystemExit(1) with CONVERGENCE_TIMEOUT.
     """
+    initial_state = {
+        "baseline_snapshot_ref": snap_ref,
+        "baseline_unresolved_count": sum(1 for f in baseline if f.get("status") == "unresolved"),
+        "baseline_meta": baseline_meta,
+    }
+    rounds: list[dict] = [
+        {
+            "round": 1,
+            "dispatch_count": baseline_meta.get("dispatch_count", 2),
+            "snapshot_ref": snap_ref,
+            "baseline_unresolved_count": initial_state["baseline_unresolved_count"],
+            "new_in_delta_count": 0,
+            "bridge_failure_count": sum(1 for f in baseline if f.get("bridge_failure")),
+            "meta": baseline_meta,
+        }
+    ]
     write_baseline(baseline, output_dir, invocation_id, branch_label, snap_ref)
     print(f"[controller] Round 1 complete: {len(baseline)} baseline findings")
 
@@ -905,7 +1374,7 @@ def _run_convergence_loop(
     stagnant_rounds = 0
 
     for round_num in range(2, max_rounds + 1):
-        round_findings, snap_ref, dispatch_count = run_round_n(
+        round_findings, snap_ref, dispatch_count, round_meta = run_round_n(
             round_num=round_num,
             kind=kind, target=target, cwd=cwd, output_dir=output_dir,
             invocation_id=invocation_id,
@@ -914,10 +1383,25 @@ def _run_convergence_loop(
             threshold_files=threshold_files,
             stub_dispatch=stub_dispatch,
             deep=deep, queue_job_id=queue_job_id, plan_file=plan_file,
+            include_meta=True,
         )
         baseline, baseline_unresolved, new_in_delta = update_baseline_statuses(
-            baseline, round_findings, round_num
+            baseline,
+            round_findings,
+            round_num,
+            previous_meta=baseline_meta,
+            current_meta=round_meta,
         )
+        round_record = {
+            "round": round_num,
+            "dispatch_count": dispatch_count,
+            "snapshot_ref": snap_ref,
+            "baseline_unresolved_count": baseline_unresolved,
+            "new_in_delta_count": new_in_delta,
+            "bridge_failure_count": sum(1 for f in round_findings if f.get("bridge_failure")),
+            "meta": round_meta,
+        }
+        rounds.append(round_record)
         print(
             f"[controller] Round {round_num}: dispatch={dispatch_count}  "
             f"baseline_unresolved={baseline_unresolved}  new_in_delta={new_in_delta}"
@@ -930,13 +1414,55 @@ def _run_convergence_loop(
         prev_unresolved = baseline_unresolved
 
         if stagnant_rounds >= 2:
+            _write_controller_final_report(
+                output_dir=output_dir,
+                invocation_id=invocation_id,
+                branch_label=branch_label,
+                kind=kind,
+                target=target,
+                cwd=cwd,
+                final_verdict="REQUIRES_CHANGES",
+                exit_reason="baseline_unresolved_stagnant",
+                baseline=baseline,
+                rounds=rounds,
+                initial_state=initial_state,
+                final_state=round_record,
+            )
             print(f"CONVERGENCE_TIMEOUT: {branch_label} baseline_unresolved stagnant for 2 rounds")
             sys.exit(1)
 
         if baseline_unresolved == 0 and new_in_delta == 0:
+            _write_controller_final_report(
+                output_dir=output_dir,
+                invocation_id=invocation_id,
+                branch_label=branch_label,
+                kind=kind,
+                target=target,
+                cwd=cwd,
+                final_verdict="APPROVED",
+                exit_reason="baseline_converged",
+                baseline=baseline,
+                rounds=rounds,
+                initial_state=initial_state,
+                final_state=round_record,
+            )
             print("APPROVED")
             return "APPROVED"
 
+    _write_controller_final_report(
+        output_dir=output_dir,
+        invocation_id=invocation_id,
+        branch_label=branch_label,
+        kind=kind,
+        target=target,
+        cwd=cwd,
+        final_verdict="REQUIRES_CHANGES",
+        exit_reason="max_rounds_without_convergence",
+        baseline=baseline,
+        rounds=rounds,
+        initial_state=initial_state,
+        final_state=rounds[-1] if rounds else initial_state,
+    )
     print(f"CONVERGENCE_TIMEOUT: {branch_label} reached max_rounds without convergence")
     sys.exit(1)
 
@@ -966,15 +1492,17 @@ def run_branch_a(
     print(f"[controller] Branch A: code-only  invocation_id={invocation_id}")
     target = cwd  # bridge detects diff from working dir
 
-    baseline, snap_ref = run_round1(
+    baseline, snap_ref, baseline_meta = run_round1(
         kind="code_diff", target=target, cwd=cwd, output_dir=output_dir,
         invocation_id=invocation_id, claude_findings=claude_findings,
         stub_dispatch=stub_dispatch,
         deep=deep, queue_job_id=queue_job_id, plan_file=plan_file,
+        include_meta=True,
     )
     return _run_convergence_loop(
         kind="code_diff", target=target, cwd=cwd, output_dir=output_dir,
         invocation_id=invocation_id, baseline=baseline, snap_ref=snap_ref,
+        baseline_meta=baseline_meta,
         branch_label="code-only", claude_findings=claude_findings,
         threshold_lines=threshold_lines, threshold_files=threshold_files,
         max_rounds=max_rounds, stub_dispatch=stub_dispatch,
@@ -1008,15 +1536,17 @@ def run_branch_b(
     print(f"[controller] Branch B: execution-only  invocation_id={invocation_id}")
     target = execution_result or cwd
 
-    baseline, snap_ref = run_round1(
+    baseline, snap_ref, baseline_meta = run_round1(
         kind="execution_outcome", target=target, cwd=cwd, output_dir=output_dir,
         invocation_id=invocation_id, claude_findings=claude_findings,
         stub_dispatch=stub_dispatch,
         deep=deep, queue_job_id=queue_job_id, plan_file=plan_file,
+        include_meta=True,
     )
     return _run_convergence_loop(
         kind="execution_outcome", target=target, cwd=cwd, output_dir=output_dir,
         invocation_id=invocation_id, baseline=baseline, snap_ref=snap_ref,
+        baseline_meta=baseline_meta,
         branch_label="execution-only", claude_findings=claude_findings,
         threshold_lines=threshold_lines, threshold_files=threshold_files,
         max_rounds=max_rounds, stub_dispatch=stub_dispatch,
@@ -1054,19 +1584,53 @@ def run_branch_c(
     # Step 1: Branch A
     dir_a = output_dir / "branch_a"
     dir_a.mkdir(parents=True, exist_ok=True)
-    run_branch_a(
-        cwd=cwd, output_dir=dir_a, invocation_id=f"{invocation_id}-A",
-        claude_findings=claude_findings,
-        threshold_lines=threshold_lines, threshold_files=threshold_files,
-        max_rounds=max_rounds, stub_dispatch=stub_dispatch,
-        deep=deep, queue_job_id=queue_job_id, plan_file=plan_file,
-    )
+    dir_b = output_dir / "branch_b"
+    branch_a_report_path = dir_a / CONTROLLER_FINAL_REPORT
+    branch_b_report_path = dir_b / CONTROLLER_FINAL_REPORT
+    target_for_report = execution_result or cwd
+    simplify_status: dict[str, Any] = {
+        "attempted": False,
+        "completed": False,
+        "timed_out": False,
+        "returncode": None,
+        "new_execution_result": None,
+    }
+
+    try:
+        run_branch_a(
+            cwd=cwd, output_dir=dir_a, invocation_id=f"{invocation_id}-A",
+            claude_findings=claude_findings,
+            threshold_lines=threshold_lines, threshold_files=threshold_files,
+            max_rounds=max_rounds, stub_dispatch=stub_dispatch,
+            deep=deep, queue_job_id=queue_job_id, plan_file=plan_file,
+        )
+    except SystemExit as exc:
+        _write_combined_controller_final_report(
+            output_dir=output_dir,
+            invocation_id=invocation_id,
+            cwd=cwd,
+            target=target_for_report,
+            final_verdict="REQUIRES_CHANGES",
+            exit_reason=f"branch_a_system_exit_{exc.code}",
+            branch_a_report_path=branch_a_report_path,
+            branch_b_report_path=branch_b_report_path,
+            simplify_status=simplify_status,
+            failure_stage="branch_a",
+            failure_evidence=f"Branch A exited with SystemExit({exc.code})",
+        )
+        raise
 
     # Step 2: /simplify — direct codex exec --ephemeral (D3)
     simplify_time = time.time()
+    simplify_status["attempted"] = True
     if stub_dispatch is not None:
         stub_dispatch.record_simplify_time(simplify_time)
         new_exec_result = stub_dispatch.produce_new_execution_result(simplify_time)
+        simplify_status.update({
+            "completed": True,
+            "returncode": 0,
+            "new_execution_result": str(new_exec_result) if new_exec_result else None,
+        })
     else:
         print("[controller] Running /simplify via codex exec --ephemeral ...")
         try:
@@ -1075,11 +1639,20 @@ def run_branch_c(
                 cwd=str(cwd), capture_output=True, text=True,
                 timeout=CODEX_SIMPLIFY_TIMEOUT_SEC,
             )
+            simplify_status.update({
+                "completed": simplify_result.returncode == 0,
+                "returncode": simplify_result.returncode,
+            })
             if simplify_result.returncode != 0:
                 print(f"[controller] /simplify exited {simplify_result.returncode}; continuing", file=sys.stderr)
         except subprocess.TimeoutExpired:
             # codex exec can hang indefinitely (observed real-world stalls); a
             # missing timeout would block the controller and its parent router.
+            simplify_status.update({
+                "completed": False,
+                "timed_out": True,
+                "returncode": "timeout",
+            })
             print(
                 f"[controller] /simplify timed out after {CODEX_SIMPLIFY_TIMEOUT_SEC}s; "
                 "skipping simplify, continuing to Branch B",
@@ -1089,18 +1662,47 @@ def run_branch_c(
         # Step 3: re-run tests/verify to produce new execution result AFTER simplify
         print("[controller] Re-running tests/verify to produce post-simplify execution result ...")
         new_exec_result = execution_result  # caller must supply updated path or detect
+        simplify_status["new_execution_result"] = str(new_exec_result) if new_exec_result else None
 
     # Step 4: Branch B on new execution result (mtime must be > simplify_time)
-    dir_b = output_dir / "branch_b"
     dir_b.mkdir(parents=True, exist_ok=True)
-    return run_branch_b(
-        cwd=cwd, output_dir=dir_b, invocation_id=f"{invocation_id}-B",
-        execution_result=new_exec_result,
-        claude_findings=claude_findings,
-        threshold_lines=threshold_lines, threshold_files=threshold_files,
-        max_rounds=max_rounds, stub_dispatch=stub_dispatch,
-        deep=deep, queue_job_id=queue_job_id, plan_file=plan_file,
+    try:
+        result = run_branch_b(
+            cwd=cwd, output_dir=dir_b, invocation_id=f"{invocation_id}-B",
+            execution_result=new_exec_result,
+            claude_findings=claude_findings,
+            threshold_lines=threshold_lines, threshold_files=threshold_files,
+            max_rounds=max_rounds, stub_dispatch=stub_dispatch,
+            deep=deep, queue_job_id=queue_job_id, plan_file=plan_file,
+        )
+    except SystemExit as exc:
+        _write_combined_controller_final_report(
+            output_dir=output_dir,
+            invocation_id=invocation_id,
+            cwd=cwd,
+            target=new_exec_result or target_for_report,
+            final_verdict="REQUIRES_CHANGES",
+            exit_reason=f"branch_b_system_exit_{exc.code}",
+            branch_a_report_path=branch_a_report_path,
+            branch_b_report_path=branch_b_report_path,
+            simplify_status=simplify_status,
+            failure_stage="branch_b",
+            failure_evidence=f"Branch B exited with SystemExit({exc.code})",
+        )
+        raise
+
+    _write_combined_controller_final_report(
+        output_dir=output_dir,
+        invocation_id=invocation_id,
+        cwd=cwd,
+        target=new_exec_result or target_for_report,
+        final_verdict=result,
+        exit_reason="combined_converged" if result == "APPROVED" else "combined_requires_changes",
+        branch_a_report_path=branch_a_report_path,
+        branch_b_report_path=branch_b_report_path,
+        simplify_status=simplify_status,
     )
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -1281,7 +1883,7 @@ def _selftest_d7_large_delta_fanout() -> int:
             # We only need to verify the dispatch counts, not run full loop
             # Directly test run_round_n with stub
             baseline = [dict(f1)]
-            round_findings, _, dispatch_count_large = run_round_n(
+            round_findings, _, dispatch_count_large, _meta_large = run_round_n(
                 round_num=2,
                 kind="code_diff",
                 target=tdp,
@@ -1292,6 +1894,7 @@ def _selftest_d7_large_delta_fanout() -> int:
                 threshold_lines=DEFAULT_ROUND2_FANOUT_THRESHOLD_LINES,
                 threshold_files=DEFAULT_ROUND2_FANOUT_THRESHOLD_FILES,
                 stub_dispatch=stub2,
+                include_meta=True,
             )
         finally:
             sys.modules[__name__].compute_delta_size = orig_compute  # type: ignore[attr-defined]
@@ -1302,7 +1905,7 @@ def _selftest_d7_large_delta_fanout() -> int:
         stub3._round_n_sequence = [[]]
 
         try:
-            round_findings_b, _, dispatch_count_small = run_round_n(
+            round_findings_b, _, dispatch_count_small, _meta_small = run_round_n(
                 round_num=2,
                 kind="code_diff",
                 target=tdp,
@@ -1313,6 +1916,7 @@ def _selftest_d7_large_delta_fanout() -> int:
                 threshold_lines=DEFAULT_ROUND2_FANOUT_THRESHOLD_LINES,
                 threshold_files=DEFAULT_ROUND2_FANOUT_THRESHOLD_FILES,
                 stub_dispatch=stub3,
+                include_meta=True,
             )
         finally:
             sys.modules[__name__].compute_delta_size = orig_compute  # type: ignore[attr-defined]
@@ -1398,7 +2002,7 @@ def _selftest_round2_capsule_fields() -> int:
         stub._round_n_sequence = [[]]
 
         baseline = [dict(f1)]
-        _round_findings, _snap, _dispatch = run_round_n(
+        _round_findings, _snap, _dispatch, _meta = run_round_n(
             round_num=2,
             kind="code_diff",
             target=tdp,
@@ -1409,6 +2013,7 @@ def _selftest_round2_capsule_fields() -> int:
             threshold_lines=DEFAULT_ROUND2_FANOUT_THRESHOLD_LINES,
             threshold_files=DEFAULT_ROUND2_FANOUT_THRESHOLD_FILES,
             stub_dispatch=stub,
+            include_meta=True,
         )
 
         fields = stub.get_capsule_fields()
@@ -1433,39 +2038,26 @@ def _selftest_round2_capsule_fields() -> int:
 
 def _selftest_h5_no_silent_resolve() -> int:
     """
-    SC-7.8: A finding that codex_A would not flag (but codex_B reported in Round 1)
-    must NOT be silently resolved when the current codex round does not include it.
-    Controller only marks resolved when the phenomenon is objectively absent.
-
-    Scenario:
-    - codex_A: no findings (would not flag F001)
-    - codex_B: reports F001
-    - Round 2 codex (neutral): returns empty list (does not see F001)
-    - Expected: F001 is still unresolved? NO — per H5 contract, the controller
-      checks 'is the symptom key still in round_findings' — if Round 2 returns
-      empty, the symptom is NOT present → resolved is correct behaviour.
-
-    The H5 protection is about NOT allowing subjective re-judgment:
-    if Round 2 says "this is not a problem" but the symptom IS still present,
-    the finding stays unresolved. We test that case: Round 2 returns F001 again
-    (symptom present), which means finding stays unresolved even if codex
-    internally doesn't think it's a problem.
-
-    This test verifies: if Round N returns the same finding key, baseline_unresolved
-    does NOT decrease (symptom present = still unresolved).
+    SC-7.8: "not reported in Round N" is not enough to resolve a baseline
+    finding. The reviewed object must also have changed and the round must not
+    contain bridge failures.
     """
     f1 = _make_finding("F001", file="auth.py", line=42, category="sc_conformance", source="codex_B")
     baseline = [dict(f1)]
 
-    # Round 2: codex returns f1 again (symptom still present — should NOT be resolved)
-    round2_findings = [_make_finding("F001", file="auth.py", line=42, category="sc_conformance", source="codex_A")]
+    # Round 2: codex returns nothing, but diff/target hashes are unchanged.
+    round2_findings: list[dict] = []
     updated, baseline_unresolved, new_in_delta = update_baseline_statuses(
-        baseline, round2_findings, round_num=2
+        baseline,
+        round2_findings,
+        round_num=2,
+        previous_meta={"diff_hash": "same", "target_hash": None, "modified_files": ["auth.py"]},
+        current_meta={"diff_hash": "same", "target_hash": None, "modified_files": ["auth.py"], "diff_unavailable": False},
     )
 
     if baseline_unresolved != 1:
         print(
-            f"FAIL: expected 1 unresolved (symptom present), got {baseline_unresolved}",
+            f"FAIL: expected 1 unresolved (no object change evidence), got {baseline_unresolved}",
             file=sys.stderr,
         )
         return 1
@@ -1475,7 +2067,7 @@ def _selftest_h5_no_silent_resolve() -> int:
         print(f"FAIL: F001 should be unresolved, got {updated[0]['status']!r}", file=sys.stderr)
         return 1
 
-    print("h5_no_silent_resolve: PASS (symptom-present finding stays unresolved)")
+    print("h5_no_silent_resolve: PASS (empty round without object change stays unresolved)")
     return 0
 
 
@@ -1499,13 +2091,14 @@ def _selftest_branch_c_rerun_after_simplify() -> int:
         exec_result.write_text(json.dumps({"execution_status": "ok"}), encoding="utf-8")
 
         stub = StubDispatch()
-        # Branch A: Round 1 with findings, Round 2 resolves all
-        f1 = _make_finding("F001")
-        stub._r1_a = [f1]
+        # Branch C ordering test only needs A/B to converge so simplify runs.
+        # Do not rely on "empty later round resolves a baseline finding"; H5
+        # correctly requires target/diff change evidence for that.
+        stub._r1_a = []
         stub._r1_b = []
         stub._round_n_sequence = [
-            [],  # Round 2 Branch A: resolves
-            [],  # Round 2 Branch B: resolves
+            [],  # Round 2 Branch A: already clean
+            [],  # Round 2 Branch B: already clean
         ]
         stub._new_exec_result = exec_result
 
@@ -1635,35 +2228,75 @@ def main() -> int:
     threshold_lines = args.round2_fanout_threshold_lines
     threshold_files = args.round2_fanout_threshold_files
 
-    if args.branch == "code-only":
-        result = run_branch_a(
-            cwd=cwd, output_dir=output_dir, invocation_id=invocation_id,
-            claude_findings=claude_findings,
-            threshold_lines=threshold_lines, threshold_files=threshold_files,
-            max_rounds=args.max_rounds,
-            deep=args.deep, queue_job_id=args.queue_job_id, plan_file=args.plan_file,
-        )
-    elif args.branch == "execution-only":
-        result = run_branch_b(
-            cwd=cwd, output_dir=output_dir, invocation_id=invocation_id,
-            execution_result=execution_result,
-            claude_findings=claude_findings,
-            threshold_lines=threshold_lines, threshold_files=threshold_files,
-            max_rounds=args.max_rounds,
-            deep=args.deep, queue_job_id=args.queue_job_id, plan_file=args.plan_file,
-        )
-    elif args.branch == "combined":
-        result = run_branch_c(
-            cwd=cwd, output_dir=output_dir, invocation_id=invocation_id,
-            execution_result=execution_result,
-            claude_findings=claude_findings,
-            threshold_lines=threshold_lines, threshold_files=threshold_files,
-            max_rounds=args.max_rounds,
-            deep=args.deep, queue_job_id=args.queue_job_id, plan_file=args.plan_file,
-        )
-    else:
-        print(f"ERROR: unknown branch {args.branch!r}", file=sys.stderr)
-        return 2
+    branch_kind = {
+        "code-only": "code_diff",
+        "execution-only": "execution_outcome",
+        "combined": "combined",
+    }[args.branch]
+    branch_target = cwd if args.branch == "code-only" else (execution_result or cwd)
+
+    try:
+        if args.branch == "code-only":
+            result = run_branch_a(
+                cwd=cwd, output_dir=output_dir, invocation_id=invocation_id,
+                claude_findings=claude_findings,
+                threshold_lines=threshold_lines, threshold_files=threshold_files,
+                max_rounds=args.max_rounds,
+                deep=args.deep, queue_job_id=args.queue_job_id, plan_file=args.plan_file,
+            )
+        elif args.branch == "execution-only":
+            result = run_branch_b(
+                cwd=cwd, output_dir=output_dir, invocation_id=invocation_id,
+                execution_result=execution_result,
+                claude_findings=claude_findings,
+                threshold_lines=threshold_lines, threshold_files=threshold_files,
+                max_rounds=args.max_rounds,
+                deep=args.deep, queue_job_id=args.queue_job_id, plan_file=args.plan_file,
+            )
+        elif args.branch == "combined":
+            result = run_branch_c(
+                cwd=cwd, output_dir=output_dir, invocation_id=invocation_id,
+                execution_result=execution_result,
+                claude_findings=claude_findings,
+                threshold_lines=threshold_lines, threshold_files=threshold_files,
+                max_rounds=args.max_rounds,
+                deep=args.deep, queue_job_id=args.queue_job_id, plan_file=args.plan_file,
+            )
+        else:
+            print(f"ERROR: unknown branch {args.branch!r}", file=sys.stderr)
+            return 2
+    except SystemExit as exc:
+        report_path = output_dir / CONTROLLER_FINAL_REPORT
+        if not report_path.exists():
+            failure_finding = _controller_failure_finding(
+                stage=args.branch,
+                reason=f"controller exited before branch report was written: SystemExit({exc.code})",
+            )
+            _write_controller_final_report(
+                output_dir=output_dir,
+                invocation_id=invocation_id,
+                branch_label=args.branch,
+                kind=branch_kind,
+                target=branch_target,
+                cwd=cwd,
+                final_verdict="REQUIRES_CHANGES",
+                exit_reason=f"system_exit_{exc.code}",
+                baseline=[failure_finding],
+                rounds=[{
+                    "round": 0,
+                    "stage": args.branch,
+                    "bridge_failure_count": 1,
+                    "baseline_unresolved_count": 1,
+                    "system_exit_code": exc.code,
+                }],
+                initial_state={"failure_stage": args.branch},
+                final_state={
+                    "system_exit_code": exc.code,
+                    "failure_stage": args.branch,
+                    "failure_evidence": failure_finding["evidence"],
+                },
+            )
+        raise
 
     print(f"GD_REVIEW_DECISION: {result}")
     return 0 if result == "APPROVED" else 1

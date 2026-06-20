@@ -10,13 +10,17 @@
 #     --conformance-status APPROVED|REQUIRES_CHANGES \
 #     --tests-status green|red \
 #     --post-simplify-status green|red|n_a \
+#     --controller-report path/to/controller-final-report.json \
+#     --tests-evidence path/to/tests-evidence.json \
 #     [--dry-run]
 #
 # Gate 说明：
 #   conformance-status: T7 controller 的最终判定（APPROVED = unresolved=0 AND new_in_delta=0）
 #                       若上游输出 CONVERGENCE_TIMEOUT，调用方传入 REQUIRES_CHANGES（归类为未通过）
-#   tests-status:       工作树 tests/verify 是否全绿
+#   tests-status:       工作树 tests/verify 是否全绿（green 时必须由 --tests-evidence 证明）
 #   post-simplify-status: 分支 A 的 /simplify 后重测结果；分支 B 无 simplify 时传 n_a（视为满足）
+#   controller-report:  T7 controller-final-report.json（证明 conformance gate 来源）
+#   tests-evidence:     测试证据 JSON，至少含 {"status":"green","commands":[...]} 且 evidence 文件存在
 #   --dry-run:          保留判定逻辑，跳过真实 git add 副作用（不改工作树）
 #
 # 输出状态码：
@@ -31,6 +35,8 @@ set -euo pipefail
 CONFORMANCE_STATUS=""
 TESTS_STATUS=""
 POST_SIMPLIFY_STATUS=""
+CONTROLLER_REPORT=""
+TESTS_EVIDENCE=""
 DRY_RUN=false
 
 usage() {
@@ -40,12 +46,16 @@ usage() {
     --conformance-status APPROVED|REQUIRES_CHANGES \
     --tests-status green|red \
     --post-simplify-status green|red|n_a \
+    --controller-report path/to/controller-final-report.json \
+    --tests-evidence path/to/tests-evidence.json \
     [--dry-run]
 
 参数：
   --conformance-status   APPROVED 或 REQUIRES_CHANGES（T7 controller 最终判定）
   --tests-status         green 或 red（工作树测试状态）
   --post-simplify-status green 或 red 或 n_a（分支 B 无 simplify 时传 n_a）
+  --controller-report    T7 controller-final-report.json；全绿路径必需
+  --tests-evidence       测试证据 JSON；tests-status=green 时必需
   --dry-run              跳过真实 git add，仅输出判定与三件套草稿
 USAGE
 }
@@ -62,6 +72,14 @@ while [[ $# -gt 0 ]]; do
             ;;
         --post-simplify-status)
             POST_SIMPLIFY_STATUS="$2"
+            shift 2
+            ;;
+        --controller-report)
+            CONTROLLER_REPORT="$2"
+            shift 2
+            ;;
+        --tests-evidence)
+            TESTS_EVIDENCE="$2"
             shift 2
             ;;
         --dry-run)
@@ -115,6 +133,138 @@ if [[ "$POST_SIMPLIFY_STATUS" != "green" && "$POST_SIMPLIFY_STATUS" != "red" && 
     exit 2
 fi
 
+if [[ -z "$CONTROLLER_REPORT" ]]; then
+    echo "[ERROR] 缺少 --controller-report 参数（T7 controller-final-report.json）" >&2
+    exit 2
+fi
+if [[ ! -f "$CONTROLLER_REPORT" ]]; then
+    echo "[ERROR] --controller-report 文件不存在: ${CONTROLLER_REPORT}" >&2
+    exit 2
+fi
+if [[ "$TESTS_STATUS" == "green" && -z "$TESTS_EVIDENCE" ]]; then
+    echo "[ERROR] tests-status=green 时必须提供 --tests-evidence" >&2
+    exit 2
+fi
+if [[ -n "$TESTS_EVIDENCE" && ! -f "$TESTS_EVIDENCE" ]]; then
+    echo "[ERROR] --tests-evidence 文件不存在: ${TESTS_EVIDENCE}" >&2
+    exit 2
+fi
+
+_controller_report_status="$(
+python3 - "$CONTROLLER_REPORT" "$CONFORMANCE_STATUS" <<'PY'
+import json, sys
+path, expected = sys.argv[1], sys.argv[2]
+try:
+    data = json.load(open(path, encoding="utf-8"))
+except Exception as exc:
+    print(f"invalid_json:{exc}")
+    sys.exit(0)
+verdict = data.get("final_verdict")
+unresolved = data.get("baseline_unresolved_count")
+bridge_failures = data.get("bridge_failure_count")
+mapped = data.get("mapped_results")
+kind = data.get("review_kind")
+if verdict != expected:
+    print(f"verdict_mismatch:{verdict}!={expected}")
+elif expected == "APPROVED" and unresolved != 0:
+    print(f"approved_unresolved:{unresolved}")
+elif expected == "APPROVED" and bridge_failures not in (0, None):
+    print(f"approved_bridge_failures:{bridge_failures}")
+elif not isinstance(mapped, list):
+    print("missing_mapped_results")
+elif expected == "APPROVED" and not mapped:
+    print("approved_empty_mapped_results")
+elif expected == "APPROVED" and any(
+    not isinstance(item, dict)
+    or item.get("bridge_failure") is True
+    or item.get("review_run_status") != "completed"
+    or item.get("gd_review_decision") not in ("APPROVED", "REQUIRES_CHANGES")
+    for item in mapped
+):
+    print("approved_mapped_results_not_clean")
+elif expected == "APPROVED" and not any(
+    isinstance(item, dict) and item.get("gd_review_decision") == "APPROVED"
+    for item in mapped
+):
+    print("approved_missing_final_clean_mapped_result")
+elif expected == "APPROVED" and kind in ("execution_outcome", "combined") and not any(
+    isinstance(item, dict) and int(item.get("run_evidence_count") or 0) > 0
+    for item in mapped
+):
+    print("approved_missing_run_evidence")
+else:
+    print("ok")
+PY
+)"
+
+if [[ "$_controller_report_status" != "ok" ]]; then
+    echo "[ERROR] controller report 校验失败: ${_controller_report_status}" >&2
+    exit 2
+fi
+
+_tests_evidence_status="n_a"
+if [[ "$TESTS_STATUS" == "green" ]]; then
+    _tests_evidence_status="$(
+python3 - "$TESTS_EVIDENCE" <<'PY'
+import json, sys
+path = sys.argv[1]
+try:
+    data = json.load(open(path, encoding="utf-8"))
+except Exception as exc:
+    print(f"invalid_json:{exc}")
+    sys.exit(0)
+commands = data.get("commands")
+if data.get("status") != "green":
+    print(f"status_mismatch:{data.get('status')}")
+elif not isinstance(commands, list) or not commands:
+    print("missing_commands")
+else:
+    for i, cmd in enumerate(commands):
+        if not isinstance(cmd, dict):
+            print(f"command_{i}_not_object")
+            break
+        missing = [field for field in ("cmd", "cwd", "exit", "evidence_source") if field not in cmd]
+        if missing:
+            print(f"command_{i}_missing_{','.join(missing)}")
+            break
+        try:
+            exit_code = int(cmd.get("exit"))
+        except (TypeError, ValueError):
+            print(f"command_{i}_exit_not_int")
+            break
+        if exit_code != 0:
+            print(f"command_{i}_nonzero_exit")
+            break
+        if not str(cmd.get("cmd") or "").strip():
+            print(f"command_{i}_empty_cmd")
+            break
+        if not str(cmd.get("cwd") or "").strip():
+            print(f"command_{i}_empty_cwd")
+            break
+        source = str(cmd.get("evidence_source") or "").strip()
+        if source in ("", "caller_supplied", "static_pass", "manual_green", "extracted_from_finding_prose"):
+            print(f"command_{i}_weak_evidence_source")
+            break
+        stdout_path = str(cmd.get("stdout_path") or "").strip()
+        stdout_excerpt = str(cmd.get("stdout_excerpt") or cmd.get("output") or cmd.get("stderr_excerpt") or "").strip()
+        if stdout_path:
+            import os
+            if not os.path.isfile(stdout_path):
+                print(f"command_{i}_stdout_path_missing")
+                break
+        elif not stdout_excerpt:
+            print(f"command_{i}_missing_transcript")
+            break
+    else:
+        print("ok")
+PY
+)"
+    if [[ "$_tests_evidence_status" != "ok" ]]; then
+        echo "[ERROR] tests evidence 校验失败: ${_tests_evidence_status}" >&2
+        exit 2
+    fi
+fi
+
 # ── Gate 判定 ─────────────────────────────────────────────────────────────────
 # 全绿条件：
 #   conformance = APPROVED
@@ -161,15 +311,17 @@ fi
 # ── 全绿路径：产三件套 ─────────────────────────────────────────────────────────
 
 echo ""
-echo "[WARNING] /review2 非发布权威：tests-status 由调用方自报，以 /gd review (L3) 为准。"
+echo "[WARNING] /review2 非发布权威：tests-status 已由 evidence 文件校验，但 release 仍以 /gd review (L3) 为准。"
 echo "    L3 三段闭环（outcome validator + Codex bridge + route validator）才是 release 判决源。"
 echo ""
 echo "DELIVERABLE_STATUS: READY_FOR_HANDOFF"
-echo "TESTS_STATUS_SOURCE: caller_supplied"
+echo "CONTROLLER_REPORT: ${CONTROLLER_REPORT}"
+echo "TESTS_EVIDENCE: ${TESTS_EVIDENCE}"
+echo "TESTS_STATUS_SOURCE: tests_evidence_json"
 echo ""
 echo "全部 gate 通过："
 echo "  ✓ conformance-status = APPROVED"
-echo "  ✓ tests-status = green  [caller_supplied — 非 L2 自跑]"
+echo "  ✓ tests-status = green  [tests_evidence_json]"
 echo "  ✓ post-simplify-status = ${POST_SIMPLIFY_STATUS} (满足条件)"
 echo ""
 
@@ -205,12 +357,12 @@ echo "  output:      PASS"
 echo "  status:      pass"
 echo ""
 echo "── SC-8.2 gate：全绿 → 三件套正路 ──"
-echo "  verify cmd:  bash scripts/gd-review2-package-deliverable.sh --conformance-status APPROVED --tests-status green --post-simplify-status green --dry-run 2>&1 | grep -cE 'READY_FOR_HANDOFF|DELIVERABLE_STATUS|SC 证据|commit message|MR description'"
+echo "  verify cmd:  bash scripts/gd-review2-package-deliverable.sh --conformance-status APPROVED --tests-status green --post-simplify-status green --controller-report <controller-final-report.json> --tests-evidence <tests-evidence.json> --dry-run 2>&1 | grep -cE 'READY_FOR_HANDOFF|DELIVERABLE_STATUS|SC 证据|commit message|MR description'"
 echo "  output:      >=1"
 echo "  status:      pass"
 echo ""
 echo "── SC-8.3 gate：任一红 → DELIVERABLE_BLOCKED ──"
-echo "  verify cmd:  bash scripts/gd-review2-package-deliverable.sh --conformance-status REQUIRES_CHANGES --tests-status green --post-simplify-status n_a --dry-run; echo exit=\$?"
+echo "  verify cmd:  bash scripts/gd-review2-package-deliverable.sh --conformance-status REQUIRES_CHANGES --tests-status red --post-simplify-status n_a --controller-report <controller-final-report.json> --dry-run; echo exit=\$?"
 echo "  output:      exit=1（NONZERO_OK）"
 echo "  status:      pass"
 echo ""

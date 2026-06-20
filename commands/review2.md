@@ -287,6 +287,8 @@ bash scripts/gd-review2-package-deliverable.sh \
   --conformance-status <APPROVED|REQUIRES_CHANGES> \
   --tests-status <green|red> \
   --post-simplify-status <green|red|n_a> \
+  --controller-report <controller-final-report.json> \
+  --tests-evidence <tests-evidence.json> \
   [--dry-run]
 ```
 
@@ -297,6 +299,10 @@ bash scripts/gd-review2-package-deliverable.sh \
 | A（code-only） | T7 controller exit 0→APPROVED / exit 1→REQUIRES_CHANGES | 分支 A /simplify 后重测结果：green/red |
 | B（execution-only） | T7 controller exit 0→APPROVED / exit 1→REQUIRES_CHANGES | n_a（分支 B 无 /simplify）|
 | C（combined） | 两路均 APPROVED 时→APPROVED，否则→REQUIRES_CHANGES | 来自分支 A 的重测结果 |
+
+`--controller-report` 必须指向 T7 生成的 `controller-final-report.json`；APPROVED 路径必须含非空 `mapped_results`，且 mapped result 均为 `review_run_status=completed` / `gd_review_decision=APPROVED` / `bridge_failure=false`。execution/combined 路径还必须绑定非空 `run_evidence_count`。
+
+`--tests-status green` 时 `--tests-evidence` 必须指向真实测试证据 JSON，不能只由调用方口头传 green；每条 `commands[]` 至少包含 `cmd`、`cwd`、`exit=0`、`evidence_source`、`stdout_excerpt` 或存在的 `stdout_path`。
 
 **CONVERGENCE_TIMEOUT 处理**：
 - T7 controller exit 1 可能是 `CONVERGENCE_TIMEOUT`（连续 2 轮 findings 不减）或 `REQUIRES_CHANGES`（未收敛）

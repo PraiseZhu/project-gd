@@ -151,3 +151,227 @@ class TestControllerMappedResults:
             assert mapped["findings"][0]["severity"] == "P1"
             parse_call = next(args for args in captured_calls if "parse-transport" in args)
             assert "--deep" in parse_call
+
+    def test_failed_mapped_becomes_bridge_failure_finding(self):
+        """FAILED/degraded mapped with empty findings must not become a clean round."""
+        from gd_review_controller import _extract_findings_from_mapped
+
+        findings = _extract_findings_from_mapped(
+            {
+                "review_run_status": "degraded",
+                "gd_review_decision": "FAILED",
+                "findings": [],
+                "merge_notes": {"degraded_reason": "DEEP_RUN_EVIDENCE_MISSING"},
+                "_controller_meta": {"mapped_result_path": "/tmp/mapped.json"},
+            },
+            source="codex_A",
+            round_num=1,
+        )
+
+        assert len(findings) == 1
+        assert findings[0]["bridge_failure"] is True
+        assert findings[0]["severity"] == "P1"
+        assert findings[0]["status"] == "unresolved"
+        assert findings[0]["mapped_result_path"] == "/tmp/mapped.json"
+
+    def test_baseline_empty_round_without_object_change_does_not_resolve(self):
+        """A missing finding needs object-change evidence before being resolved."""
+        from gd_review_controller import update_baseline_statuses
+
+        baseline = [{
+            "id": "F001",
+            "status": "unresolved",
+            "file": "auth.py",
+            "line": 42,
+            "category": "sc_conformance",
+            "round_history": [],
+        }]
+
+        updated, unresolved, new_delta = update_baseline_statuses(
+            baseline,
+            [],
+            2,
+            previous_meta={"diff_hash": "same", "target_hash": None, "modified_files": ["auth.py"]},
+            current_meta={"diff_hash": "same", "target_hash": None, "modified_files": ["auth.py"], "diff_unavailable": False},
+        )
+
+        assert unresolved == 1
+        assert new_delta == 0
+        assert updated[0]["status"] == "unresolved"
+        assert updated[0]["round_history"][-1]["resolution_gate"] == "blocked_without_change_evidence"
+
+    def test_baseline_resolves_only_with_relevant_change_evidence(self):
+        """Absent finding resolves when the reviewed object changed and referenced file is touched."""
+        from gd_review_controller import update_baseline_statuses
+
+        baseline = [{
+            "id": "F001",
+            "status": "unresolved",
+            "file": "auth.py",
+            "line": 42,
+            "category": "sc_conformance",
+            "evidence": "auth.py:42 wrong branch",
+            "round_history": [],
+        }]
+
+        updated, unresolved, new_delta = update_baseline_statuses(
+            baseline,
+            [],
+            2,
+            previous_meta={"diff_hash": "before", "target_hash": None, "modified_files": ["auth.py"]},
+            current_meta={"diff_hash": "after", "target_hash": None, "modified_files": ["auth.py"], "diff_unavailable": False},
+        )
+
+        assert unresolved == 0
+        assert new_delta == 0
+        assert updated[0]["status"] == "resolved"
+        assert updated[0]["resolution_evidence"]["diff_hash_before"] == "before"
+        assert updated[0]["resolution_evidence"]["diff_hash_after"] == "after"
+
+    def test_bridge_failure_baseline_never_auto_resolves(self):
+        """Bridge failure sentinel must remain unresolved even when later rounds are empty."""
+        from gd_review_controller import update_baseline_statuses
+
+        baseline = [{
+            "id": "BRIDGE-FAIL-r1-codex_A",
+            "status": "unresolved",
+            "file": "<bridge:codex_A>",
+            "line": None,
+            "category": "bridge_failure",
+            "bridge_failure": True,
+            "round_history": [],
+        }]
+
+        updated, unresolved, _ = update_baseline_statuses(
+            baseline,
+            [],
+            2,
+            previous_meta={"diff_hash": "before"},
+            current_meta={"diff_hash": "after", "modified_files": ["x.py"], "diff_unavailable": False},
+        )
+
+        assert unresolved == 1
+        assert updated[0]["status"] == "unresolved"
+        assert updated[0]["round_history"][-1]["resolution_gate"] == "bridge_failure_never_auto_resolves"
+
+    def test_controller_final_report_written_with_bridge_failure_summary(self):
+        """Final controller report must bind verdict, baseline, rounds, and mapped failures."""
+        from gd_review_controller import _write_controller_final_report
+
+        with tempfile.TemporaryDirectory() as td:
+            out_dir = pathlib.Path(td)
+            mapped = out_dir / "codex_mapped_execution_outcome_deadbeef.json"
+            mapped.write_text(json.dumps({
+                "review_kind": "execution_outcome",
+                "review_run_status": "degraded",
+                "gd_review_decision": "FAILED",
+                "findings": [],
+                "merge_notes": {"degraded_reason": "DEEP_RUN_EVIDENCE_MISSING"},
+            }), encoding="utf-8")
+            baseline = [{
+                "id": "BRIDGE-FAIL-r1-codex_A",
+                "status": "unresolved",
+                "bridge_failure": True,
+                "category": "bridge_failure",
+            }]
+
+            report_path = _write_controller_final_report(
+                output_dir=out_dir,
+                invocation_id="ctrl-test",
+                branch_label="execution-only",
+                kind="execution_outcome",
+                target=out_dir / "outcome.json",
+                cwd=out_dir,
+                final_verdict="REQUIRES_CHANGES",
+                exit_reason="baseline_unresolved_stagnant",
+                baseline=baseline,
+                rounds=[{"round": 1, "bridge_failure_count": 1}],
+                initial_state={"baseline_unresolved_count": 1},
+                final_state={"baseline_unresolved_count": 1},
+            )
+
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            assert report["final_verdict"] == "REQUIRES_CHANGES"
+            assert report["bridge_failure_count"] == 1
+            assert report["mapped_results"][0]["bridge_failure"] is True
+            assert report["mapped_results"][0]["degraded_reason"] == "DEEP_RUN_EVIDENCE_MISSING"
+
+    def test_combined_writes_top_level_final_report(self):
+        """Combined branch must write a top-level report binding A/B/simplify state."""
+        from gd_review_controller import (
+            DEFAULT_ROUND2_FANOUT_THRESHOLD_FILES,
+            DEFAULT_ROUND2_FANOUT_THRESHOLD_LINES,
+            StubDispatch,
+            _make_temp_git_repo,
+            gen_id,
+            run_branch_c,
+        )
+
+        with tempfile.TemporaryDirectory() as td:
+            tdp = pathlib.Path(td)
+            _make_temp_git_repo(td)
+            exec_result = tdp / "execution_result.json"
+            exec_result.write_text(json.dumps({"execution_status": "ok"}), encoding="utf-8")
+
+            stub = StubDispatch()
+            stub._round_n_sequence = [[], []]
+            stub._new_exec_result = exec_result
+            out_dir = tdp / "out"
+            result = run_branch_c(
+                cwd=tdp,
+                output_dir=out_dir,
+                invocation_id=gen_id(),
+                execution_result=exec_result,
+                claude_findings=[],
+                threshold_lines=DEFAULT_ROUND2_FANOUT_THRESHOLD_LINES,
+                threshold_files=DEFAULT_ROUND2_FANOUT_THRESHOLD_FILES,
+                max_rounds=10,
+                stub_dispatch=stub,
+            )
+
+            report = json.loads((out_dir / "controller-final-report.json").read_text(encoding="utf-8"))
+            assert result == "APPROVED"
+            assert report["branch"] == "combined"
+            assert report["review_kind"] == "combined"
+            assert report["final_verdict"] == "APPROVED"
+            assert report["final_state"]["branch_a_report_loaded"] is True
+            assert report["final_state"]["branch_b_report_loaded"] is True
+            assert report["final_state"]["simplify_status"]["completed"] is True
+            assert (out_dir / "branch_a" / "controller-final-report.json").exists()
+            assert (out_dir / "branch_b" / "controller-final-report.json").exists()
+
+    def test_main_fallback_report_is_auditable_on_early_system_exit(self):
+        """Early controller exits must write wrapper failure evidence, not an empty shell."""
+        import gd_review_controller as controller
+
+        with tempfile.TemporaryDirectory() as td:
+            out_dir = pathlib.Path(td) / "out"
+            old_argv = sys.argv
+            old_run_branch_a = controller.run_branch_a
+
+            def fail_before_report(**_kwargs):
+                raise SystemExit(1)
+
+            controller.run_branch_a = fail_before_report
+            sys.argv = [
+                "gd-review-controller.py",
+                "--branch",
+                "code-only",
+                "--cwd",
+                td,
+                "--output-dir",
+                str(out_dir),
+            ]
+            try:
+                with pytest.raises(SystemExit):
+                    controller.main()
+            finally:
+                controller.run_branch_a = old_run_branch_a
+                sys.argv = old_argv
+
+            report = json.loads((out_dir / "controller-final-report.json").read_text(encoding="utf-8"))
+            assert report["final_verdict"] == "REQUIRES_CHANGES"
+            assert report["baseline_findings"]
+            assert report["baseline_findings"][0]["bridge_failure"] is True
+            assert report["rounds"]
+            assert report["rounds"][0]["bridge_failure_count"] == 1
