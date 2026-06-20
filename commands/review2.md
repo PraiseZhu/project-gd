@@ -15,8 +15,12 @@ RELEASE_VERDICT: NOT_APPLICABLE (default)
 ## Usage
 
 ```
-/review2 plan <plan-file>           # 动手前：审计划（anti-fill 硬门 + Codex 交叉审查）
-/review2 code [--code|--result|--combined]  # 动手后：审代码/执行结果（三档自动判定）
+/review2 plan <plan-file> [--deep]        # 动手前：审计划（anti-fill 硬门 + Codex 交叉审查）
+/review2 code [--code|--result|--combined] [--deep]  # 动手后：审代码/执行结果（三档自动判定）
+
+# [--deep]：开启深度审查（codex workspace-write + 副本隔离 + deep addendum：架构/风险/接口维度
+#           + 真跑 verify 命令 + 深读语义 bug 检测）。仅 plan 与 code 三块支持。
+#           release_closure / runtime_parity 不支持 --deep（L2 不授予 release approval）。
 
 # 暂留旧式 flag（Q4 不拆子命令）：
 /review2 --profile release_closure  # 发布闭环验证
@@ -376,7 +380,8 @@ python3 scripts/gd-codex-bridge-review.py run-bridge \
   --kind plan \
   --target <original-plan-file> \
   --cwd <git-root> \
-  --out results/review-route-split/<run-id>/
+  --out results/review-route-split/<run-id>/ \
+  [--deep]
 
 # code 路（三档，target 由 T6 修正为真实 diff / 执行产物）
 python3 scripts/gd-codex-bridge-review.py run-bridge \
@@ -384,7 +389,8 @@ python3 scripts/gd-codex-bridge-review.py run-bridge \
   --target <true-diff-or-artifact> \
   --cwd <git-root> \
   --out results/review-route-split/<run-id>/ \
-  [--live-transport]
+  [--live-transport] \
+  [--deep]
 ```
 
 ---

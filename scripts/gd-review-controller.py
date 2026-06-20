@@ -164,6 +164,23 @@ LENS_B_EMPHASIS = (
 )
 
 
+def _normalize_lens_tag(value: str | None) -> str | None:
+    """SC-1 (T1): 把调用方传入的 lens 值归一化为唯一协议 tag (codex_A|codex_B)。
+
+    调用方可传裸 tag 或完整 L2 priority 全文（LENS_A/B_EMPHASIS）；非 tag 全文按常量映射，
+    未知值 → None（落中立，安全 fail-closed）。bridge 只认 GD_REVIEW_LENS_TAG（codex_A/codex_B）。
+    """
+    if not value:
+        return None
+    if value in ("codex_A", "codex_B"):
+        return value
+    if value == LENS_A_EMPHASIS:
+        return "codex_A"
+    if value == LENS_B_EMPHASIS:
+        return "codex_B"
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Utilities
 # ---------------------------------------------------------------------------
@@ -463,8 +480,14 @@ def _invoke_bridge_mapped(
 
     # Inject capsule round fields (bridge reads from env if set)
     env["GD_REVIEW_ROUND"] = str(review_round)
-    if lens_emphasis:
-        env["GD_REVIEW_LENS_EMPHASIS"] = lens_emphasis
+    # SC-1 (T1): 统一 lens 协议 = GD_REVIEW_LENS_TAG (codex_A|codex_B, 唯一真源)。
+    # 调用方传完整 L2 priority 全文或裸 tag → 归一化为 tag；priority 全文另存供 L2 行。
+    # （修 G2：旧实现把全文塞 GD_REVIEW_LENS_EMPHASIS，bridge L3 分支 .get(全文)→None→中立）
+    _lens_tag = _normalize_lens_tag(lens_emphasis)
+    if _lens_tag:
+        env["GD_REVIEW_LENS_TAG"] = _lens_tag
+    if lens_emphasis and lens_emphasis != _lens_tag:
+        env["GD_REVIEW_LENS_PRIORITY_TEXT"] = lens_emphasis
     if baseline_findings is not None:
         env["GD_BASELINE_FINDINGS"] = json.dumps(baseline_findings, ensure_ascii=False)
     if delta_scope is not None:
@@ -927,6 +950,9 @@ def run_branch_a(
     threshold_files: int,
     max_rounds: int,
     stub_dispatch: "StubDispatch | None" = None,
+    deep: bool = False,
+    queue_job_id: str | None = None,
+    plan_file: str | None = None,
 ) -> str:
     """
     Branch A (code-only): LOOP [/code-review → fix → conformance] → simplify → retest.
@@ -940,6 +966,7 @@ def run_branch_a(
         kind="code_diff", target=target, cwd=cwd, output_dir=output_dir,
         invocation_id=invocation_id, claude_findings=claude_findings,
         stub_dispatch=stub_dispatch,
+        deep=deep, queue_job_id=queue_job_id, plan_file=plan_file,
     )
     return _run_convergence_loop(
         kind="code_diff", target=target, cwd=cwd, output_dir=output_dir,
@@ -947,6 +974,7 @@ def run_branch_a(
         branch_label="code-only", claude_findings=claude_findings,
         threshold_lines=threshold_lines, threshold_files=threshold_files,
         max_rounds=max_rounds, stub_dispatch=stub_dispatch,
+        deep=deep, queue_job_id=queue_job_id, plan_file=plan_file,
     )
 
 
@@ -1027,6 +1055,7 @@ def run_branch_c(
         claude_findings=claude_findings,
         threshold_lines=threshold_lines, threshold_files=threshold_files,
         max_rounds=max_rounds, stub_dispatch=stub_dispatch,
+        deep=deep, queue_job_id=queue_job_id, plan_file=plan_file,
     )
 
     # Step 2: /simplify — direct codex exec --ephemeral (D3)
@@ -1608,6 +1637,7 @@ def main() -> int:
             claude_findings=claude_findings,
             threshold_lines=threshold_lines, threshold_files=threshold_files,
             max_rounds=args.max_rounds,
+            deep=args.deep, queue_job_id=args.queue_job_id, plan_file=args.plan_file,
         )
     elif args.branch == "execution-only":
         result = run_branch_b(

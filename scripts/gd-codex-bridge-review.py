@@ -46,6 +46,30 @@ SCHEMA_PATH = SCHEMA_PATH_V1
 STANDARD_PATH = GD_PROJECT_ROOT / "prompts" / "gd-review-standard.md"
 GOAL_PATH = GD_PROJECT_ROOT / "docs" / "gd-v7-project-goal.md"
 
+# SC-0 (T0): 显式塞入 capsule 的 GD 权威上下文（不让 codex 猜）。
+# GD 权威 = 项目 CLAUDE.md（commands/gd.md + prompts/gd-review-standard.md）。
+_CLAUDE_MD_CONTEXT_SUMMARY = (
+    "GD 权威源 = 项目 CLAUDE.md（commands/gd.md lock_revision=22 + prompts/gd-review-standard.md）。"
+    "审查规则全部源自 CLAUDE.md；本仓不给 codex 新增 AGENTS.md。\n"
+    "- FORBIDDEN（硬边界）：不写 Claude/Codex runtime 基础设施目录（~/.claude、~/.codex）；"
+    "不动 release profiles（release_closure / runtime_parity，L2 不授予 release approval）；"
+    "不改 daemon / transport 脚本源（改 vendor→install）；不 commit、install 前 SOURCE_READY_INSTALL_BLOCKED。\n"
+    "- VERDICT 命名：用 GD_REVIEW_DECISION / REV_VERDICT，绝不输出裸 VERDICT:（触发 live hook regex 误判）。\n"
+    "- 三档：L1(/review1) / L2(/review2) / L3(/gd)；plan/code/execution-result 是 review target 类型，不是档位。"
+)
+
+# SC-0 (T0): deep 模式允许的查证命令（明确 codex 能跑哪些命令，不只开 workspace-write）。
+_DEEP_ALLOWED_COMMANDS_SECTION = (
+    "\n## 允许的查证命令（deep）\n\n"
+    "deep 模式下为产出真实证据（evidence），应主动运行下列只读查证命令，并把 exit code / 摘要写入 finding evidence：\n"
+    "- `rg` / `grep`：在 --cwd 内搜索符号/字符串\n"
+    "- `git diff HEAD` / `git log -p -n`：查看 dirty 与历史（code 路；只读，勿改）\n"
+    "- `nl -ba <file>` / `cat -n`：带行号读文件，evidence 须含 path:line\n"
+    "- `stat` / `test -f`：验证 deliverable / artifact 是否存在\n"
+    "- `python3 -c '...'`：必要时做最小自洽检查\n"
+    "**禁止**：`git commit` / `git push` / 写 runtime 基础设施 / 改 daemon。workspace-write 仅限本审查 workcopy。\n"
+)
+
 # v1 (compat) template files
 TEMPLATE_BY_KIND_V1 = {
     "plan": GD_PROJECT_ROOT / "templates" / "gd-plan-review-template.md",
@@ -275,6 +299,35 @@ _EMPHASIS_CODEX_A = (
 _EMPHASIS_CODEX_B = (
     "失败模式/fallback→安全/secret 泄漏→anti-fill 泛化→SC-conformance→边界/路径越界"
 )
+
+# ----------------------------- Lens env protocol (SC-1 / T1) ----------------------------- #
+# 统一 lens 协议：GD_REVIEW_LENS_TAG=codex_A|codex_B 是 L3 双镜头分化的唯一真源。
+# controller / merge-loop 设该 env；bridge 在 _cmd_run_bridge_inner / cmd_build_capsule
+# 读它 → build_capsule_text(lens_emphasis=<tag>) 走 L3 分支(:1294)给专属文案。
+# 修 G1（断线）：旧实现从不读 lens env，capsule 永远落中立。
+# 修 G2（值不对齐）：旧 env 名塞完整 priority 全文，L3 分支 .get(全文)→None→中立。
+_GD_REVIEW_LENS_TAG_ENV = "GD_REVIEW_LENS_TAG"
+_GD_REVIEW_LENS_PRIORITY_ENV = "GD_REVIEW_LENS_PRIORITY_TEXT"
+_GD_REVIEW_LENS_EMPHASIS_ENV_LEGACY = "GD_REVIEW_LENS_EMPHASIS"
+_LENS_TAGS: tuple[str, ...] = ("codex_A", "codex_B")
+
+
+def _lens_params_from_env() -> tuple[str | None, str | None]:
+    """从 env 推导 (emphasis, lens_emphasis)，供 build_capsule_text 调用。
+
+    GD_REVIEW_LENS_TAG=codex_A|codex_B → lens_emphasis（L3 分析视角分化，唯一协议）。
+    GD_REVIEW_LENS_PRIORITY_TEXT=<全文> → emphasis（L2 检查优先级排序行）；tag 存在时被 L3
+      覆盖（build_capsule_text 内 lens_emphasis 优先级高于 emphasis）。
+    Legacy GD_REVIEW_LENS_EMPHASIS 仅当其值恰为 codex_A/codex_B 时作为 tag 兜底。
+    """
+    tag = os.environ.get(_GD_REVIEW_LENS_TAG_ENV)
+    if tag not in _LENS_TAGS:
+        legacy = os.environ.get(_GD_REVIEW_LENS_EMPHASIS_ENV_LEGACY)
+        tag = legacy if legacy in _LENS_TAGS else None
+    lens_emphasis = tag  # L3 分化
+    priority = os.environ.get(_GD_REVIEW_LENS_PRIORITY_ENV) or None
+    return priority, lens_emphasis
+
 
 # ----------------------------- Helpers ----------------------------- #
 
@@ -1070,6 +1123,84 @@ def merge_findings_union(
     return result
 
 
+# SC-5 (T5): 双 lens codex mapped 结果仲裁合并 —— G9 修复。
+# merge_findings_union 只并 findings；本函数产完整 schema-valid MAPPED_RESULT
+# （保留 raw 路径 + source lens 标记 + verdict 从严仲裁）。供 plan 直连路双 lens 调度合并用。
+_DUAL_LENS_DEGRADED_STATUSES = {"degraded", "failed_to_run"}
+
+
+def _tag_lens_source(finding: dict, lens: str) -> dict:
+    """给 finding 打 source_lens 标记（合并后可追溯来自 codex_A/B 哪个视角）。"""
+    nf = dict(finding)
+    nf.setdefault("source_lens", lens)
+    return nf
+
+
+def merge_dual_codex_mapped(mapped_a: dict, mapped_b: dict) -> dict:
+    """双 lens（codex_A / codex_B）mapped 结果仲裁合并 → schema-valid MAPPED_RESULT。
+
+    verdict 仲裁（从严）：
+      - 任一 degraded / failed_to_run / FAILED → review_run_status=degraded, decision=FAILED
+      - 否则任一 REQUIRES_CHANGES → REQUIRES_CHANGES（completed）
+      - 否则双 APPROVED → APPROVED（completed）
+    findings：codex_A ∪ codex_B，经 merge_findings_union 去重，每条带 source_lens。
+    raw_result / source：两 lens 原始路径与判定记入 merge_notes，不丢审计链。
+
+    fixtures（见 tests/test_dual_lens_merge.py）：
+      APPROVED + REQUIRES_CHANGES → REQUIRES_CHANGES
+      degraded  + APPROVED        → FAILED (degraded)
+      APPROVED  + APPROVED        → APPROVED
+    """
+    _a = mapped_a or {}
+    _b = mapped_b or {}
+    dec_a = str(_a.get("gd_review_decision", "FAILED")).upper()
+    dec_b = str(_b.get("gd_review_decision", "FAILED")).upper()
+    stat_a = str(_a.get("review_run_status", "failed_to_run"))
+    stat_b = str(_b.get("review_run_status", "failed_to_run"))
+
+    if (stat_a in _DUAL_LENS_DEGRADED_STATUSES
+            or stat_b in _DUAL_LENS_DEGRADED_STATUSES
+            or dec_a == "FAILED" or dec_b == "FAILED"):
+        merged_decision, merged_status = "FAILED", "degraded"
+        merge_reason = (f"dual-lens arbitration: ≥1 lens degraded/failed "
+                        f"(A={dec_a}/{stat_a}, B={dec_b}/{stat_b})")
+    elif dec_a == "REQUIRES_CHANGES" or dec_b == "REQUIRES_CHANGES":
+        merged_decision, merged_status = "REQUIRES_CHANGES", "completed"
+        merge_reason = (f"dual-lens arbitration: ≥1 REQUIRES_CHANGES "
+                        f"(A={dec_a}, B={dec_b})")
+    else:
+        merged_decision, merged_status = "APPROVED", "completed"
+        merge_reason = f"dual-lens arbitration: both APPROVED (A={dec_a}, B={dec_b})"
+
+    fa = [_tag_lens_source(f, "codex_A") for f in (_a.get("findings") or [])]
+    fb = [_tag_lens_source(f, "codex_B") for f in (_b.get("findings") or [])]
+    merged_findings = merge_findings_union([fa, fb])
+
+    # 取一个非 degraded base 作模板（保留 review_kind/target/template_kind 等结构字段）
+    base = _a if stat_a not in _DUAL_LENS_DEGRADED_STATUSES else _b
+    merged = dict(base)
+    # reviewer 用 schema 枚举内的 "codex"（gd-review-result-v2.schema.json 不允许 codex_dual_lens）；
+    # 双 lens 标识走 merge_notes.merge_strategy，raw 路径走 merge_notes.lens_a/b（不入 mapped 顶层，
+    # 因 additionalProperties:false）。两 lens 的 raw_result_path 已在 merge_notes.lens_a/b 记录。
+    merged.pop("raw_result_path", None)
+    merged.update({
+        "review_run_status": merged_status,
+        "gd_review_decision": merged_decision,
+        "findings": merged_findings,
+        "scope_checked": list(_a.get("scope_checked") or []) + list(_b.get("scope_checked") or []),
+        "reviewer": "codex",
+        "merge_notes": {
+            "merge_strategy": "dual_lens_verdict_arbitration",
+            "merge_reason": merge_reason,
+            "lens_a": {"decision": dec_a, "status": stat_a, "findings_count": len(fa),
+                       "raw_result_path": _a.get("raw_result_path")},
+            "lens_b": {"decision": dec_b, "status": stat_b, "findings_count": len(fb),
+                       "raw_result_path": _b.get("raw_result_path")},
+        },
+    })
+    return merged
+
+
 # T6: kinds where the PRIMARY_TARGET must be a real artifact (diff / execution result)
 # and NOT the capsule envelope (filename == capsule.md).
 _EXECUTION_ARTIFACT_KINDS: frozenset[str] = frozenset({
@@ -1359,6 +1490,15 @@ def build_capsule_text(
         f"GD_BASELINE_KEY: {gd_baseline_key}\n"
         f"GD_REVIEW_SCHEMA: {schema_path_for_capsule}\n"
         f"EXPECTED_SC_IDS: (extracted from target on review)\n\n"
+        # SC-0 (T0): 显式塞入 GD 权威上下文 + 必读清单（codex 不靠猜）
+        f"## CLAUDE_MD_CONTEXT（GD 权威规则摘要）\n\n"
+        f"{_CLAUDE_MD_CONTEXT_SUMMARY}\n\n"
+        f"## MANDATORY_READS（审查必读，逐项 Read 全文）\n\n"
+        f"- REVIEW_STANDARD_PATH: {STANDARD_PATH}\n"
+        f"- PRIMARY_TARGET: {primary_target_path}\n"
+        f"- GOAL_SOURCE: {GOAL_PATH}\n"
+        f"- GD 项目 CLAUDE.md（规则权威）\n\n"
+        f"⚠️ 跳过上述 Read → 判 degraded（L3 content-evidence validator）。\n\n"
         # Review Trust §Step 2 required metadata block
         f"QUEUE_JOB_ID: {effective_queue_id}\n"
         f"TARGET_ROLE: {effective_role}\n"
@@ -1751,6 +1891,8 @@ def _load_related_context(path: str | None) -> list[dict] | None:
 def cmd_build_capsule(args: argparse.Namespace) -> int:
     related = _load_related_context(getattr(args, "related_context", None))
     compat_v1 = _resolve_compat_v1(args.kind, getattr(args, "compat_v1", None))
+    # SC-1 (T1): build-capsule 子命令也读 lens env（preflight 路径与 live 一致）。
+    _emphasis_env, _lens_env = _lens_params_from_env()
     try:
         capsule, target_hash, capsule_hash, gd_baseline_key, run_id = build_capsule_text(
             args.kind, Path(args.target), Path(args.cwd),
@@ -1758,6 +1900,8 @@ def cmd_build_capsule(args: argparse.Namespace) -> int:
             target_role=getattr(args, "target_role", None),
             related_context=related,
             compat_v1=compat_v1,
+            emphasis=_emphasis_env,
+            lens_emphasis=_lens_env,
         )
     except ValueError as e:
         msg = str(e)
@@ -1825,6 +1969,222 @@ def _resolve_compat_v1(kind: str, explicit: "bool | None") -> bool:
     return kind in _COMPAT_V1_DEFAULT_KINDS
 
 
+# SC-5 (T5): 双 lens dispatch —— 失败时携带已写盘的 failed-mapped + 退出码。
+class _LensDispatchFailed(Exception):
+    """单 lens dispatch 失败（writer DEGRADED/MALFORMED/FAILED/timeout/result 缺失）。
+    携带 (mapped, transport_path, exit_code)，供 dual-lens 路径统一终止。"""
+
+    def __init__(self, mapped: dict, transport_path: str | None, exit_code: int):
+        self.mapped = mapped
+        self.transport_path = transport_path
+        self.exit_code = exit_code
+
+
+def _run_lens_dispatch(
+    capsule_text: str,
+    *,
+    run_id: str,
+    gd_baseline_key: str,
+    kind: str,
+    target_str: str,
+    run_cwd: "Path",
+    compat_v1: bool,
+    deep: bool,
+) -> tuple[dict, "str | None"]:
+    """跑一次 writer（单 lens）→ parse raw → 返回 (mapped, result_path)。
+
+    与 _cmd_run_bridge_inner 单 lens 路径等价（writer 调用 + marker 判定 + result_path 提取
+    + parse_raw_to_mapped），但失败时不直接 exit —— 抛 _LensDispatchFailed 让 dual-lens
+    合并层决定终止。用于 plan 直连路双 lens 调度（SC-5 part 2）。
+    """
+    tmpdir = Path(os.environ.get("TMPDIR", "/tmp"))
+    capsule_tmp = tmpdir / f"gd-codex-bridge-{run_id}.capsule.txt"
+    capsule_tmp.write_text(capsule_text, encoding="utf-8")
+
+    _effective_timeout = 1500 if deep else 600
+    _writer_extra_args: list[str] = ["--mode", "workspace-write", "--send-timeout", "1200"] if deep else []
+
+    try:
+        result = subprocess.run(
+            [
+                "bash", str(WRITER_PATH),
+                "--capsule-file", str(capsule_tmp),
+                "--baseline-key", gd_baseline_key,
+                "--review-kind", kind,
+                "--cwd", str(run_cwd),
+                "--no-stop-marker",
+            ] + _writer_extra_args,
+            capture_output=True, text=True, timeout=_effective_timeout,
+        )
+    except subprocess.TimeoutExpired:
+        raise _LensDispatchFailed(
+            _failed_mapped("codex", kind, target_str,
+                           f"writer subprocess timeout >{_effective_timeout}s"),
+            None, 1)
+
+    writer_stdout = result.stdout
+    writer_stderr = result.stderr
+    writer_exit = result.returncode
+    result_path = parse_writer_result_path(writer_stdout)
+
+    if "[REVIEW] ⚠️ DEGRADED" in writer_stdout:
+        raise _LensDispatchFailed(
+            _failed_mapped("codex", kind, target_str,
+                           f"writer DEGRADED: {writer_stdout.strip()[:200]}", "degraded"),
+            result_path or None, 1)
+    if "[REVIEW] ✗ MALFORMED" in writer_stdout:
+        raise _LensDispatchFailed(
+            _failed_mapped("codex", kind, target_str,
+                           f"writer MALFORMED: {writer_stdout.strip()[:200]}", "degraded"),
+            result_path or None, 1)
+    if "[REVIEW] ✗ FAILED" in writer_stdout or writer_exit != 0:
+        raise _LensDispatchFailed(
+            _failed_mapped("codex", kind, target_str,
+                           f"writer FAILED exit={writer_exit}: "
+                           f"{(writer_stdout + writer_stderr).strip()[:200]}"),
+            result_path or None, 1)
+    if not result_path or not Path(result_path).exists():
+        head = "\n".join(writer_stdout.splitlines()[:20])
+        reason = (f"WRITER_RESULT_PATH_MISSING: regex 未匹配 'Full result:'。head[20]:\n{head}"
+                  if not result_path
+                  else f"WRITER_RESULT_PATH_MISSING: path={result_path!r} 不存在。head[20]:\n{head}")
+        raise _LensDispatchFailed(
+            _failed_mapped("codex", kind, target_str, reason), None, 1)
+
+    raw_text = Path(result_path).read_text(encoding="utf-8")
+    mapped, _errs = parse_raw_to_mapped(kind, target_str, raw_text, compat_v1=compat_v1)
+    return mapped, result_path
+
+
+def _is_plan_direct_dual_lens(args: argparse.Namespace, deep: bool) -> bool:
+    """SC-5 part 2 gate：仅 plan 直连路 + --deep + 非 controller 调用 → bridge 做双 lens。
+
+    - kind=="plan"：plan 直连路（code/execution/combined 走 controller，已有双调度）。
+    - --deep：深审才双镜头（浅审 single_pass 保留旧行为）。
+    - GD_REVIEW_ROUTER_INVOCATION_ID 未设：非 controller 直调（controller 已 dispatch
+      codex_A/B，bridge 再双调度会嵌套 2→4 job，触发 G8）。code_diff 经 controller 故天然排除。
+    """
+    if args.kind != "plan" or not deep:
+        return False
+    return not os.environ.get(_GD_ROUTER_INVOCATION_ENV)
+
+
+def _mark_l3_failure(mapped: dict, reason: str) -> None:
+    """就地标记 L3 失败（degraded/FAILED + merge_notes.degraded_reason + sotd），不写盘。
+    供 dual-lens 逐 lens 标记（最终只写一次 merged 结果）。"""
+    mapped["review_run_status"] = "degraded"
+    mapped["gd_review_decision"] = "FAILED"
+    mapped.setdefault("merge_notes", {})["degraded_reason"] = reason
+    sotd = mapped.get("source_of_truth_decision")
+    if isinstance(sotd, dict):
+        sotd["value"] = "FAILED"
+
+
+def _run_l3_content_evidence(
+    kind: str, target_path: "Path", raw_result_path: "Path",
+) -> str | None:
+    """跑 L3 content-evidence validator，返回失败 reason（None=通过/跳过）。不 mutate mapped。
+
+    code_diff / execution_outcome / combined 跳过（其 SCOPE_CHECKED 非计划 SC-ID）。
+    与 _cmd_run_bridge_inner 单 lens 路径的 L3 逻辑等价；dual-lens 逐 lens 调用以保持等强度。
+    """
+    if not _kind_requires_l3(kind):
+        return None
+    l3_script = GD_PROJECT_ROOT / "scripts" / "gd-validate-review-content-evidence.py"
+    if not l3_script.exists():
+        print("L3_CONTENT_EVIDENCE: script missing — fail-closed", file=sys.stderr)
+        return "L3 content-evidence script missing — fail-closed"
+    if not target_path.exists():
+        print(f"L3_CONTENT_EVIDENCE: target not found ({target_path}) — fail-closed", file=sys.stderr)
+        return f"L3 target not found ({target_path}) — fail-closed"
+    try:
+        r = subprocess.run(
+            [sys.executable, str(l3_script),
+             "--target", str(target_path), "--review", str(raw_result_path)],
+            capture_output=True, text=True, timeout=30,
+        )
+        if r.returncode != 0:
+            print(f"L3_CONTENT_EVIDENCE: FAILED — {r.stdout.strip()[:200]}", file=sys.stderr)
+            return "L3 content-evidence validator rejected review: " + r.stdout.strip()[:200]
+        return None
+    except subprocess.TimeoutExpired:
+        print("L3_CONTENT_EVIDENCE: timeout (30s) — fail-closed", file=sys.stderr)
+        return "L3 content-evidence validator timed out (30s) — fail-closed"
+    except Exception as e:  # noqa: BLE001
+        print(f"L3_CONTENT_EVIDENCE: error — {e}", file=sys.stderr)
+        return f"L3 content-evidence validator error — {e}"
+
+
+def _run_plan_direct_dual_lens(
+    args: argparse.Namespace,
+    target: "Path",
+    cwd: "Path",
+    out_path: "Path",
+    target_str: str,
+    run_id: str,
+    compat_v1: bool,
+    related: list[dict] | None,
+) -> int:
+    """SC-5 part 2: plan 直连路双 lens —— codex_A / codex_B 同 target 各跑一次 → merge。
+
+    每镜头：build_capsule_text(lens_emphasis=tag)（L3 分化）+ deep addendum + allowed cmds，
+    _run_lens_dispatch 跑 writer→parse→mapped，_run_l3_content_evidence 逐 lens 校验（保持等强度），
+    L3 失败则 _mark_l3_failure（degraded）→ merge_dual_codex_mapped 从严仲裁（任一 degraded→FAILED）。
+    单 lens dispatch 失败（writer DEGRADED/MALFORMED/FAILED/timeout）→ fail-closed 立即终止。
+    """
+    mapped_per_lens: list[dict] = []
+    last_transport: str | None = None
+    for lens_tag, suffix in (("codex_A", "A"), ("codex_B", "B")):
+        lens_run_id = f"{run_id}-{suffix}"
+        lens_capsule, _th, _ch, lens_baseline_key, _rid = build_capsule_text(
+            "plan", target, cwd,
+            queue_job_id=getattr(args, "queue_job_id", None),
+            target_role=getattr(args, "target_role", None),
+            related_context=related,
+            compat_v1=compat_v1,
+            lens_emphasis=lens_tag,  # L3 分化（A=结构符合 / B=对抗边角）
+        )
+        lens_capsule += _build_deep_plan_capsule("plan", target, getattr(args, "plan_file", None))
+        lens_capsule += _DEEP_ALLOWED_COMMANDS_SECTION
+        try:
+            mapped, result_path = _run_lens_dispatch(
+                lens_capsule,
+                run_id=lens_run_id, gd_baseline_key=lens_baseline_key,
+                kind="plan", target_str=target_str, run_cwd=cwd,
+                compat_v1=compat_v1, deep=True,
+            )
+        except _LensDispatchFailed as e:
+            out_path.write_text(json.dumps(e.mapped, ensure_ascii=False, indent=2), encoding="utf-8")
+            print("GD_CODEX_BRIDGE_STATUS: failed_to_run")
+            print("GD_REVIEW_DECISION: FAILED")
+            print(f"MAPPED_RESULT: {out_path}")
+            print(f"TRANSPORT_RESULT: {e.transport_path or 'N/A'}")
+            print(f"DUAL_LENS_ABORTED: lens={lens_tag} dispatch failed", file=sys.stderr)
+            return e.exit_code
+        # 逐 lens L3 content-evidence（保持与单 lens 等强度）
+        l3_reason = _run_l3_content_evidence("plan", target, Path(result_path))
+        if l3_reason is not None:
+            _mark_l3_failure(mapped, l3_reason)
+        mapped["raw_result_path"] = result_path
+        mapped_per_lens.append(mapped)
+        last_transport = result_path
+
+    merged = merge_dual_codex_mapped(mapped_per_lens[0], mapped_per_lens[1])
+    out_path.write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8")
+    decision = merged["gd_review_decision"]
+    status = merged["review_run_status"]
+    print(f"GD_CODEX_BRIDGE_STATUS: {status}")
+    print(f"GD_REVIEW_DECISION: {decision}")
+    print(f"MAPPED_RESULT: {out_path}")
+    print(f"TRANSPORT_RESULT: {last_transport}")
+    print(
+        f"DUAL_LENS_MERGED: A={mapped_per_lens[0].get('gd_review_decision')} "
+        f"B={mapped_per_lens[1].get('gd_review_decision')} → {decision}",
+        file=sys.stderr,
+    )
+    return 0 if decision == "APPROVED" else 1
+
+
 def cmd_run_bridge(args: argparse.Namespace) -> int:
     if not args.live_transport:
         print("live-transport flag required for actual delivery", file=sys.stderr)
@@ -1890,6 +2250,8 @@ def _cmd_run_bridge_inner(args: argparse.Namespace) -> int:
     compat_v1 = _resolve_compat_v1(args.kind, getattr(args, "compat_v1", None))
 
     related = _load_related_context(getattr(args, "related_context", None))
+    # SC-1 (T1): 从 env 读统一 lens 协议 → A/B capsule 真分化（修 G1 断线 + G2 值不对齐）。
+    _emphasis_env, _lens_env = _lens_params_from_env()
     try:
         capsule, target_hash, capsule_hash, gd_baseline_key, run_id = build_capsule_text(
             args.kind, target, cwd,
@@ -1897,6 +2259,8 @@ def _cmd_run_bridge_inner(args: argparse.Namespace) -> int:
             target_role=getattr(args, "target_role", None),
             related_context=related,
             compat_v1=compat_v1,
+            emphasis=_emphasis_env,
+            lens_emphasis=_lens_env,
         )
     except ValueError as e:
         msg = str(e)
@@ -1937,6 +2301,8 @@ def _cmd_run_bridge_inner(args: argparse.Namespace) -> int:
             capsule += _build_deep_outcome_capsule(args.kind, target, getattr(args, "plan_file", None))
         else:
             capsule += _build_deep_code_capsule(args.kind, target)
+        # SC-0 (T0): deep 允许的查证命令清单（不只开 workspace-write）
+        capsule += _DEEP_ALLOWED_COMMANDS_SECTION
 
     # SC-23: deep isolation guard — snapshot git status before running
     _pre_git_status: str | None = None
@@ -1960,6 +2326,41 @@ def _cmd_run_bridge_inner(args: argparse.Namespace) -> int:
             print(f"MAPPED_RESULT: {out_path}")
             return 1
 
+    # SC-2 (T2): code 路 deep 副本隔离 — codex workspace-write 落副本，原工作区 git status 不变。
+    # hard_stop: 副本不得写入原工作区 / worktree 不得丢 dirty。worktree+stash 复刻 dirty，
+    # codex 在副本跑命令；原工作区前后 git status --porcelain 字节一致（由 SC-23 post-check 兜底）。
+    _run_cwd: Path = cwd
+    _workcopy_manifest: dict | None = None
+    if _deep and args.kind == "code_diff":
+        try:
+            import importlib.util
+            _spec = importlib.util.spec_from_file_location(
+                "gd_prepare_workcopy", GD_PROJECT_ROOT / "scripts" / "gd-prepare-workcopy.py")
+            _wc_mod = importlib.util.module_from_spec(_spec)  # type: ignore[arg-type]
+            _spec.loader.exec_module(_wc_mod)  # type: ignore[union-attr]
+            _wc_scratch = out_path.parent / f"_workcopy_{run_id}"
+            _workcopy_manifest = _wc_mod.prepare_workcopy(cwd, run_id, _wc_scratch)
+            _run_cwd = Path(_workcopy_manifest["workcopy_cwd"])
+            print(f"WORKCOPY_PREPARED: cwd={_run_cwd}", file=sys.stderr)
+        except Exception as _e:
+            print(f"WORKCOPY_PREPARE_FAILED: {_e}", file=sys.stderr)
+            mapped = _failed_mapped("codex", args.kind, target_str,
+                                    f"deep workcopy isolation failed: {_e}")
+            out_path.write_text(json.dumps(mapped, ensure_ascii=False, indent=2), encoding="utf-8")
+            print("GD_CODEX_BRIDGE_STATUS: failed_to_run")
+            print("GD_REVIEW_DECISION: FAILED")
+            print(f"MAPPED_RESULT: {out_path}")
+            return 1
+
+    # SC-5 (T5) part 2: plan 直连路 + --deep + 非 controller → bridge 双 lens 调度。
+    # 同 target 跑 codex_A / codex_B 两次（各自 GD_REVIEW_LENS_TAG + lens 文案内联），再合并。
+    # code_diff / execution / combined 走 controller（已 dispatch codex_A/B），bridge 不双调度
+    # （G8 嵌套 2→4 job 由 _is_plan_direct_dual_lens 的 router-env 判别硬排除）。
+    if _is_plan_direct_dual_lens(args, _deep):
+        return _run_plan_direct_dual_lens(
+            args, target, cwd, out_path, target_str, run_id, compat_v1, related,
+        )
+
     tmpdir = Path(os.environ.get("TMPDIR", "/tmp"))
     capsule_tmp = tmpdir / f"gd-codex-bridge-{run_id}.capsule.txt"
     capsule_tmp.write_text(capsule, encoding="utf-8")
@@ -1975,7 +2376,7 @@ def _cmd_run_bridge_inner(args: argparse.Namespace) -> int:
                 "--capsule-file", str(capsule_tmp),
                 "--baseline-key", gd_baseline_key,
                 "--review-kind", args.kind,
-                "--cwd", str(cwd),
+                "--cwd", str(_run_cwd),
                 "--no-stop-marker",
             ] + _writer_extra_args,
             capture_output=True,
@@ -1992,6 +2393,15 @@ def _cmd_run_bridge_inner(args: argparse.Namespace) -> int:
         print(f"MAPPED_RESULT: {out_path}")
         print("TRANSPORT_RESULT: N/A")
         return 1
+    finally:
+        # SC-2 (T2): worktree 生命周期管理 —— writer 返回（成功/超时/异常）即释放副本，
+        # 防止每次 deep code_diff 泄漏一个完整 git worktree（altitude/efficiency 双命中）。
+        # worktree 仅 writer 期间需要；后续 L3/post-check 用 original target/cwd，不受影响。
+        if _workcopy_manifest is not None:
+            try:
+                _wc_mod.cleanup_workcopy(_workcopy_manifest)  # type: ignore[union-attr]
+            except Exception as _cleanup_err:  # noqa: BLE001
+                print(f"WORKCOPY_CLEANUP_FAILED: {_cleanup_err}", file=sys.stderr)
 
     writer_stdout = result.stdout
     writer_stderr = result.stderr
@@ -2181,16 +2591,10 @@ def _cmd_run_bridge_inner(args: argparse.Namespace) -> int:
 def _apply_l3_failure(mapped: dict, reason: str, out_path: "Path") -> None:
     """Apply L3 failure to mapped result and write to disk (F-R6-2 fix).
 
-    Updates review_run_status, gd_review_decision, merge_notes.degraded_reason,
-    and source_of_truth_decision.value so all decision fields stay consistent.
+    更新 review_run_status, gd_review_decision, merge_notes.degraded_reason,
+    source_of_truth_decision.value 后写盘。单 lens 路径用（dual-lens 用 _mark_l3_failure 不写盘）。
     """
-    mapped["review_run_status"] = "degraded"
-    mapped["gd_review_decision"] = "FAILED"
-    mapped["merge_notes"]["degraded_reason"] = reason
-    # Sync source_of_truth_decision.value so v2 consumers see a consistent picture.
-    sotd = mapped.get("source_of_truth_decision")
-    if isinstance(sotd, dict):
-        sotd["value"] = "FAILED"
+    _mark_l3_failure(mapped, reason)
     out_path.write_text(json.dumps(mapped, ensure_ascii=False, indent=2), encoding="utf-8")
 
 

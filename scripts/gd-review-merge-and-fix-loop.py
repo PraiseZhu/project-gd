@@ -1238,9 +1238,9 @@ def run_production_plan(
     # --- Round 1: dual-codex + Claude self-review ---
     print(f"=== Round 1 / {MAX_REVIEW_ROUNDS}: dual-codex (codex_A + codex_B) + Claude self-review ===")
 
-    # Build per-lens env blocks. lens_emphasis name must match what bridge reads.
-    env_r1_a = {**os.environ, "GD_REVIEW_LENS_EMPHASIS": "codex_A"}
-    env_r1_b = {**os.environ, "GD_REVIEW_LENS_EMPHASIS": "codex_B"}
+    # Build per-lens env blocks. SC-1 (T1): 统一协议 GD_REVIEW_LENS_TAG（bridge 唯一读取）。
+    env_r1_a = {**os.environ, "GD_REVIEW_LENS_TAG": "codex_A"}
+    env_r1_b = {**os.environ, "GD_REVIEW_LENS_TAG": "codex_B"}
 
     with ThreadPoolExecutor(max_workers=2) as executor:
         fut_a = executor.submit(_run_bridge_job, plan_path, cwd, output_dir, 1, "codex_A", env_r1_a)
@@ -1337,8 +1337,8 @@ def run_production_plan(
             "GD_DELTA_SCOPE": DELTA_SCOPE,
             "GD_SCOPE_CONSTRAINT": SCOPE_CONSTRAINT,
         }
-        round_env_a = {**base_env, "GD_REVIEW_LENS_EMPHASIS": "codex_A"}
-        round_env_b = {**base_env, "GD_REVIEW_LENS_EMPHASIS": "codex_B"}
+        round_env_a = {**base_env, "GD_REVIEW_LENS_TAG": "codex_A"}
+        round_env_b = {**base_env, "GD_REVIEW_LENS_TAG": "codex_B"}
 
         # Every round is dual-codex (FR-004); large-delta upgrade condition removed per spec.
         with ThreadPoolExecutor(max_workers=2) as executor:
