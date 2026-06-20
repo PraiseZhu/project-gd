@@ -32,10 +32,13 @@ from __future__ import annotations
 
 import argparse
 import datetime as _dt
+import hashlib
 import json
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -508,7 +511,6 @@ def validate_route_report(data: dict) -> list[str]:
             )
         else:
             # D3 (G4 symmetry): validate ledger file physically exists and is valid JSON
-            import json as _json
             _ledger_p = Path(ledger_path_str)
             if not _ledger_p.is_file():
                 violations.append(
@@ -518,25 +520,253 @@ def validate_route_report(data: dict) -> list[str]:
                 )
             else:
                 try:
-                    _json.loads(_ledger_p.read_text(encoding="utf-8"))
-                except (OSError, _json.JSONDecodeError) as _e:
+                    json.loads(_ledger_p.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError) as _e:
                     violations.append(
                         f"{rtk_str}/live/APPROVED: child_review_ledger_path invalid JSON — "
                         f"{_ledger_p.name}: {_e} "
                         "(CLOSURE_INELIGIBLE: ledger_invalid_json)"
                     )
 
-    # Step 5 — code_only LOCAL_STATIC_ONLY cannot claim APPROVED.
-    # LOCAL_STATIC_ONLY is a placeholder status meaning skill_orchestrated review has
-    # not completed; only a completed cross-review may produce APPROVED.
+    # Plan GD-L1L3 SC-5/SC-7 — code_only/live/APPROVED real Codex code_diff sidecar evidence.
+    # code-only APPROVED requires a REAL Codex code_diff sidecar: codex raw/mapped artifacts
+    # (distinct from the .patch diff artifact), codex_review_status=completed,
+    # codex_review_kind=code_diff, mapped JSON body itself code_diff, and the child ledger
+    # must pass the stage-dispatch-ledger validator (not just be JSON-readable).
     if (mode_str == "live" and decision_str == "APPROVED" and rtk_str == "code_only"):
-        if data.get("failure_code") == "LOCAL_STATIC_ONLY":
+        cs = data.get("codex_review_status")
+        if cs in {"transport_failed", "wrapper_schema_fail", "not_run_blocked"}:
             violations.append(
-                "code_only/live/APPROVED: failure_code='LOCAL_STATIC_ONLY' is incompatible "
-                "with decision=APPROVED — LOCAL_STATIC_ONLY is a placeholder status "
-                "indicating the skill_orchestrated review has not completed; "
-                "re-run with completed cross-review before claiming APPROVED"
+                f"code_only/live/APPROVED: codex_review_status={cs!r} indicates Codex did not "
+                "complete; cannot claim APPROVED"
             )
+        elif cs != "completed":
+            violations.append(
+                f"code_only/live/APPROVED: codex_review_status must be 'completed' "
+                f"(real Codex code_diff sidecar); got {cs!r}"
+            )
+        ck = data.get("codex_review_kind")
+        if ck != "code_diff":
+            violations.append(
+                f"code_only/live/APPROVED: codex_review_kind must be 'code_diff'; got {ck!r}"
+            )
+        # Placeholder/static failure codes incompatible with APPROVED
+        _bad_fc = {"LOCAL_STATIC_ONLY", "pending_future_plan", "static-only"}
+        fc = data.get("failure_code")
+        if fc in _bad_fc:
+            violations.append(
+                f"code_only/live/APPROVED: failure_code={fc!r} is a placeholder/static status "
+                "incompatible with APPROVED (real Codex sidecar must replace it)"
+            )
+
+        # required codex evidence fields
+        for _f in ("codex_raw_result_path", "codex_raw_result_hash",
+                   "codex_mapped_result_path", "codex_mapped_result_hash"):
+            if not data.get(_f):
+                violations.append(
+                    f"code_only/live/APPROVED: {_f!r} required — real Codex code_diff "
+                    "sidecar raw/mapped artifacts must be recorded"
+                )
+
+        _raw_path = data.get("codex_raw_result_path", "")
+        _raw_hash = data.get("codex_raw_result_hash", "")
+        _mapped_path = data.get("codex_mapped_result_path", "")
+        _mapped_hash = data.get("codex_mapped_result_hash", "")
+        _diff_path = data.get("raw_result_path", "")
+
+        # raw must not be .raw_unknown / all-zeros
+        if _raw_path and _raw_path.endswith(".raw_unknown"):
+            violations.append(
+                "code_only/live/APPROVED: 'codex_raw_result_path' ends with '.raw_unknown' — "
+                "synthetic placeholder, not real Codex raw"
+            )
+        if _raw_hash and _raw_hash == "0" * 64:
+            violations.append(
+                "code_only/live/APPROVED: 'codex_raw_result_hash' is all-zeros sentinel — "
+                "raw was not actually hashed"
+            )
+        # three-artifact separation: codex_raw != diff (.patch), mapped != diff, mapped != raw
+        # raw_result_path is the .patch diff artifact; its hash must equal diff_hash
+        if (_diff_path and data.get("raw_result_hash") and data.get("diff_hash")
+                and data.get("raw_result_hash") != data.get("diff_hash")):
+            violations.append(
+                "code_only/live/APPROVED: raw_result_hash must equal diff_hash "
+                "(raw_result_path is the .patch diff artifact)"
+            )
+        if _raw_path and _diff_path and _raw_path == _diff_path:
+            violations.append(
+                "code_only/live/APPROVED: 'codex_raw_result_path' must NOT equal "
+                "'raw_result_path' — the .patch diff artifact and the Codex raw review "
+                "must be distinct (three-artifact separation)"
+            )
+        if _mapped_path and _diff_path and _mapped_path == _diff_path:
+            violations.append(
+                "code_only/live/APPROVED: 'codex_mapped_result_path' must NOT equal "
+                "'raw_result_path' — mapped Codex JSON is not the .patch diff artifact"
+            )
+        if _mapped_path and _raw_path and _mapped_path == _raw_path:
+            violations.append(
+                "code_only/live/APPROVED: 'codex_mapped_result_path' must NOT equal "
+                "'codex_raw_result_path' — mapped JSON and raw review are distinct"
+            )
+        if _mapped_path and (_mapped_path.endswith(".patch") or _mapped_path.endswith(".raw_unknown")):
+            violations.append(
+                f"code_only/live/APPROVED: 'codex_mapped_result_path' must be the mapped JSON, "
+                f"not a .patch / .raw_unknown file; got {_mapped_path!r}"
+            )
+
+        # file existence + hash integrity for raw / mapped; cache mapped bytes for the
+        # JSON-body check below (avoids reading the mapped file twice).
+        _mapped_bytes = None
+        for _label, _pval, _hval in (
+            ("codex_raw_result_path", _raw_path, _raw_hash),
+            ("codex_mapped_result_path", _mapped_path, _mapped_hash),
+        ):
+            if not _pval or _pval.endswith(".raw_unknown"):
+                continue
+            _fobj = Path(_pval)
+            if not _fobj.exists():
+                violations.append(
+                    f"code_only/live/APPROVED: {_label!r} does not exist on disk: {_pval!r}"
+                )
+                continue
+            _fb = _fobj.read_bytes()
+            if _label == "codex_mapped_result_path":
+                _mapped_bytes = _fb
+            if _hval and _hval != "0" * 64:
+                _actual = hashlib.sha256(_fb).hexdigest()
+                if _actual != _hval:
+                    violations.append(
+                        f"code_only/live/APPROVED: {_label.replace('_path', '_hash')!r} "
+                        f"({_hval[:16]}...) does not match actual file hash "
+                        f"({_actual[:16]}...) — evidence tampered or path stale"
+                    )
+
+        # mapped JSON body must itself be code_diff (review_kind / target_role / template_kind)
+        if _mapped_bytes is not None:
+            try:
+                _mj = json.loads(_mapped_bytes)
+            except (OSError, json.JSONDecodeError) as _e:
+                violations.append(
+                    f"code_only/live/APPROVED: codex_mapped_result_path is not valid JSON: {_e}"
+                )
+                _mj = None
+            if isinstance(_mj, dict):
+                if _mj.get("review_kind") != "code_diff":
+                    violations.append(
+                        f"code_only/live/APPROVED: mapped JSON review_kind must be "
+                        f"'code_diff'; got {_mj.get('review_kind')!r}"
+                    )
+                if _mj.get("target_role") != "code_diff":
+                    violations.append(
+                        f"code_only/live/APPROVED: mapped JSON target_role must be "
+                        f"'code_diff'; got {_mj.get('target_role')!r}"
+                    )
+                if _mj.get("template_kind") != "gd-code-diff-review":
+                    violations.append(
+                        f"code_only/live/APPROVED: mapped JSON template_kind must be "
+                        f"'gd-code-diff-review'; got {_mj.get('template_kind')!r}"
+                    )
+                # mapped JSON verdict must agree with route decision=APPROVED — otherwise
+                # a Codex REQUIRES_CHANGES result can back a route APPROVED (伪绿).
+                _mj_decision = _mj.get("gd_review_decision") or _mj.get("decision")
+                if str(_mj_decision).strip().upper() != "APPROVED":
+                    violations.append(
+                        f"code_only/live/APPROVED: mapped JSON verdict must be 'APPROVED' "
+                        f"(route decision=APPROVED); got {_mj_decision!r}"
+                    )
+
+        # child ledger hash integrity + stage-dispatch-ledger validator (not just JSON-readable)
+        _ledger_path = data.get("child_review_ledger_path")
+        _ledger_hash = data.get("child_review_ledger_hash")
+        # defense-in-depth: reject path traversal before passing _ledger_path to the
+        # stage-dispatch-ledger subprocess (which reads the file). Route reports are
+        # router-produced (ledger under output_dir) or operator-supplied, but a crafted
+        # path with '..' must not let the subprocess read arbitrary files.
+        if _ledger_path and ".." in Path(_ledger_path).parts:
+            violations.append(
+                f"code_only/live/APPROVED: child_review_ledger_path contains '..' "
+                f"— path traversal rejected: {_ledger_path!r}"
+            )
+        elif _ledger_path and Path(_ledger_path).is_file():
+            if _ledger_hash:
+                _actual_lh = hashlib.sha256(Path(_ledger_path).read_bytes()).hexdigest()
+                if _actual_lh != _ledger_hash:
+                    violations.append(
+                        f"code_only/live/APPROVED: child_review_ledger_hash "
+                        f"({_ledger_hash[:16]}...) does not match actual ledger file hash "
+                        f"({_actual_lh[:16]}...) — ledger tampered or stale"
+                    )
+            _ledger_val = SCRIPTS / "gd-validate-stage-dispatch-ledger.py"
+            if _ledger_val.exists():
+                try:
+                    _r = subprocess.run(
+                        [sys.executable, str(_ledger_val), _ledger_path],
+                        capture_output=True, text=True, timeout=30,
+                    )
+                    if _r.returncode != 0:
+                        violations.append(
+                            f"code_only/live/APPROVED: child ledger failed stage-dispatch-ledger "
+                            f"validation (exit {_r.returncode}): "
+                            f"{(_r.stderr or _r.stdout).strip()[:200]}"
+                        )
+                except (OSError, subprocess.TimeoutExpired) as _e:
+                    violations.append(
+                        f"code_only/live/APPROVED: could not run stage-dispatch-ledger "
+                        f"validator: {_e}"
+                    )
+            # SC-7: ledger-internal evidence binding — child_jobs[].result_path/hash and
+            # main_agent_merge.merge_report_path/hash must resolve to real files whose sha256
+            # matches, and final_decision must be APPROVED. A schema-valid ledger with forged
+            # internal hashes must NOT back an APPROVED (otherwise a fake ledger props up a
+            # 伪绿 APPROVED). The merge report is a standalone file (router writes it separate
+            # from the route report) so merge_report_hash is cross-checkable without the
+            # route↔ledger hash circular dependency.
+            try:
+                _ledger_obj = json.loads(Path(_ledger_path).read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                _ledger_obj = None  # stage-dispatch-ledger subprocess already flags JSON errors
+            if isinstance(_ledger_obj, dict):
+                for _cj in (_ledger_obj.get("child_jobs") or []):
+                    _crp = _cj.get("result_path")
+                    _crh = _cj.get("result_hash")
+                    if _crp and ".." in Path(_crp).parts:
+                        violations.append(
+                            f"code_only/live/APPROVED: ledger child result_path contains '..' "
+                            f"— rejected: {_crp!r}"
+                        )
+                        continue
+                    if _crp and _crh and Path(_crp).is_file():
+                        _actual_crh = hashlib.sha256(Path(_crp).read_bytes()).hexdigest()
+                        if _actual_crh != _crh:
+                            violations.append(
+                                f"code_only/live/APPROVED: ledger child result_hash "
+                                f"({_crh[:16]}...) does not match actual file "
+                                f"({_actual_crh[:16]}...) for {_crp!r} — forged ledger"
+                            )
+                _merge = _ledger_obj.get("main_agent_merge") or {}
+                _mfd = _merge.get("final_decision")
+                if _mfd != "APPROVED":
+                    violations.append(
+                        f"code_only/live/APPROVED: ledger main_agent_merge.final_decision "
+                        f"must be 'APPROVED'; got {_mfd!r}"
+                    )
+                _mrp = _merge.get("merge_report_path")
+                _mrh = _merge.get("merge_report_hash")
+                if _mrp and ".." in Path(_mrp).parts:
+                    violations.append(
+                        f"code_only/live/APPROVED: ledger merge_report_path contains '..' "
+                        f"— rejected: {_mrp!r}"
+                    )
+                elif _mrp and _mrh and Path(_mrp).is_file():
+                    _actual_mrh = hashlib.sha256(Path(_mrp).read_bytes()).hexdigest()
+                    if _actual_mrh != _mrh:
+                        violations.append(
+                            f"code_only/live/APPROVED: ledger merge_report_hash "
+                            f"({_mrh[:16]}...) does not match actual file "
+                            f"({_actual_mrh[:16]}...) for {_mrp!r} — forged merge report"
+                        )
+
 
     # Step 5 — review_run_status failure statuses are incompatible with APPROVED.
     # These statuses indicate Codex transport or wrapper did not produce a valid verdict;
@@ -940,6 +1170,198 @@ def run_self_test() -> int:
         errors.append("negative test FAIL: live + no_artifact + raw_result_path should produce violations")
     else:
         print(f"  negative (live no_artifact with raw_result_path): violation captured ✓")
+
+    # --- Plan GD-L1L3 SC-8 — code_only live Codex code_diff sidecar self-test ---
+    _co_dir = tempfile.mkdtemp(prefix="gd-codeonly-st-")
+    try:
+        _coP = Path(_co_dir)
+
+        def _wf(name, content):
+            p = _coP / name
+            p.write_bytes(content if isinstance(content, bytes) else content.encode("utf-8"))
+            return str(p), hashlib.sha256(p.read_bytes()).hexdigest()
+
+        _raw_path, _raw_hash = _wf("codex-raw.md", "# Code Diff Review Result (v2)\n\nVERDICT: APPROVED\n")
+        _mapped_body = json.dumps({
+            "review_kind": "code_diff", "target_role": "code_diff",
+            "template_kind": "gd-code-diff-review", "gd_review_decision": "APPROVED",
+        })
+        _mapped_path, _mapped_hash = _wf("codex-mapped.json", _mapped_body)
+        _patch_path, _patch_hash = _wf("diff.patch", "diff --git a/x b/x\n")
+        _child_path, _child_hash = _wf("child.json", '{"gd_review_decision":"APPROVED"}')
+        _merge_path, _merge_hash = _wf("merge.json", '{"merged":"APPROVED"}')
+        _ledger = {
+            "schema_version": "1.0", "stage": "review_execution_code",
+            "parent_run_id": "run-co-001", "batch_id": "batch-co-001",
+            "recorded_at": "2026-01-01T00:00:00Z",
+            "child_agent_count": 1, "max_parallel": 2,
+            "child_jobs": [{"job_id": "job-1", "result_path": _child_path,
+                            "result_hash": _child_hash, "status": "completed"}],
+            "main_agent_merge": {"merge_report_path": _merge_path,
+                                 "merge_report_hash": _merge_hash,
+                                 "final_decision": "APPROVED", "blocking_buckets": []},
+        }
+        _ledger_path, _ledger_hash = _wf("ledger.json", json.dumps(_ledger))
+
+        def _co_report(**over):
+            base = {k: v for k, v in sample.items() if k not in ("plan_ref", "plan_hash")}
+            base.update(
+                mode="live", review_target_kind="code_only", decision="APPROVED",
+                diff_source="git diff HEAD~1", diff_hash=_patch_hash,
+                patch_generation_method="git_diff",
+                raw_result_path=_patch_path, raw_result_hash=_patch_hash,
+                codex_raw_result_path=_raw_path, codex_raw_result_hash=_raw_hash,
+                codex_mapped_result_path=_mapped_path, codex_mapped_result_hash=_mapped_hash,
+                codex_review_status="completed", codex_review_kind="code_diff",
+                child_review_ledger_path=_ledger_path, child_review_ledger_hash=_ledger_hash,
+            )
+            base.update(over)
+            return base
+
+        def _has(vlist, needle):
+            return any(needle in x for x in vlist)
+
+        # Positive: complete sidecar → PASS
+        _v = validate_route_report(_co_report())
+        if _v:
+            errors.append(f"positive FAIL code_only sidecar approved: {_v}")
+        else:
+            print("  positive (code_only sidecar approved): PASS ✓")
+
+        # missing codex raw
+        _v = validate_route_report(_co_report(codex_raw_result_path=None, codex_raw_result_hash=None))
+        if _has(_v, "codex_raw_result_path") and _has(_v, "required"):
+            print("  negative (missing codex raw): PASS ✓")
+        else:
+            errors.append(f"FAIL missing codex raw: {_v}")
+
+        # missing codex mapped
+        _v = validate_route_report(_co_report(codex_mapped_result_path=None, codex_mapped_result_hash=None))
+        if _has(_v, "codex_mapped_result_path") and _has(_v, "required"):
+            print("  negative (missing codex mapped): PASS ✓")
+        else:
+            errors.append(f"FAIL missing codex mapped: {_v}")
+
+        # mapped path equals raw (diff artifact)
+        _v = validate_route_report(_co_report(codex_mapped_result_path=_patch_path, codex_mapped_result_hash=_patch_hash))
+        if _has(_v, "codex_mapped_result_path' must NOT equal 'raw_result_path'"):
+            print("  negative (mapped path equals raw): PASS ✓")
+        else:
+            errors.append(f"FAIL mapped path equals raw: {_v}")
+
+        # mapped path is patch
+        _mp_path, _mp_hash = _wf("mapped-as-patch.patch", "fake patch\n")
+        _v = validate_route_report(_co_report(codex_mapped_result_path=_mp_path, codex_mapped_result_hash=_mp_hash))
+        if _has(_v, "must be the mapped JSON") and _has(_v, ".patch"):
+            print("  negative (mapped path is patch): PASS ✓")
+        else:
+            errors.append(f"FAIL mapped path is patch: {_v}")
+
+        # mapped review_kind mismatch
+        _mb_path, _mb_hash = _wf("mapped-wrong-kind.json", json.dumps({
+            "review_kind": "plan", "target_role": "code_diff", "template_kind": "gd-code-diff-review"}))
+        _v = validate_route_report(_co_report(codex_mapped_result_path=_mb_path, codex_mapped_result_hash=_mb_hash))
+        if _has(_v, "mapped JSON review_kind must be 'code_diff'"):
+            print("  negative (mapped review_kind mismatch): PASS ✓")
+        else:
+            errors.append(f"FAIL mapped review_kind mismatch: {_v}")
+
+        # wrong codex kind
+        _v = validate_route_report(_co_report(codex_review_kind="plan"))
+        if _has(_v, "codex_review_kind must be 'code_diff'"):
+            print("  negative (wrong codex kind): PASS ✓")
+        else:
+            errors.append(f"FAIL wrong codex kind: {_v}")
+
+        # invalid child ledger (missing batch_id)
+        _bad_ledger = {k: v for k, v in _ledger.items() if k != "batch_id"}
+        _bl_path, _bl_hash = _wf("ledger-nobatch.json", json.dumps(_bad_ledger))
+        _v = validate_route_report(_co_report(child_review_ledger_path=_bl_path, child_review_ledger_hash=_bl_hash))
+        if _has(_v, "stage-dispatch-ledger"):
+            print("  negative (invalid child ledger): PASS ✓")
+        else:
+            errors.append(f"FAIL invalid child ledger: {_v}")
+
+        # hash mismatch (codex_raw_result_hash wrong)
+        _v = validate_route_report(_co_report(codex_raw_result_hash="a" * 64))
+        if _has(_v, "does not match actual file hash"):
+            print("  negative (hash mismatch): PASS ✓")
+        else:
+            errors.append(f"FAIL hash mismatch: {_v}")
+
+        # LOCAL_STATIC_ONLY rejected
+        _v = validate_route_report(_co_report(failure_code="LOCAL_STATIC_ONLY"))
+        if _has(_v, "LOCAL_STATIC_ONLY"):
+            print("  negative (LOCAL_STATIC_ONLY rejected): PASS ✓")
+        else:
+            errors.append(f"FAIL LOCAL_STATIC_ONLY rejected: {_v}")
+
+        # mapped decision mismatch (route APPROVED but mapped verdict REQUIRES_CHANGES)
+        _rc_mapped, _rc_mh = _wf("mapped-rc.json", json.dumps({
+            "review_kind": "code_diff", "target_role": "code_diff",
+            "template_kind": "gd-code-diff-review", "gd_review_decision": "REQUIRES_CHANGES"}))
+        _v = validate_route_report(_co_report(
+            codex_mapped_result_path=_rc_mapped, codex_mapped_result_hash=_rc_mh))
+        if _has(_v, "verdict must be 'APPROVED'"):
+            print("  negative (mapped decision mismatch): PASS ✓")
+        else:
+            errors.append(f"FAIL mapped decision mismatch: {_v}")
+
+        # child ledger result_hash mismatch (forged internal hash)
+        _forged_ledger, _forged_lh = _wf("ledger-forged.json", json.dumps({
+            "schema_version": "1.0", "stage": "review_execution_code",
+            "parent_run_id": "run-co-001", "batch_id": "batch-co-001",
+            "recorded_at": "2026-01-01T00:00:00Z",
+            "child_agent_count": 1, "max_parallel": 2,
+            "child_jobs": [{"job_id": "j", "result_path": _child_path,
+                            "result_hash": "a" * 64, "status": "completed"}],
+            "main_agent_merge": {"merge_report_path": _merge_path,
+                                 "merge_report_hash": _merge_hash,
+                                 "final_decision": "APPROVED", "blocking_buckets": []}}))
+        _v = validate_route_report(_co_report(
+            child_review_ledger_path=_forged_ledger, child_review_ledger_hash=_forged_lh))
+        if _has(_v, "ledger child result_hash") and _has(_v, "does not match"):
+            print("  negative (child ledger result_hash mismatch): PASS ✓")
+        else:
+            errors.append(f"FAIL child ledger result_hash mismatch: {_v}")
+
+        # merge final_decision mismatch (ledger says REQUIRES_CHANGES but route APPROVED)
+        _mfd_ledger, _mfd_lh = _wf("ledger-mfd.json", json.dumps({
+            "schema_version": "1.0", "stage": "review_execution_code",
+            "parent_run_id": "run-co-001", "batch_id": "batch-co-001",
+            "recorded_at": "2026-01-01T00:00:00Z",
+            "child_agent_count": 1, "max_parallel": 2,
+            "child_jobs": [{"job_id": "j", "result_path": _child_path,
+                            "result_hash": _child_hash, "status": "completed"}],
+            "main_agent_merge": {"merge_report_path": _merge_path,
+                                 "merge_report_hash": _merge_hash,
+                                 "final_decision": "REQUIRES_CHANGES", "blocking_buckets": ["x"]}}))
+        _v = validate_route_report(_co_report(
+            child_review_ledger_path=_mfd_ledger, child_review_ledger_hash=_mfd_lh))
+        if _has(_v, "final_decision must be 'APPROVED'"):
+            print("  negative (merge final decision mismatch): PASS ✓")
+        else:
+            errors.append(f"FAIL merge final decision mismatch: {_v}")
+
+        # merge_report_hash mismatch (merge file real, but hash forged)
+        _mrhash_ledger, _mrhash_lh = _wf("ledger-mrhash.json", json.dumps({
+            "schema_version": "1.0", "stage": "review_execution_code",
+            "parent_run_id": "run-co-001", "batch_id": "batch-co-001",
+            "recorded_at": "2026-01-01T00:00:00Z",
+            "child_agent_count": 1, "max_parallel": 2,
+            "child_jobs": [{"job_id": "j", "result_path": _child_path,
+                            "result_hash": _child_hash, "status": "completed"}],
+            "main_agent_merge": {"merge_report_path": _merge_path,
+                                 "merge_report_hash": "b" * 64,
+                                 "final_decision": "APPROVED", "blocking_buckets": []}}))
+        _v = validate_route_report(_co_report(
+            child_review_ledger_path=_mrhash_ledger, child_review_ledger_hash=_mrhash_lh))
+        if _has(_v, "merge_report_hash") and _has(_v, "does not match"):
+            print("  negative (merge_report_hash mismatch): PASS ✓")
+        else:
+            errors.append(f"FAIL merge_report_hash mismatch: {_v}")
+    finally:
+        shutil.rmtree(_co_dir, ignore_errors=True)
 
     if errors:
         print("SELF_TEST FAIL:", file=sys.stderr)

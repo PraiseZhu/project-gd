@@ -20,6 +20,87 @@
 
 set -euo pipefail
 
+# Unified shim: when invoked as codex-send-wait (--payload-file present, L1 consult/review
+# path), dispatch to send-wait behavior controlled by FAKE_SEND_MODE. Otherwise behave as
+# the codex exec shim (codex-watch path, FAKE_CODEX_MODE). Keeps the transport test
+# surface under the single whitelisted tests/transport/fake-codex.
+if [[ " $* " == *" --payload-file "* ]]; then
+  SEND_MODE="${FAKE_SEND_MODE:-recommendation}"
+  case "$SEND_MODE" in
+    watch_unavailable) echo "WATCH_UNAVAILABLE: stopped (fake)" >&2; exit 2 ;;
+    send_exit_4) echo "Error: simulated codex-send-wait failure" >&2; exit 4 ;;
+    review_approved_full) cat <<'OUT'
+# Code Review Result
+
+VERDICT: APPROVED
+REVIEW_DOMAIN: ai_infra
+REVIEW_MODE: single_pass
+REVIEW_DELTA_SCOPE: full_matrix
+
+## Scope Checked
+
+| 检查面 | 结论 | 证据 |
+|--------|------|------|
+| trigger surface | pass | ok |
+
+## Findings
+
+## Residual Risk
+
+none
+OUT
+      exit 0 ;;
+    review_malformed) cat <<'OUT'
+# Code Review Result
+
+VERDICT: APPROVED
+REVIEW_DOMAIN: ai_infra
+
+## Scope Checked
+
+| 检查面 | 结论 | 证据 |
+|--------|------|------|
+| trigger surface | pass | ok |
+OUT
+      exit 0 ;;
+    review_no_verdict) cat <<'OUT'
+# Code Review Result
+
+## Scope Checked
+
+no verdict here, codex returned success but no VERDICT line
+OUT
+      exit 0 ;;
+    no_recommendation) cat <<'OUT'
+# Discussion Result
+
+## 独立分析
+
+这是没有 RECOMMENDATION 标记的畸形输出，用于验证 consult 层 fail-closed。
+OUT
+      exit 0 ;;
+    contains_verdict) cat <<'OUT'
+# Discussion Result
+
+RECOMMENDATION: 建议采纳方案 A
+VERDICT: APPROVED
+
+讨论输出错误地混入了 verdict 闸门标记。
+OUT
+      exit 0 ;;
+    recommendation|*) cat <<'OUT'
+# Discussion Result
+
+## 独立分析
+
+针对问题进行了独立推理。
+
+RECOMMENDATION: 建议采纳方案 A，但需注意 X 场景下的取舍
+OUT
+      exit 0 ;;
+  esac
+fi
+
 MODE="${FAKE_CODEX_MODE:-success}"
 OUTPUT_TYPE="${FAKE_CODEX_OUTPUT_TYPE:-verdict}"
 VERDICT="${FAKE_CODEX_VERDICT:-APPROVED}"

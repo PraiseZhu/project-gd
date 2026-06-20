@@ -79,4 +79,20 @@ CODEX_OUTPUT=$("$CODEX_BIN" --cwd "$DISCUSS_CWD" --mode discuss \
   exit 4
 }
 
+# SC-1/SC-2: fail-closed marker check on a successful codex-send-wait return.
+# codex-send-wait exit 0 is not by itself proof of a valid second opinion — the
+# discuss output must carry a line-anchored RECOMMENDATION: marker, and must NOT
+# carry a line-anchored VERDICT: (that is the review path's gate, never discuss).
+# Without this check a malformed/empty Codex output is echoed as a valid opinion.
+if ! printf '%s\n' "$CODEX_OUTPUT" | grep -qE '^RECOMMENDATION:'; then
+  echo "[DISCUSS] FAILED — no RECOMMENDATION in Codex output" >&2
+  printf '%s\n' "$CODEX_OUTPUT" >&2
+  exit 4
+fi
+if printf '%s\n' "$CODEX_OUTPUT" | grep -qE '^VERDICT:'; then
+  echo "[DISCUSS] FAILED — discuss output contains VERDICT" >&2
+  printf '%s\n' "$CODEX_OUTPUT" >&2
+  exit 4
+fi
+
 echo "$CODEX_OUTPUT"

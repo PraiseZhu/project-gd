@@ -129,7 +129,9 @@ VERDICT=""
 VERDICT_STATUS=""
 RESULT_FILE=""
 
-if [[ $CODEX_EXIT -eq 127 ]]; then
+# exit 127 = codex-send-wait binary missing; exit 2 = watch unavailable (SC-3 DEGRADED).
+# Both are transport-unavailable, not review failures — must not be bucketed as FAILED.
+if [[ $CODEX_EXIT -eq 127 || $CODEX_EXIT -eq 2 ]]; then
   VERDICT_STATUS="degraded_unreviewed"
   echo "[REVIEW] ⚠️ DEGRADED — watch unavailable, capsule saved to ${BASELINE_DIR}/capsule-${TIMESTAMP}.txt"
   echo "[审查] ⚠️ 缺 codex 传输栈：未找到可执行 codex-send-wait（路径 ${CODEX_BIN}）。" >&2
@@ -335,19 +337,48 @@ fi
 PLAN_ALIGNMENT_BOOL="false"
 [[ "$CAPSULE_PLAN_ALIGNMENT_PRESENT" == "true" ]] && PLAN_ALIGNMENT_BOOL="true"
 
+# SC-4: a non-success attempt (failed/degraded/malformed) against an ALREADY-approved
+# baseline must NOT clobber the prior gate verdict. The attempt still records its
+# evidence (error log, result file, last_error_path) but leaves the approved baseline
+# intact so a transient codex/watch failure can't downgrade a passed gate.
+PRESERVE_APPROVED=0
+if [[ "$VERDICT_STATUS" != "approved" && "$VERDICT_STATUS" != "requires_changes" && -f "$BASELINE_FILE" ]]; then
+  if [[ "$REVIEW_KIND" == "plan" ]]; then
+    _prior_status="$(jq -r '.review_status // ""' "$BASELINE_FILE" 2>/dev/null || true)"
+  else
+    _prior_status="$(jq -r '.last_code_review_status // ""' "$BASELINE_FILE" 2>/dev/null || true)"
+  fi
+  if [[ "$_prior_status" == "approved" ]]; then
+    PRESERVE_APPROVED=1
+  fi
+fi
+
 # Build jq filter: plan reviews update .review_status/.verdict; code reviews use separate fields
-if [[ "$REVIEW_KIND" == "plan" ]]; then
+if [[ "$PRESERVE_APPROVED" -eq 1 ]]; then
+  # Preserve path: stamp the failed attempt WITHOUT touching the approved gate fields
+  # (review_status / verdict / result_path / last_code_*). last_review_focus is skipped
+  # in the common block below via $preserve_approved.
+  if [[ "$REVIEW_KIND" == "plan" ]]; then
+    JQ_STATE_FILTER='
+       .last_failed_attempt_status = $status |
+       .last_failed_attempt_at = $reviewed_at |'
+  else
+    JQ_STATE_FILTER='
+       .last_code_failed_attempt_status = $status |
+       .last_code_failed_attempt_at = $reviewed_at |'
+  fi
+elif [[ "$REVIEW_KIND" == "plan" ]]; then
   JQ_STATE_FILTER='
-   .review_status = $status |
-   .verdict = $verdict |
-   .reviewed_at = $reviewed_at |
-   .result_path = $result_path |'
+     .review_status = $status |
+     .verdict = $verdict |
+     .reviewed_at = $reviewed_at |
+     .result_path = $result_path |'
 else
   JQ_STATE_FILTER='
-   .last_code_review_status = $status |
-   .last_code_verdict = $verdict |
-   .last_code_reviewed_at = $reviewed_at |
-   .last_code_result_path = $result_path |'
+     .last_code_review_status = $status |
+     .last_code_verdict = $verdict |
+     .last_code_reviewed_at = $reviewed_at |
+     .last_code_result_path = $result_path |'
 fi
 
 jq --arg status "$VERDICT_STATUS" \
@@ -368,6 +399,7 @@ jq --arg status "$VERDICT_STATUS" \
    --arg last_review_focus_source "$CAPSULE_REVIEW_FOCUS_SOURCE" \
    --arg last_domain_override_reason "$CAPSULE_DOMAIN_OVERRIDE_REASON" \
    --arg last_error_path "${LAST_ERROR_PATH:-}" \
+   --argjson preserve_approved "$PRESERVE_APPROVED" \
    "${JQ_STATE_FILTER}"'
    .last_review_kind = $last_review_kind |
    .last_review_domain = $last_review_domain |
@@ -379,8 +411,10 @@ jq --arg status "$VERDICT_STATUS" \
    .last_direct_downstream = $last_direct_downstream |
    .plan_review_alignment = $plan_review_alignment |
    .plan_review_alignment_present = $plan_review_alignment_present |
-   .last_review_focus = $last_review_focus |
-   .last_review_focus_source = $last_review_focus_source |
+   (if $preserve_approved == 1 then . else
+     (.last_review_focus = $last_review_focus |
+      .last_review_focus_source = $last_review_focus_source)
+   end) |
    .last_domain_override_reason = $last_domain_override_reason |
    .last_error_path = (if $last_error_path == "" then null else $last_error_path end)
    ' \

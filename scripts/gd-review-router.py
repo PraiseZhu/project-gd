@@ -130,10 +130,20 @@ def write_and_validate_route_report(
     MUST pass a ``ledger_writer(rp)`` callback: it runs between the report write and
     validation, so the write -> ledger -> validate ordering lives here in one place
     and cannot be gotten wrong by individual call sites.
+
+    If ``ledger_writer`` returns a non-empty string, it is treated as the
+    ``child_review_ledger_hash`` (sha256 of the ledger file it just wrote); the
+    report is backfilled with it and rewritten before validation. This lets code_only
+    (whose schema requires ``child_review_ledger_hash`` on APPROVED) compute the hash
+    from the freshly-written ledger without a separate write pass. Execution routes
+    return ``None`` and are unaffected (no hash backfill).
     """
     rp = _write_route_report(report, output_dir)
     if ledger_writer is not None:
-        ledger_writer(rp)
+        ret = ledger_writer(rp)
+        if isinstance(ret, str) and ret:
+            report["child_review_ledger_hash"] = ret
+            rp.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     rc = _validate_route_report_file(rp)
     return rc, rp
 
@@ -1186,14 +1196,19 @@ def _run_live_code_only(
     target: Path,
     output_dir: Path,
     invocation_id: str,
+    codex_raw_result: Path | None = None,
+    codex_mapped_result: Path | None = None,
+    review_contract: str = "auto",
+    live_bridge_timeout_sec: int = 360,
+    deep: bool = False,
+    plan_file: str | None = None,
 ) -> int:
-    """code_only: LOCAL_STATIC_ONLY — delegated to skill_orchestrated Claude (3a-SC-5/SC-9).
-    Must not claim active/live Codex sidecar.
-    Stage 1: upstream quality gate (/code-review + /simplify); fail-closed if either unavailable/non-zero
-    Stage 2: skill_orchestrated Claude static review (LOCAL_STATIC_ONLY)
-    handler = skill_orchestrated Claude static review
-    allowed decisions = APPROVED | REQUIRES_CHANGES | FAILED (failure_code=LOCAL_STATIC_ONLY)
-    Always exits 1 (REQUIRES_CHANGES) since actual review done by skill_orchestrated Claude."""
+    """code_only: real Codex code_diff sidecar (Plan GD-L1L3 SC-6/SC-7).
+    Stage 1: upstream quality gate (/code-review + /simplify); fail-closed if unavailable/non-zero
+    Stage 2: Codex code_diff bridge cross-review via _run_live_codex_bridge(kind="code_diff")
+    APPROVED requires codex_review_status=completed + codex_decision=APPROVED + valid child ledger.
+    Caller may inject codex_raw_result/codex_mapped_result (test path) instead of live bridge.
+    """
     import hashlib
     output_dir.mkdir(parents=True, exist_ok=True)
     # Compute diff for audit trail
@@ -1239,16 +1254,82 @@ def _run_live_code_only(
         write_and_validate_route_report(report, output_dir)
         return 1  # fail-closed: upstream quality gate failed
 
-    # Quality gate passed; record results and proceed to Codex conformance cross-review (SC-2)
-    # codex_review_scope="conformance": Codex verifies implementation meets plan SC, not a full bug hunt
+    # Quality gate passed; proceed to Codex code_diff sidecar (Plan GD-L1L3 SC-6).
     upstream_quality_gate_record = {"steps": gate_result["steps"], "fail_closed": False}
+
+    findings: list = []
+    codex_raw_path = None
+    codex_raw_hash = None
+    codex_mapped_path = None
+    codex_mapped_hash = None
+    codex_decision = "FAILED"
+    codex_status = "transport_failed"
+
+    if codex_mapped_result is not None:
+        # Caller-injected mapped fixture (test path); raw optional.
+        try:
+            _mapped_bytes = codex_mapped_result.read_bytes()
+            mapped = json.loads(_mapped_bytes)
+            codex_decision = mapped.get("gd_review_decision") or mapped.get("decision")
+            codex_decision = str(codex_decision).strip().upper() if codex_decision else "FAILED"
+            # Injection path: caller provides a pre-parsed mapped JSON. When the
+            # fixture carries review_run_status (transport-layer field), derive status
+            # via the shared SSOT. When it doesn't (common for test fixtures), derive
+            # directly from the decision — otherwise codex_review_status_from_evidence
+            # would force wrapper_schema_fail for a valid APPROVED fixture (run_status
+            # != "completed"), making the injection path unable to reach APPROVED.
+            _rs = mapped.get("review_run_status")
+            if _rs is not None:
+                codex_status = codex_review_status_from_evidence(True, codex_decision, _rs)
+            elif codex_decision == "APPROVED":
+                codex_status = "completed"
+            elif codex_decision == "REQUIRES_CHANGES":
+                codex_status = "requires_changes"
+            else:
+                codex_status = "wrapper_schema_fail"
+            codex_mapped_path = str(codex_mapped_result)
+            codex_mapped_hash = hashlib.sha256(_mapped_bytes).hexdigest()
+            if codex_raw_result is not None:
+                codex_raw_path = str(codex_raw_result)
+                codex_raw_hash = hashlib.sha256(codex_raw_result.read_bytes()).hexdigest()
+            for f in mapped.get("findings", []) or []:
+                findings.append({**f, "reviewer": "codex"})
+        except Exception as e:
+            codex_status = "wrapper_schema_fail"
+            codex_decision = "FAILED"
+            findings.append({"reviewer": "codex_bridge", "severity": "error",
+                             "description": f"mapped JSON unreadable: {e}"})
+    else:
+        # Live Codex code_diff sidecar via the shared bridge helper.
+        bridge_result = _run_live_codex_bridge(
+            kind="code_diff",
+            target=diff_path,
+            output_dir=output_dir,
+            invocation_id=invocation_id,
+            timeout_sec=live_bridge_timeout_sec,
+            deep=deep,
+            plan_file=plan_file,
+        )
+        codex_status = bridge_result["status"]
+        codex_decision = bridge_result["decision"]
+        codex_raw_path = bridge_result["raw_path"]
+        codex_raw_hash = bridge_result["raw_hash"]
+        codex_mapped_path = bridge_result["mapped_path"]
+        codex_mapped_hash = bridge_result["mapped_hash"]
+        findings.extend(bridge_result["findings"])
+
+    # APPROVED requires Codex completed + APPROVED verdict (SC-6/SC-7).
+    if codex_status == "completed" and codex_decision == "APPROVED":
+        final_decision = "APPROVED"
+    else:
+        final_decision = "REQUIRES_CHANGES"
 
     report = {
         "schema_version": "2.0",
         "router_invocation_id": invocation_id,
         "mode": "live",
         "review_target_kind": "code_only",
-        "decision": "REQUIRES_CHANGES",
+        "decision": final_decision,
         "validator_signature": VALIDATOR_SIGNATURE,
         "recorded_at": now_iso(),
         "diff_source": f"git diff HEAD -- {target}",
@@ -1257,29 +1338,81 @@ def _run_live_code_only(
         "raw_result_path": str(diff_path),
         "raw_result_hash": diff_hash,
         "claude_review_origin": "skill_orchestrated",
-        # conformance scoping: Codex reviews whether implementation meets plan SC (SC-2)
         "codex_review_scope": "conformance",
-        "failure_code": "LOCAL_STATIC_ONLY",
-        # upstream quality gate results are separately observable (SC-2 separation requirement)
+        "codex_review_kind": "code_diff",
+        "codex_review_status": codex_status,
         "upstream_quality_gate": upstream_quality_gate_record,
-        "findings": [{
-            "reviewer": "router",
-            "severity": "info",
-            "description": (
-                "code_only: static review delegated to skill_orchestrated Claude. "
-                "Router records diff for audit trail; Codex code sidecar NOT active (3a-SC-9). "
-                "REQUIRES_CHANGES until skill_orchestrated review completes."
-            ),
-        }],
+        "findings": findings,
     }
-    # L3 content-evidence validation note (SC-W2-2):
-    # code_only router does not have a real Codex review to validate at this stage.
-    # The diff_path is the diff itself, not a review output. L3 would be a no-op
-    # (target == review). The actual L3 gate runs in parse-transport when Codex
-    # returns a real review result. No L3 call here prevents the no-op false pass.
+    if codex_raw_path is not None:
+        report["codex_raw_result_path"] = codex_raw_path
+        report["codex_raw_result_hash"] = codex_raw_hash
+    if codex_mapped_path is not None:
+        report["codex_mapped_result_path"] = codex_mapped_path
+        report["codex_mapped_result_hash"] = codex_mapped_hash
+    if codex_status == "transport_failed":
+        report["failure_code"] = "CODEX_TRANSPORT_UNAVAILABLE"
+    elif codex_status == "wrapper_schema_fail":
+        report["failure_code"] = "CODEX_WRAPPER_SCHEMA_FAIL"
 
-    write_and_validate_route_report(report, output_dir)
-    return 1  # REQUIRES_CHANGES — actual verdict from skill_orchestrated review
+    # Child review ledger (SC-7): 1 child job = Codex code_diff bridge.
+    ledger_path = output_dir / f"child_review_ledger_code_diff_{invocation_id[-8:]}.json"
+    report["child_review_ledger_path"] = str(ledger_path)
+    # stage-ledger child_jobs status enum = [completed, failed, transport_failed]
+    _child_status = codex_status if codex_status in ("completed", "transport_failed") else "failed"
+
+    def _write_code_ledger(rp):
+        blocking = [] if final_decision == "APPROVED" else ["code_diff_cross_review"]
+        # Independent merge report file (NOT the route report itself). The route report
+        # gets child_review_ledger_hash backfilled after this callback, which would make a
+        # merge_hash pointing at it go stale. A standalone merge report breaks the
+        # route↔ledger hash circular dependency so the validator can cross-check
+        # merge_report_hash against a real, stable file.
+        merge_report = {
+            "merge_report_kind": "code_diff_merge",
+            "router_invocation_id": invocation_id,
+            "final_decision": final_decision,
+            "codex_review_kind": "code_diff",
+            "codex_review_status": codex_status,
+            "child_agent_count": 1,
+        }
+        merge_report_path = output_dir / f"merge_report_{invocation_id[-8:]}.json"
+        _mr_bytes = json.dumps(merge_report, ensure_ascii=False, indent=2).encode("utf-8")
+        merge_report_path.parent.mkdir(parents=True, exist_ok=True)
+        merge_report_path.write_bytes(_mr_bytes)
+        merge_hash = hashlib.sha256(_mr_bytes).hexdigest()
+        ledger = {
+            "schema_version": "1.0",
+            "stage": "review_execution_code",
+            "parent_run_id": invocation_id,
+            "batch_id": f"batch-co-{invocation_id[-8:]}",
+            "recorded_at": now_iso(),
+            "child_agent_count": 1,
+            "max_parallel": 2,
+            "child_jobs": [
+                {
+                    "job_id": f"{invocation_id[-8:]}-codex-code_diff",
+                    "result_path": codex_mapped_path or "",
+                    "result_hash": codex_mapped_hash or ("0" * 64),
+                    "status": _child_status,
+                },
+            ],
+            "main_agent_merge": {
+                "merge_report_path": str(merge_report_path),
+                "merge_report_hash": merge_hash,
+                "final_decision": final_decision,
+                "blocking_buckets": blocking,
+            },
+        }
+        ledger_path.parent.mkdir(parents=True, exist_ok=True)
+        _ledger_bytes = json.dumps(ledger, ensure_ascii=False, indent=2).encode("utf-8")
+        ledger_path.write_bytes(_ledger_bytes)
+        return hashlib.sha256(_ledger_bytes).hexdigest()
+
+    rc, _ = write_and_validate_route_report(report, output_dir, ledger_writer=_write_code_ledger)
+    if rc != 0:
+        return 1
+    return 0 if final_decision == "APPROVED" else 1
 
 
 def _run_live_execution_plus_code(
@@ -1662,7 +1795,15 @@ def run_live(
         )
 
     if kind == "code_only" and target is not None:
-        return _run_live_code_only(target, output_dir, invocation_id)
+        return _run_live_code_only(
+            target, output_dir, invocation_id,
+            codex_raw_result=Path(codex_raw_result) if codex_raw_result else None,
+            codex_mapped_result=Path(codex_mapped_result) if codex_mapped_result else None,
+            review_contract=review_contract,
+            live_bridge_timeout_sec=live_bridge_timeout_sec,
+            deep=deep,
+            plan_file=plan_file,
+        )
 
     if kind == "execution_plus_code" and target is not None:
         return _run_live_execution_plus_code(

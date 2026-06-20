@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://praise.local/gd-v7/gd-route-report.schema.json",
   "title": "GD Review Router Route Report",
-  "description": "SSOT for route_report.json fields. Per-kind required fields enforced by gd-validate-route-report.py. Plan Execution-Review Cross-Review v2 introduces Codex raw/mapped layered fields for execution-only_no_code and execution_plus_code kinds.",
+  "description": "SSOT for route_report.json fields. Per-kind required fields enforced by gd-validate-route-report.py. Plan Execution-Review Cross-Review v2 introduces Codex raw/mapped layered fields for execution-only_no_code and execution_plus_code kinds; Plan GD-L1L3 adds the code_only live APPROVED branch (real Codex code_diff sidecar + child ledger).",
   "type": "object",
   "required": [
     "schema_version",
@@ -219,6 +219,33 @@
           "codex_review_status",
           "codex_review_kind",
           "child_review_ledger_path"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "review_target_kind": {
+            "const": "code_only"
+          },
+          "mode": {
+            "const": "live"
+          },
+          "decision": {
+            "const": "APPROVED"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "codex_raw_result_path",
+          "codex_raw_result_hash",
+          "codex_mapped_result_path",
+          "codex_mapped_result_hash",
+          "codex_review_status",
+          "codex_review_kind",
+          "child_review_ledger_path",
+          "child_review_ledger_hash"
         ]
       }
     }
