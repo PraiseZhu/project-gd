@@ -23,6 +23,8 @@ from typing import Optional  # noqa: F401 — used in string annotations
 
 sys.path.insert(0, str(Path(__file__).parent))
 from lib.sc_extraction import SC_ID_RE as _SC_ID_RE  # noqa: E402
+from lib.sc_extraction import extract_reviewable_ids as _extract_target_ids  # noqa: E402  — structured (T-头+checklist)
+from lib.sc_extraction import extract_referenced_ids as _extract_review_ids  # noqa: E402  — broad (全文 SC+T-N)
 
 # Evidence line ref: matches "path:NN" or "path:NN-MM". The path part is a
 # best-effort match (ends at the colon-digit boundary).
@@ -42,8 +44,12 @@ _SCOPE_CHECKED_RE = re.compile(
 
 
 def _extract_sc_ids(text: str) -> set[str]:
-    """Return all SC-IDs that appear in `text`."""
-    return set(_SC_ID_RE.findall(text))
+    """Review-side referenced IDs（宽：全文 SC + T-N，placeholder 过滤）。
+
+    Issue3: codex 在 `| T0 |` / `SC: T0` 引用 ID，需宽口径。target_sc_ids 用
+    ``_extract_target_ids``（结构化）—— 见下方 main 调用点，两者分工。
+    """
+    return _extract_review_ids(text)
 
 
 # Lenient SC-ID variants accepted ONLY inside the Scope Checked section, to
@@ -55,8 +61,12 @@ _SC_ID_LENIENT_RE = re.compile(r"\bSC[\s\-]?0*(\d+)\b", re.IGNORECASE)
 
 
 def _extract_sc_ids_lenient(text: str) -> set[str]:
-    """Canonical SC-IDs plus normalized common variants (SC1 / sc-1 / SC 1 → SC-N)."""
-    ids = set(_extract_sc_ids(text))
+    """Canonical+T-N reviewable IDs plus normalized SC variants (SC1 / sc-1 / SC 1 → SC-N).
+
+    Issue3: Scope Checked 的 `| T0 |` 行 + SC1/sc-1 变体都接受，让 T 系计划 APPROVED
+    覆盖 T0-T7 不再被判 missing scope。
+    """
+    ids = _extract_review_ids(text)  # 宽：全文 SC(placeholder-filtered) + T-N
     for num in _SC_ID_LENIENT_RE.findall(text):
         ids.add(f"SC-{int(num)}")
     return ids
@@ -392,7 +402,9 @@ def validate(
 ) -> tuple[list[str], dict]:
     """Returns (errors, report_dict)."""
     target_text = target_path.read_text(encoding="utf-8")
-    target_sc_ids = _extract_sc_ids(target_text)
+    # Issue1: target_sc_ids 用结构化提取（checklist SC + T-头），不含正文散提（如
+    # REVIEW_FOCUS 的 SC-conformance）。review 侧（findings/scope）用宽 _extract_sc_ids。
+    target_sc_ids = _extract_target_ids(target_text)
     target_line_count = _extract_line_count(target_text)
     verdict = _extract_verdict(review_text) or "UNKNOWN"
 

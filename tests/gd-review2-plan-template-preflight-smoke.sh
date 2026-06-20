@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # gd-review2-plan-template-preflight-smoke.sh — Phase 3 smoke test (SC-3, SC-5, SC-9)
 # Verifies:
-#   SC-9: plan-template.md no longer contains REVIEW_STANDARD or REV_VERDICT at line start
+#   SC-9: plan-mode-template.md no longer contains REVIEW_STANDARD or REV_VERDICT at line start
 #   SC-3/SC-5: preflight accepts compliant plans; rejects capsule/missing-sc/old-rev style
 
 set -euo pipefail
@@ -24,38 +24,53 @@ run_preflight() {
 }
 
 echo "=== Plan Template Preflight Smoke ==="
+PLAN_TEMPLATE="templates/plan-mode-template.md"
 
-# --- SC-9: plan-template.md markers ---
+# --- SC-9: plan-mode-template.md markers ---
 echo
-echo "--- SC-9: plan-template.md template markers ---"
-if grep -qE '^REVIEW_STANDARD[：:]' templates/plan-template.md 2>/dev/null; then
-    fail "plan-template.md still has line-leading REVIEW_STANDARD:"
+echo "--- SC-9: ${PLAN_TEMPLATE} template markers ---"
+if grep -qE '^REVIEW_STANDARD[：:]' "$PLAN_TEMPLATE" 2>/dev/null; then
+    fail "${PLAN_TEMPLATE} still has line-leading REVIEW_STANDARD:"
 else
-    pass "plan-template.md has no line-leading REVIEW_STANDARD:"
+    pass "${PLAN_TEMPLATE} has no line-leading REVIEW_STANDARD:"
 fi
 
-if grep -qE '^REV_VERDICT[：:]' templates/plan-template.md 2>/dev/null; then
-    fail "plan-template.md still has line-leading REV_VERDICT:"
+if grep -qE '^REV_VERDICT[：:]' "$PLAN_TEMPLATE" 2>/dev/null; then
+    fail "${PLAN_TEMPLATE} still has line-leading REV_VERDICT:"
 else
-    pass "plan-template.md has no line-leading REV_VERDICT:"
+    pass "${PLAN_TEMPLATE} has no line-leading REV_VERDICT:"
 fi
 
-if grep -qE '^GD_STANDARD[：:]' templates/plan-template.md 2>/dev/null; then
-    pass "plan-template.md has GD_STANDARD:"
+if grep -qE '^GD_STANDARD[：:]' "$PLAN_TEMPLATE" 2>/dev/null; then
+    pass "${PLAN_TEMPLATE} has GD_STANDARD:"
 else
-    fail "plan-template.md missing GD_STANDARD:"
+    fail "${PLAN_TEMPLATE} missing GD_STANDARD:"
 fi
 
-if grep -qE 'REVIEW_DOMAIN[：:]' templates/plan-template.md 2>/dev/null; then
-    pass "plan-template.md has REVIEW_DOMAIN"
+if grep -qE 'REVIEW_DOMAIN[：:]' "$PLAN_TEMPLATE" 2>/dev/null; then
+    pass "${PLAN_TEMPLATE} has REVIEW_DOMAIN"
 else
-    fail "plan-template.md missing REVIEW_DOMAIN"
+    fail "${PLAN_TEMPLATE} missing REVIEW_DOMAIN"
 fi
 
-if grep -qE 'WHERE[：:]|WHAT[：:]|WHY[：:]|VERIFY[：:]' templates/plan-template.md 2>/dev/null; then
-    pass "plan-template.md has WHERE/WHAT/WHY/VERIFY step fields"
+if grep -qE 'REVIEW_FOCUS[：:]' "$PLAN_TEMPLATE" 2>/dev/null; then
+    pass "${PLAN_TEMPLATE} has REVIEW_FOCUS"
 else
-    fail "plan-template.md missing step fields"
+    fail "${PLAN_TEMPLATE} missing REVIEW_FOCUS"
+fi
+
+if grep -qE 'WHERE[：:]|WHAT[：:]|WHY[：:]|VERIFY[：:]' "$PLAN_TEMPLATE" 2>/dev/null; then
+    pass "${PLAN_TEMPLATE} has WHERE/WHAT/WHY/VERIFY step fields"
+else
+    fail "${PLAN_TEMPLATE} missing step fields"
+fi
+
+_ex=0
+out_template=$(python3 scripts/gd-validate-review2-plan-target.py --target "$PLAN_TEMPLATE" 2>/dev/null) || _ex=$?
+if [[ $_ex -eq 0 ]] && echo "$out_template" | grep -q "PLAN_TEMPLATE_STATUS: pass"; then
+    pass "${PLAN_TEMPLATE} → preflight PASS"
+else
+    fail "${PLAN_TEMPLATE} → unexpected exit ${_ex}: $(echo "$out_template" | head -3)"
 fi
 
 # --- SC-3/SC-5: preflight accepts good plans ---

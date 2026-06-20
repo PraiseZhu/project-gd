@@ -16,10 +16,12 @@ TEMPLATE_KIND: gd-plan
 
 ---
 
-## Review 对齐
+## 2. Review 对齐
 
-- REVIEW_DOMAIN：`ai_infra | app_code | docs_content | other`
-- REVIEW_FOCUS（3-5 项分号分隔）：`<focus 1>; <focus 2>; <focus 3>`
+- REVIEW_DOMAIN: `ai_infra | app_code | docs_content | other`
+- REVIEW_FOCUS: `<focus 1>; <focus 2>; <focus 3>`
+
+> REVIEW_FOCUS 填 3-5 项，用分号分隔；说明文字不得插入 `REVIEW_FOCUS` 与冒号之间。
 
 ---
 
@@ -199,8 +201,8 @@ TASK_GOAL:    grep -Eq 'SC-1' templates/plan-mode-template.md && echo EXTRACTABL
 **成功标准**：
 
 - [ ] SC-1：`scripts/foo.sh` 文件存在且可执行（exit 0）
-  - verify (method: command): `test -f scripts/foo.sh && test -x scripts/foo.sh && echo PASS`
-  - expect: `PASS`
+  - verify (method: command): `test -f scripts/foo.sh && test -x scripts/foo.sh && echo FOO_SH_EXECUTABLE`
+  - expect: `FOO_SH_EXECUTABLE`
 
 **实施步骤**：
 
@@ -212,9 +214,9 @@ WHAT: 新建文件 `scripts/foo.sh`，写入 `#!/usr/bin/env bash` 后执行 `ch
 
 WHY: foo.sh 不存在时 SC-1 verify 命令返回 exit 1，验收失败
 
-VERIFY: `test -f scripts/foo.sh && test -x scripts/foo.sh && echo PASS` → `PASS`
+VERIFY: `test -f scripts/foo.sh && test -x scripts/foo.sh && echo FOO_SH_EXECUTABLE` → `FOO_SH_EXECUTABLE`
 
-**Hard-stop**：VERIFY 输出非 `PASS` 时停止 → 继续执行会产生错误的交付物声明
+**Hard-stop**：VERIFY 输出非 `FOO_SH_EXECUTABLE` 时停止 → 继续执行会产生错误的交付物声明
 
 ---
 

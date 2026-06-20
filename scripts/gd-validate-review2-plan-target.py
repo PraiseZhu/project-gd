@@ -44,8 +44,19 @@ _BARE_VERDICT_RE = re.compile(r"^VERDICT[：:]", re.MULTILINE)
 _REVIEW_STANDARD_RE = re.compile(r"^REVIEW_STANDARD[：:]", re.MULTILINE)
 
 # ---------------------------------------------------------------------------
-# Anti-fill gate patterns
+# SC definition / anti-fill gate patterns
 # ---------------------------------------------------------------------------
+
+# A real SC definition must start a list item or heading. Plain prose such as
+# "Plan Without SC-IDs" must not satisfy the structural SC gate.
+_SC_DEFINITION_RE = re.compile(
+    r"^\s*(?:"
+    r"(?:[-*]\s+\[[ xX]\]\s*)"      # checklist item: - [ ] SC-1
+    r"|(?:[-*]\s+)"                  # plain bullet: - SC-1
+    r"|(?:#{1,6}\s+)"                # heading: ### SC-1
+    r")(" + SC_ID_RE.pattern + r")\b",
+    re.MULTILINE,
+)
 
 # Matches a per-SC verify line:
 #   verify (method: command|path|assertion|test): <non-empty content>
@@ -136,12 +147,8 @@ def _extract_sc_blocks(text: str) -> list[tuple[str, str]]:
     lines = text.splitlines(keepends=True)
     blocks: list[tuple[str, str]] = []
 
-    # Pattern: a line that *starts* an SC entry — a list item or heading
-    # containing an SC-ID at (or near) the beginning.
-    _SC_START_RE = re.compile(r"^[\s\-*>]*(" + SC_ID_RE.pattern + r")\b", re.MULTILINE)
-
     # Find all SC-ID start positions in the original text.
-    matches = list(_SC_START_RE.finditer(text))
+    matches = list(_SC_DEFINITION_RE.finditer(text))
     if not matches:
         return blocks
 
@@ -192,6 +199,11 @@ def _check_antifill(text: str) -> list[str]:
     return antifill_errors
 
 
+def _extract_defined_sc_ids(text: str) -> set[str]:
+    """Return SC IDs declared as real criteria, not prose mentions."""
+    return set(_SC_DEFINITION_RE.findall(text))
+
+
 def _validate(target_path: str) -> tuple[list[str], list[str]]:
     """Return (structural_errors, antifill_errors); both empty = pass."""
     errors: list[str] = []
@@ -214,7 +226,7 @@ def _validate(target_path: str) -> tuple[list[str], list[str]]:
     text = p.read_text(encoding="utf-8")
 
     # --- SC-IDs (≥1 required) ---
-    sc_ids = extract_sc_ids(text)
+    sc_ids = _extract_defined_sc_ids(text)
     if not sc_ids:
         errors.append("no SC-IDs found (≥1 required: SC-1, SC-W2, etc.)")
 

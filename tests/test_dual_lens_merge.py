@@ -300,3 +300,74 @@ class TestPlanDirectDualLensWiring:
         import json
         m = json.loads(out.read_text(encoding="utf-8"))
         assert m["gd_review_decision"] == "FAILED"
+
+
+# ---------------- ABC 修复回归：真实 plan 污染路径（T0-T7 + REVIEW_FOCUS 散提 SC-conformance）----------------
+
+
+class TestReviewableIdExtractionPollution:
+    """Issue1/2/3: target ID 提取必须结构化，正文散提（REVIEW_FOCUS 的 SC-conformance）不进 ID 集。"""
+
+    _POLLUTED_PLAN = (
+        "# plan\n\n"
+        "## REVIEW_FOCUS\nSC-conformance lens；A/B 真分化不落中立。SC-1 也在正文提了。\n\n"
+        "## T0 统一 L2 capsule 契约\n## T1 修 lens 断线\n## T2 副本机制\n"
+        "## T3 --deep 入口\n## T4 code 路双镜头\n## T5 plan 双镜头\n## T6 复测\n## T7 文档\n\n"
+        "- [ ] SC-conformance\n"  # checklist 形式（结构化）—— 这个该进 ID 集
+    )
+
+    def test_structured_excludes_prose_sc(self):
+        # Issue1: REVIEW_FOCUS 正文里的 SC-1 散提不进 target ID 集；checklist SC-conformance 进
+        from lib.sc_extraction import extract_reviewable_ids
+        ids = extract_reviewable_ids(self._POLLUTED_PLAN)
+        assert "SC-1" not in ids, "正文散提 SC-1 不该进结构化 ID 集"
+        assert "SC-conformance" in ids, "checklist 形式的 SC-conformance 该进"
+        assert {"T0", "T1", "T2", "T3", "T4", "T5", "T6", "T7"} <= ids
+
+    def test_polluted_plan_capsule_expected_sc_ids(self):
+        # Issue2: capsule EXPECTED_SC_IDS 不含正文 SC-1，含 T0-T7 + checklist SC-conformance
+        import importlib.util, tempfile
+        from pathlib import Path
+        spec = importlib.util.spec_from_file_location(
+            "b", "scripts/gd-codex-bridge-review.py")
+        m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+        plan = Path(tempfile.mkstemp(suffix=".md")[1])
+        plan.write_text(self._POLLUTED_PLAN, encoding="utf-8")
+        try:
+            cap, *_ = m.build_capsule_text("plan", plan, plan.parent, compat_v1=True)
+        except (ValueError, FileNotFoundError):
+            pytest.skip("v1 plan template unavailable")
+        exp_line = next(l for l in cap.splitlines() if l.startswith("EXPECTED_SC_IDS:"))
+        ids_str = exp_line.split(":", 1)[1].strip()
+        assert "SC-1" not in ids_str, "正文散提 SC-1 不该进 capsule EXPECTED_SC_IDS"
+        assert "SC-conformance" in ids_str
+        for t in ("T0", "T1", "T2", "T3", "T4", "T5", "T6", "T7"):
+            assert t in ids_str
+
+    def test_t_plan_approved_scope_not_rejected(self):
+        # Issue3: T0-T7 覆盖的 APPROVED review 不再因 missing scope 被拒
+        import importlib.util, tempfile
+        from pathlib import Path
+        plan = Path(tempfile.mkstemp(suffix=".md")[1])
+        plan.write_text("# p\n## T0\n## T1\n## T2\n## T3\n## T4\n## T5\n## T6\n## T7\n", encoding="utf-8")
+        rev = (
+            "# Review\nVERDICT: APPROVED\nREVIEW_DOMAIN: ai_infra\n"
+            "## Scope Checked\n"
+            + "\n".join(f"| T{i} | pass | ok |" for i in range(8)) + "\n"
+            "## Findings\nnone\n## Residual Risk\nnone\n"
+        )
+        spec = importlib.util.spec_from_file_location(
+            "v", "scripts/gd-validate-review-content-evidence.py")
+        v = importlib.util.module_from_spec(spec); spec.loader.exec_module(v)
+        errs = []
+        missing = v._check_scope_coverage(
+            rev, v._extract_target_ids(plan.read_text()), "APPROVED", errs)
+        assert missing == set(), f"T0-T7 全覆盖不该有 missing: {missing}"
+        assert errs == [], f"不该报错: {errs}"
+
+    def test_placeholder_sc_id_filtered_in_review_extract(self):
+        # Fix C: codex 填的 placeholder「SC-ID」不被当引用 ID
+        from lib.sc_extraction import extract_referenced_ids
+        ids = extract_referenced_ids("finding: SC: SC-ID\nscope: | T0 | pass |")
+        assert "SC-ID" not in ids, "placeholder SC-ID 该被过滤"
+        assert "T0" in ids

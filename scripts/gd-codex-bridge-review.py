@@ -40,7 +40,7 @@ from pathlib import Path
 
 GD_PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(GD_PROJECT_ROOT / "scripts"))
-from lib.sc_extraction import SC_ID_RE, extract_sc_ids  # noqa: E402
+from lib.sc_extraction import SC_ID_RE, extract_sc_ids, extract_reviewable_ids, _TASK_HEADER_RE  # noqa: E402
 
 SCHEMA_PATH_V1 = GD_PROJECT_ROOT / "schema" / "gd-review-result.schema.json"
 SCHEMA_PATH_V2 = GD_PROJECT_ROOT / "schema" / "gd-review-result-v2.schema.json"
@@ -368,16 +368,21 @@ def _new_run_id() -> str:
 
 
 # SC-1: count unique top-level SC IDs in a plan file for exhaustiveness gate.
-# Only checklist-style definitions (`- [ ] SC-...` / `- [x] SC-...`) count —
-# prose mentions like `spec SC-003` must not inflate the expected row count.
+# Fix B: 与 L3 用同一口径（extract_reviewable_ids：SC-N/SC-word + T-N 任务头），
+# 消除「bridge 用 checklist 正则=0 / L3 用全文正则={SC-conformance}」漂移。
 _PLAN_SC_ID_RE = re.compile(r"^\s*-\s*\[[ xX]\]\s*(" + SC_ID_RE.pattern + r")\b", re.MULTILINE)
 
 
 def _count_sc_ids_in_target(target_path: str) -> int:
-    """Return number of unique checklist SC-ID definitions in target plan."""
+    """Return number of unique STRUCTURED reviewable IDs in target (排他性 gate 用)。
+
+    Issue1: 用结构化 extract_reviewable_ids（checklist SC + T-头），不含全文散提
+    （如 execution_outcome JSON 的 sc_acceptance SC-1、plan REVIEW_FOCUS 的 SC-conformance）。
+    数了会让排他性 gate 误开、facet 行被误判 SHALLOW。与 L3 target_sc_ids 同口径。
+    """
     try:
         text = Path(target_path).read_text(encoding="utf-8")
-        return len(set(_PLAN_SC_ID_RE.findall(text)))
+        return len(extract_reviewable_ids(text))
     except Exception:
         return 0
 
@@ -1400,6 +1405,13 @@ def build_capsule_text(
     review_domain_final = _plan_domain or "ai_infra"
     review_focus_source = "plan_section_2" if _plan_focus else "kind_dynamic"
     review_focus_final = _plan_focus or _review_focus_for_kind(kind)
+    # Fix A: 提取 target 的真实可审查 ID 集合（SC-N/SC-word + T-N），内联进 capsule，
+    # 让 codex 不靠猜（旧版只写「extracted from target on review」→ codex 填 placeholder「SC-ID」）。
+    try:
+        _target_ids = sorted(extract_reviewable_ids(target.read_text(encoding="utf-8")))
+    except Exception:
+        _target_ids = []
+    _target_ids_str = ", ".join(_target_ids) if _target_ids else "(none detected — 引用 target 实际任务/SC 编号)"
     # L1: Target externalized — capsule no longer inlines target_text (47KB savings on
     # Sentinel-sized plans). Reviewer must Read the path; bridge enforces via L3
     # content-evidence validator (gd-validate-review-content-evidence.py).
@@ -1502,7 +1514,7 @@ def build_capsule_text(
         f"TARGET_HASH: {target_hash}\n"
         f"GD_BASELINE_KEY: {gd_baseline_key}\n"
         f"GD_REVIEW_SCHEMA: {schema_path_for_capsule}\n"
-        f"EXPECTED_SC_IDS: (extracted from target on review)\n\n"
+        f"EXPECTED_SC_IDS: {_target_ids_str}\n\n"
         # SC-0 (T0): 显式塞入 GD 权威上下文 + 必读清单（codex 不靠猜）
         f"## CLAUDE_MD_CONTEXT（GD 权威规则摘要）\n\n"
         f"{_CLAUDE_MD_CONTEXT_SUMMARY}\n\n"
@@ -1565,11 +1577,12 @@ def build_capsule_text(
         f"- 每个 Finding 含 severity 标记 + `SC: <target 中真实 SC-ID>` 行 + 5 中文字段 (问题/证据/影响/最小修复/验收)\n"
         f"- REQUIRES_CHANGES 必须含 ≥1 ### Finding\n"
         f"- **每条 finding 必须 evidence: 含真实 path:line 引用**（L3 validator 会校验行号指向 target 真实内容）\n"
-        f"- **每条 finding 的 sc_refs / SC 行必须是 target 中真实存在的 SC-ID**（L3 validator 会校验；"
-        f"引用 target 不存在的 SC-ID 判 FAKE_EVIDENCE_DETECTED）。"
-        f"若 finding 是跨 SC 的结构性问题（如缺字段、格式不符），挑一个 **target 中真实存在**、"
-        f"且该问题最直接影响的 SC-ID 来挂；**绝不臆造或硬编码编号**（target 的 SC 编号体系各异，"
-        f"如 SC-1 / SC-W1-1 / SC-L1-1 / SC-Rpt-1 / SC-Log-Fmt 等，必须按本 target 实际 SC 选）。\n"
+        f"- **每条 finding 的 sc_refs / SC 行必须是 target 中真实存在的 ID**（L3 validator 会校验；"
+        f"引用 target 不存在的 ID 判 FAKE_EVIDENCE_DETECTED）。"
+        f"**本 target 可引用的 ID 仅限**: {_target_ids_str}。"
+        f"若 finding 是跨 ID 的结构性问题（如缺字段、格式不符），挑一个 **上述列表内**、"
+        f"且该问题最直接影响的 ID 来挂；**绝不臆造或硬编码编号、绝不写 placeholder「SC-ID」**"
+        f"（target 的 ID 体系各异：SC-1 / SC-W1-1 / T0 等，必须从上方列表选）。\n"
         f"- ⚠️ **CRITICAL OVERRIDE（覆盖模板格式）**: '## Scope Checked' 行格式**强制为 SC-ID 逐行**，"
         f"无论 VERDICT 是 APPROVED 还是 REQUIRES_CHANGES 都必须遵守。"
         f"**绝对禁止**用 facet/维度行（如 `| 审计划完整性 | pass |`、`| anti-fill | pass |`）替代 SC-ID 行——"
