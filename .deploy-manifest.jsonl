@@ -5,32 +5,32 @@
 # === review2 route (v8 已部署) ===
 # RETIRED 2026-06-12: installer 已删（commit 0282a70），/review2 命令改由 project-gd 插件分发（claude plugin marketplace update）
 # {"source":"commands/review2.md","target":"~/.claude/commands/review2.md","method":"install_script","installer":"scripts/install-review-route-command.sh","installer_args":["--route","review2","--apply"],"ledger_scope":"install_claude_command"}
-{"source":"scripts/gd-build-review2-capsule.py","target":"~/.claude/scripts/gd-build-review2-capsule.py","method":"direct_cp","ledger_scope":"sync_script_to_live"}
-{"source":"scripts/gd-validate-review2-capsule.py","target":"~/.claude/scripts/gd-validate-review2-capsule.py","method":"direct_cp","ledger_scope":"sync_script_to_live"}
-{"source":"scripts/gd-codex-bridge-review.py","target":"~/.claude/scripts/gd-codex-bridge-review.py","method":"direct_cp","ledger_scope":"sync_script_to_live"}
-{"source":"scripts/gd-validate-review2-output.py","target":"~/.claude/scripts/gd-validate-review2-output.py","method":"direct_cp","ledger_scope":"sync_script_to_live"}
+# RETIRED (plugin分发): {"source":"scripts/gd-build-review2-capsule.py","target":"~/.claude/scripts/gd-build-review2-capsule.py","method":"direct_cp","ledger_scope":"sync_script_to_live"}
+# RETIRED (plugin分发): {"source":"scripts/gd-validate-review2-capsule.py","target":"~/.claude/scripts/gd-validate-review2-capsule.py","method":"direct_cp","ledger_scope":"sync_script_to_live"}
+# RETIRED (plugin分发): {"source":"scripts/gd-codex-bridge-review.py","target":"~/.claude/scripts/gd-codex-bridge-review.py","method":"direct_cp","ledger_scope":"sync_script_to_live"}
+# RETIRED (plugin分发): {"source":"scripts/gd-validate-review2-output.py","target":"~/.claude/scripts/gd-validate-review2-output.py","method":"direct_cp","ledger_scope":"sync_script_to_live"}
 # === T1-T8 new artifacts (gd-l2-parity) ===
-{"source":"scripts/gd-validate-review2-plan-target.py","target":"~/.claude/scripts/gd-validate-review2-plan-target.py","method":"direct_cp","ledger_scope":"sync_script_to_live"}
+# RETIRED (plugin分发): {"source":"scripts/gd-validate-review2-plan-target.py","target":"~/.claude/scripts/gd-validate-review2-plan-target.py","method":"direct_cp","ledger_scope":"sync_script_to_live"}
 {"source":"templates/plan-mode-template.md","target":"~/.claude/templates/plan-template.md","method":"direct_cp","ledger_scope":"install_plan_template"}
 {"source":"scripts/plan-mode-antifill-stop-hook.js","target":"~/.claude/hooks/plan-mode-antifill-stop-hook.js","method":"direct_cp","ledger_scope":"install_plan_mode_hook"}
-{"source":"scripts/gd-review-controller.py","target":"~/.claude/scripts/gd-review-controller.py","method":"direct_cp","ledger_scope":"sync_script_to_live"}
+# RETIRED (plugin分发): {"source":"scripts/gd-review-controller.py","target":"~/.claude/scripts/gd-review-controller.py","method":"direct_cp","ledger_scope":"sync_script_to_live"}
 {"source":"schema/gd-baseline-findings.schema.json","target":"~/.claude/schema/gd-baseline-findings.schema.json","method":"direct_cp","ledger_scope":"sync_script_to_live"}
-{"source":"scripts/gd-detect-review2-code-target.py","target":"~/.claude/scripts/gd-detect-review2-code-target.py","method":"direct_cp","ledger_scope":"sync_script_to_live"}
-{"source":"scripts/gd-review2-preflight.sh","target":"~/.claude/scripts/gd-review2-preflight.sh","method":"direct_cp","ledger_scope":"sync_script_to_live"}
-{"source":"scripts/gd-review2-package-deliverable.sh","target":"~/.claude/scripts/gd-review2-package-deliverable.sh","method":"direct_cp","ledger_scope":"sync_script_to_live"}
-{"source":"scripts/gd-review-router.py","target":"~/.claude/scripts/gd-review-router.py","method":"direct_cp","ledger_scope":"sync_script_to_live"}
+# RETIRED (plugin分发): {"source":"scripts/gd-detect-review2-code-target.py","target":"~/.claude/scripts/gd-detect-review2-code-target.py","method":"direct_cp","ledger_scope":"sync_script_to_live"}
+# RETIRED (plugin分发): {"source":"scripts/gd-review2-preflight.sh","target":"~/.claude/scripts/gd-review2-preflight.sh","method":"direct_cp","ledger_scope":"sync_script_to_live"}
+# RETIRED (plugin分发): {"source":"scripts/gd-review2-package-deliverable.sh","target":"~/.claude/scripts/gd-review2-package-deliverable.sh","method":"direct_cp","ledger_scope":"sync_script_to_live"}
+# {"source":"scripts/gd-review-router.py","target":"~/.claude/scripts/gd-review-router.py","method":"direct_cp","ledger_scope":"sync_script_to_live"}
 # RETIRED 2026-06-12: installer 已删（commit 0282a70），/gd 命令改由 project-gd 插件分发（claude plugin marketplace update）
 # {"source":"commands/gd.md","target":"~/.claude/commands/gd.md","method":"install_script","installer":"scripts/install-gd-command.sh","installer_args":["--install"],"ledger_scope":"install_claude_command","note":"runtime write deferred to Plan E / deploy-live; dispatch-only preparation"}
-{"source":"scripts/gd-codex-transport-guard.py","target":"~/.claude/scripts/gd-codex-transport-guard.py","method":"direct_cp","ledger_scope":"sync_script_to_live","note":"sync deferred to Plan E / deploy-live"}
-{"source":"scripts/gd-review-suite-controller.py","target":"~/.claude/scripts/gd-review-suite-controller.py","method":"direct_cp","ledger_scope":"sync_script_to_live","note":"sync deferred to Plan E / deploy-live"}
-{"source":"scripts/gd-codex-bridge-review.py","target":"~/.claude/scripts/gd-codex-bridge-review.py","method":"direct_cp","ledger_scope":"sync_script_to_live","note":"sync deferred to Plan E / deploy-live"}
-{"source":"scripts/gd-review-merge-and-fix-loop.py","target":"~/.claude/scripts/gd-review-merge-and-fix-loop.py","method":"direct_cp","ledger_scope":"sync_script_to_live","note":"sync deferred to Plan E / deploy-live"}
-{"source":"scripts/gd-review-router.py","target":"~/.claude/scripts/gd-review-router.py","method":"direct_cp","ledger_scope":"sync_script_to_live","note":"sync deferred to Plan E / deploy-live"}
+# RETIRED (plugin分发): {"source":"scripts/gd-codex-transport-guard.py","target":"~/.claude/scripts/gd-codex-transport-guard.py","method":"direct_cp","ledger_scope":"sync_script_to_live","note":"sync deferred to Plan E / deploy-live"}
+# RETIRED (plugin分发): {"source":"scripts/gd-review-suite-controller.py","target":"~/.claude/scripts/gd-review-suite-controller.py","method":"direct_cp","ledger_scope":"sync_script_to_live","note":"sync deferred to Plan E / deploy-live"}
+# RETIRED (plugin分发): {"source":"scripts/gd-codex-bridge-review.py","target":"~/.claude/scripts/gd-codex-bridge-review.py","method":"direct_cp","ledger_scope":"sync_script_to_live","note":"sync deferred to Plan E / deploy-live"}
+# RETIRED (plugin分发): {"source":"scripts/gd-review-merge-and-fix-loop.py","target":"~/.claude/scripts/gd-review-merge-and-fix-loop.py","method":"direct_cp","ledger_scope":"sync_script_to_live","note":"sync deferred to Plan E / deploy-live"}
+# {"source":"scripts/gd-review-router.py","target":"~/.claude/scripts/gd-review-router.py","method":"direct_cp","ledger_scope":"sync_script_to_live","note":"sync deferred to Plan E / deploy-live"}
 {"source":"prompts/gd-review-standard.md","target":"~/.claude/prompts/gd-review-standard.md","method":"direct_cp","ledger_scope":"sync_script_to_live","note":"sync deferred to Plan E / deploy-live"}
-{"source":"scripts/gd-prepare-workcopy.py","target":"~/.claude/scripts/gd-prepare-workcopy.py","method":"direct_cp","ledger_scope":"sync_script_to_live","note":"SC-2 workcopy helper, added 2026-06-20"}
-{"source":"scripts/gd_review_contract.py","target":"~/.claude/scripts/gd_review_contract.py","method":"direct_cp","ledger_scope":"sync_script_to_live","note":"import dep of bridge/controller"}
-{"source":"scripts/gd_review_detection.py","target":"~/.claude/scripts/gd_review_detection.py","method":"direct_cp","ledger_scope":"sync_script_to_live","note":"import dep"}
-{"source":"scripts/lib/__init__.py","target":"~/.claude/scripts/lib/__init__.py","method":"direct_cp","ledger_scope":"sync_script_to_live","note":"import dep lib pkg"}
-{"source":"scripts/lib/path_classification.py","target":"~/.claude/scripts/lib/path_classification.py","method":"direct_cp","ledger_scope":"sync_script_to_live","note":"import dep lib"}
-{"source":"scripts/lib/sc_extraction.py","target":"~/.claude/scripts/lib/sc_extraction.py","method":"direct_cp","ledger_scope":"sync_script_to_live","note":"import dep lib"}
-{"source":"scripts/gd-validate-review-content-evidence.py","target":"~/.claude/scripts/gd-validate-review-content-evidence.py","method":"direct_cp","ledger_scope":"sync_script_to_live","note":"L3 content-evidence validator (ABC fix: structured target/broad review + T-N scope), added 2026-06-20"}
+# RETIRED (plugin分发): {"source":"scripts/gd-prepare-workcopy.py","target":"~/.claude/scripts/gd-prepare-workcopy.py","method":"direct_cp","ledger_scope":"sync_script_to_live","note":"SC-2 workcopy helper, added 2026-06-20"}
+# RETIRED (plugin分发): {"source":"scripts/gd_review_contract.py","target":"~/.claude/scripts/gd_review_contract.py","method":"direct_cp","ledger_scope":"sync_script_to_live","note":"import dep of bridge/controller"}
+# RETIRED (plugin分发): {"source":"scripts/gd_review_detection.py","target":"~/.claude/scripts/gd_review_detection.py","method":"direct_cp","ledger_scope":"sync_script_to_live","note":"import dep"}
+# RETIRED (plugin分发): {"source":"scripts/lib/__init__.py","target":"~/.claude/scripts/lib/__init__.py","method":"direct_cp","ledger_scope":"sync_script_to_live","note":"import dep lib pkg"}
+# RETIRED (plugin分发): {"source":"scripts/lib/path_classification.py","target":"~/.claude/scripts/lib/path_classification.py","method":"direct_cp","ledger_scope":"sync_script_to_live","note":"import dep lib"}
+# RETIRED (plugin分发): {"source":"scripts/lib/sc_extraction.py","target":"~/.claude/scripts/lib/sc_extraction.py","method":"direct_cp","ledger_scope":"sync_script_to_live","note":"import dep lib"}
+# RETIRED (plugin分发): {"source":"scripts/gd-validate-review-content-evidence.py","target":"~/.claude/scripts/gd-validate-review-content-evidence.py","method":"direct_cp","ledger_scope":"sync_script_to_live","note":"L3 content-evidence validator (ABC fix: structured target/broad review + T-N scope), added 2026-06-20"}
