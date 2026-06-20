@@ -98,11 +98,14 @@ fi
 # --- Case 5: full timeout-layer ordering (daemon budget < send-wait < controller) ---
 # Root cause #2 (found during fix verification): the controller's bridge_timeout
 # wraps run-bridge, which polls codex-send-wait. With default single-provider
-# chain, max_attempts=2 so daemon budget = 2 x CODEX_EXEC_TIMEOUT. The order must
-# hold so no upper layer kills a lower layer mid-legitimate-retry:
+# chain, max_attempts=2 so daemon budget = 2 x CODEX_EXEC_TIMEOUT. Deep mode
+# uses per-job EXEC_TIMEOUT and an explicit send-wait timeout, so both default
+# and deep ladders must hold.
 #   2 x CODEX_EXEC_TIMEOUT  <=  codex-send-wait TIMEOUT  <=  controller bridge_timeout
+#   2 x DEEP_EXEC_TIMEOUT   <=  DEEP_SEND_TIMEOUT        <=  DEEP_WRITER_TIMEOUT <= controller deep timeout
 SW="$REPO_ROOT/vendor/l3-transport/handoff/bin/codex-send-wait"
 CTRL="$REPO_ROOT/scripts/gd-review-controller.py"
+BRIDGE="$REPO_ROOT/scripts/gd-codex-bridge-review.py"
 SEND_WAIT_TO=$(grep -E 'TIMEOUT="\$\{CODEX_SEND_WAIT_TIMEOUT:-' "$SW" | head -1 | grep -oE ':-[0-9]+' | tr -dc '0-9')
 CTRL_TO=$(grep -E '^\s*bridge_timeout = [0-9]+' "$CTRL" | head -1 | grep -oE '[0-9]+')
 echo "config: codex-send-wait TIMEOUT=$SEND_WAIT_TO  controller bridge_timeout=$CTRL_TO  (max_attempts default=2)"
@@ -113,6 +116,32 @@ if [[ -n "$SEND_WAIT_TO" && -n "$CTRL_TO" ]] \
   pass "Case 5: timeout-layer order holds — daemon_budget($daemon_budget) <= send-wait($SEND_WAIT_TO) <= controller($CTRL_TO)"
 else
   fail "Case 5: timeout-layer order broken — daemon_budget=$daemon_budget send-wait=$SEND_WAIT_TO controller=$CTRL_TO (upper layer may kill legitimate retry)"
+fi
+
+# --- Case 6: deep mode carries per-job exec timeout through transport ---
+echo "--- Case 6: deep per-job timeout propagation + healthcheck budget ---"
+DEEP_EXEC=$(grep -E '^_DEEP_EXEC_TIMEOUT_SEC = [0-9]+' "$BRIDGE" | head -1 | grep -oE '[0-9]+')
+DEEP_SEND=$(grep -E '^_DEEP_SEND_TIMEOUT_SEC = [0-9]+' "$BRIDGE" | head -1 | grep -oE '[0-9]+')
+DEEP_WRITER=$(grep -E '^_DEEP_WRITER_TIMEOUT_SEC = [0-9]+' "$BRIDGE" | head -1 | grep -oE '[0-9]+')
+CTRL_DEEP_TO=$(awk '/if deep:/{ind=1} ind && /bridge_timeout = [0-9]+/{print $3; exit}' "$CTRL")
+echo "deep config: exec=$DEEP_EXEC send=$DEEP_SEND writer=$DEEP_WRITER controller=$CTRL_DEEP_TO"
+deep_budget=$(( DEEP_EXEC * 2 ))
+if [[ -n "$DEEP_EXEC" && -n "$DEEP_SEND" && -n "$DEEP_WRITER" && -n "$CTRL_DEEP_TO" ]] \
+   && [[ "$DEEP_SEND" -ge "$deep_budget" ]] \
+   && [[ "$DEEP_WRITER" -ge "$DEEP_SEND" ]] \
+   && [[ "$CTRL_DEEP_TO" -ge "$DEEP_WRITER" ]]; then
+  pass "Case 6a: deep timeout-layer order holds — budget($deep_budget) <= send($DEEP_SEND) <= writer($DEEP_WRITER) <= controller($CTRL_DEEP_TO)"
+else
+  fail "Case 6a: deep timeout-layer order broken — budget=$deep_budget send=$DEEP_SEND writer=$DEEP_WRITER controller=$CTRL_DEEP_TO"
+fi
+
+if grep -F -- '--exec-timeout' "$REPO_ROOT/vendor/l3-transport/handoff/bin/codex-send-wait" >/dev/null \
+   && grep -F -- 'EXEC_TIMEOUT=${exec_timeout}' "$REPO_ROOT/vendor/l3-transport/handoff/bin/codex-send" >/dev/null \
+   && grep -F -- 'job_exec_timeout' "$CW" >/dev/null \
+   && grep -F -- 'job_stuck_max_for_status' "$HC" >/dev/null; then
+  pass "Case 6b: per-job exec timeout is persisted, read by daemon, and honored by healthcheck"
+else
+  fail "Case 6b: per-job exec timeout propagation missing in transport/healthcheck"
 fi
 
 echo ""

@@ -35,6 +35,7 @@ NO_STOP_MARKER=0
 OUT_DIR=""
 MODE="review-only"
 SEND_TIMEOUT="540"
+EXEC_TIMEOUT=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -46,6 +47,7 @@ while [[ $# -gt 0 ]]; do
     --no-stop-marker) NO_STOP_MARKER=1; shift ;;
     --mode) MODE="$2"; shift 2 ;;
     --send-timeout) SEND_TIMEOUT="$2"; shift 2 ;;
+    --exec-timeout) EXEC_TIMEOUT="$2"; shift 2 ;;
     *) echo "[REVIEW] ✗ FAILED — unknown arg: $1" >&2; exit 1 ;;
   esac
 done
@@ -113,7 +115,11 @@ CODEX_OUTPUT=""
 CODEX_EXIT=0
 
 if [[ -x "$CODEX_BIN" ]]; then
-  CODEX_OUTPUT=$("$CODEX_BIN" --cwd "$REVIEW_CWD" --mode "$MODE" --payload-file "$CAPSULE_FILE" --timeout "$SEND_TIMEOUT" 2>&1) || CODEX_EXIT=$?
+  CODEX_ARGS=(--cwd "$REVIEW_CWD" --mode "$MODE" --payload-file "$CAPSULE_FILE" --timeout "$SEND_TIMEOUT")
+  if [[ -n "$EXEC_TIMEOUT" ]]; then
+    CODEX_ARGS+=(--exec-timeout "$EXEC_TIMEOUT")
+  fi
+  CODEX_OUTPUT=$("$CODEX_BIN" "${CODEX_ARGS[@]}" 2>&1) || CODEX_EXIT=$?
 else
   CODEX_EXIT=127
 fi

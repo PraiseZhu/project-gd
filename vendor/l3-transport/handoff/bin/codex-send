@@ -5,22 +5,28 @@ set -euo pipefail
 source "$(dirname "$0")/../lib/state-paths.sh"
 
 usage() {
-  echo "Usage: codex-send --cwd <dir> --mode <mode> --payload-file <file>"
+  echo "Usage: codex-send --cwd <dir> --mode <mode> --payload-file <file> [--exec-timeout <sec>]"
   exit 1
 }
 
-cwd="" mode="" payload_file=""
+cwd="" mode="" payload_file="" exec_timeout=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --cwd)        cwd="$2"; shift 2 ;;
     --mode)       mode="$2"; shift 2 ;;
     --payload-file) payload_file="$2"; shift 2 ;;
+    --exec-timeout) exec_timeout="$2"; shift 2 ;;
     *) usage ;;
   esac
 done
 
 [[ -z "$cwd" || -z "$mode" || -z "$payload_file" ]] && usage
 [[ ! -f "$payload_file" ]] && { echo "Error: payload file not found: $payload_file" >&2; exit 1; }
+if [[ -n "$exec_timeout" ]]; then
+  case "$exec_timeout" in
+    *[!0-9]*|0) echo "Error: --exec-timeout must be a positive integer" >&2; exit 1 ;;
+  esac
+fi
 
 # Resolve to absolute path (cwd non-empty guaranteed by usage check above)
 local_cwd="$(cd "$cwd" 2>/dev/null && pwd -P)" || { echo "Error: --cwd does not exist or is not accessible: $cwd" >&2; exit 1; }
@@ -40,6 +46,9 @@ CWD=${cwd}
 MODE=${mode}
 SUBMITTED=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 EOF
+if [[ -n "$exec_timeout" ]]; then
+  echo "EXEC_TIMEOUT=${exec_timeout}" >> "${base}.meta.tmp"
+fi
 
 # Step 3: write status=queued to tmp
 echo "queued" > "${base}.status.tmp"

@@ -692,6 +692,8 @@ def _run_controller_multi_round(
     round2_fanout_threshold_lines: int = 150,
     round2_fanout_threshold_files: int = 5,
     max_rounds: int = 10,
+    deep: bool = False,
+    plan_file: str | None = None,
 ) -> int:
     """T7: Invoke gd-review-controller.py as the multi-round loop driver for
     execution_outcome and combined routes.
@@ -722,6 +724,10 @@ def _run_controller_multi_round(
         cmd += ["--execution-result", str(execution_result)]
     if claude_review_json is not None:
         cmd += ["--claude-review-json", str(claude_review_json)]
+    if deep:
+        cmd.append("--deep")
+    if plan_file:
+        cmd += ["--plan-file", plan_file]
 
     env = {**os.environ, INVOCATION_ID_ENV: invocation_id}
     r = subprocess.run(cmd, capture_output=False, text=True, env=env)
@@ -936,6 +942,8 @@ def _run_live_execution_only(
             invocation_id=invocation_id,
             execution_result=target,
             claude_review_json=claude_review_json,
+            deep=deep,
+            plan_file=plan_file,
         )
 
     # --- Stage 1: local outcome validator (validates facts) ---
@@ -1327,6 +1335,8 @@ def _run_live_execution_plus_code(
             invocation_id=invocation_id,
             execution_result=target,
             claude_review_json=claude_review_json,
+            deep=deep,
+            plan_file=plan_file,
         )
 
     r_outcome = subprocess.run(

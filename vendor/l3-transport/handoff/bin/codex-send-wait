@@ -18,23 +18,29 @@ TIMEOUT="${CODEX_SEND_WAIT_TIMEOUT:-540}"
 POLL_INTERVAL=2
 
 usage() {
-  echo "Usage: codex-send-wait --cwd <dir> --mode <mode> --payload-file <file> [--timeout <sec>]"
+  echo "Usage: codex-send-wait --cwd <dir> --mode <mode> --payload-file <file> [--timeout <sec>] [--exec-timeout <sec>]"
   exit 1
 }
 
-cwd="" mode="" payload_file=""
+cwd="" mode="" payload_file="" exec_timeout=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --cwd)          cwd="$2"; shift 2 ;;
     --mode)         mode="$2"; shift 2 ;;
     --payload-file) payload_file="$2"; shift 2 ;;
     --timeout)      TIMEOUT="$2"; shift 2 ;;
+    --exec-timeout) exec_timeout="$2"; shift 2 ;;
     *) usage ;;
   esac
 done
 
 [[ -z "$cwd" || -z "$mode" || -z "$payload_file" ]] && usage
 [[ ! -f "$payload_file" ]] && { echo "Error: payload file not found: $payload_file" >&2; exit 1; }
+if [[ -n "$exec_timeout" ]]; then
+  case "$exec_timeout" in
+    *[!0-9]*|0) echo "Error: --exec-timeout must be a positive integer" >&2; exit 1 ;;
+  esac
+fi
 
 # Check watcher state via shared watch_state()
 # NOTE: must NOT let `set -e` abort on this line. watch_state() returns non-zero
@@ -62,8 +68,14 @@ case $watcher_rc in
     ;;
 esac
 
-# Submit via codex-send
-job_id=$("$HANDOFF_BIN/codex-send" --cwd "$cwd" --mode "$mode" --payload-file "$payload_file")
+# Submit via codex-send. --exec-timeout is persisted in job metadata and read
+# by codex-watch; it cannot be expressed through this client process env because
+# the daemon is already running under launchd.
+send_args=(--cwd "$cwd" --mode "$mode" --payload-file "$payload_file")
+if [[ -n "$exec_timeout" ]]; then
+  send_args+=(--exec-timeout "$exec_timeout")
+fi
+job_id=$("$HANDOFF_BIN/codex-send" "${send_args[@]}")
 status_file="${HANDOFF_ACTIVE}/${job_id}.status"
 result_file="${HANDOFF_ACTIVE}/${job_id}.result"
 stderr_file="${HANDOFF_ACTIVE}/${job_id}.stderr"

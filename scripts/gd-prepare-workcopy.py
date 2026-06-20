@@ -58,7 +58,7 @@ def prepare_workcopy(orig_cwd: Path, run_id: str, scratch_base: Path) -> dict:
         raise RuntimeError(f"not a git work tree (no toplevel): {orig}")
     orig = root  # worktree/stash 必须在 repo root 上跑
 
-    scratch = Path(scratch_base)
+    scratch = Path(scratch_base).resolve()
     scratch.mkdir(parents=True, exist_ok=True)
     workdir = scratch / f"wc-{run_id}"
     if workdir.exists():

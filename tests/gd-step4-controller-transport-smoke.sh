@@ -244,18 +244,21 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-# SC-10 T-deep: bridge deep mode passes --mode workspace-write --send-timeout N.
+# SC-10 T-deep: bridge deep mode passes --mode workspace-write --send-timeout N
+# plus per-job --exec-timeout N.
 # The vendor writer must accept and forward those args instead of rejecting them
 # before codex-send-wait starts.
 # ─────────────────────────────────────────────────────────────────────────────
 echo "== SC-10 T-deep: writer accepts deep bridge mode/timeout args =="
 if grep -F -- '--mode) MODE="$2"; shift 2 ;;' "$WRITER" >/dev/null \
    && grep -F -- '--send-timeout) SEND_TIMEOUT="$2"; shift 2 ;;' "$WRITER" >/dev/null \
+   && grep -F -- '--exec-timeout) EXEC_TIMEOUT="$2"; shift 2 ;;' "$WRITER" >/dev/null \
    && grep -F -- '--mode "$MODE"' "$WRITER" >/dev/null \
-   && grep -F -- '--timeout "$SEND_TIMEOUT"' "$WRITER" >/dev/null; then
-  pass_msg "writer accepts --mode/--send-timeout and forwards them to codex-send-wait"
+   && grep -F -- '--timeout "$SEND_TIMEOUT"' "$WRITER" >/dev/null \
+   && grep -F -- '--exec-timeout "$EXEC_TIMEOUT"' "$WRITER" >/dev/null; then
+  pass_msg "writer accepts --mode/--send-timeout/--exec-timeout and forwards them to codex-send-wait"
 else
-  fail_msg "writer does not support deep bridge --mode/--send-timeout forwarding"
+  fail_msg "writer does not support deep bridge mode/send/exec timeout forwarding"
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -2,6 +2,9 @@
 import os
 import sys
 import subprocess
+import json
+import pathlib
+import tempfile
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
@@ -99,3 +102,52 @@ class TestControllerDeepTimeout:
             f"SC-32: deep mode bridge timeout must be ≥1800s, got {call['timeout']}"
         )
         assert "--deep" in call["args"], "SC-32: --deep must be passed to bridge argv"
+
+
+class TestControllerMappedResults:
+    """L2 controller must consume valid red mapped results as review evidence."""
+
+    def test_controller_accepts_requires_changes_mapped_when_parse_exits_nonzero(self):
+        """parse-transport exit!=0 can still produce a valid mapped REQUIRES_CHANGES."""
+        import unittest.mock as mock
+        from gd_review_controller import _invoke_bridge_mapped
+
+        with tempfile.TemporaryDirectory() as td:
+            out_dir = pathlib.Path(td)
+            raw = out_dir / "raw.md"
+            raw.write_text("# Code Review Result\nVERDICT: REQUIRES_CHANGES\n", encoding="utf-8")
+            captured_calls = []
+
+            def fake_run(args, **kwargs):
+                captured_calls.append(args)
+                if "run-bridge" in args:
+                    return mock.MagicMock(
+                        stdout=f"TRANSPORT_RESULT: {raw}\n",
+                        stderr="",
+                        returncode=1,
+                    )
+                if "parse-transport" in args:
+                    mapped_path = pathlib.Path(args[args.index("--out") + 1])
+                    mapped_path.write_text(json.dumps({
+                        "review_kind": "code_diff",
+                        "review_run_status": "completed",
+                        "gd_review_decision": "REQUIRES_CHANGES",
+                        "findings": [{"severity": "P1", "title": "x"}],
+                    }), encoding="utf-8")
+                    return mock.MagicMock(stdout="", stderr="", returncode=1)
+                raise AssertionError(args)
+
+            with mock.patch("gd_review_controller.subprocess.run", side_effect=fake_run):
+                mapped = _invoke_bridge_mapped(
+                    kind="code_diff",
+                    target=out_dir / "target.patch",
+                    cwd=out_dir,
+                    output_dir=out_dir,
+                    invocation_id="test-id",
+                    deep=True,
+                )
+
+            assert mapped["gd_review_decision"] == "REQUIRES_CHANGES"
+            assert mapped["findings"][0]["severity"] == "P1"
+            parse_call = next(args for args in captured_calls if "parse-transport" in args)
+            assert "--deep" in parse_call

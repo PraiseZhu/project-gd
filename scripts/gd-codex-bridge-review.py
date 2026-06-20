@@ -69,6 +69,9 @@ _DEEP_ALLOWED_COMMANDS_SECTION = (
     "- `python3 -c '...'`：必要时做最小自洽检查\n"
     "**禁止**：`git commit` / `git push` / 写 runtime 基础设施 / 改 daemon。workspace-write 仅限本审查 workcopy。\n"
 )
+_DEEP_EXEC_TIMEOUT_SEC = 720
+_DEEP_SEND_TIMEOUT_SEC = 1500
+_DEEP_WRITER_TIMEOUT_SEC = 1700
 
 # v1 (compat) template files
 TEMPLATE_BY_KIND_V1 = {
@@ -2001,8 +2004,13 @@ def _run_lens_dispatch(
     capsule_tmp = tmpdir / f"gd-codex-bridge-{run_id}.capsule.txt"
     capsule_tmp.write_text(capsule_text, encoding="utf-8")
 
-    _effective_timeout = 1500 if deep else 600
-    _writer_extra_args: list[str] = ["--mode", "workspace-write", "--send-timeout", "1200"] if deep else []
+    _effective_timeout = _DEEP_WRITER_TIMEOUT_SEC if deep else 600
+    _writer_extra_args: list[str] = (
+        ["--mode", "workspace-write",
+         "--send-timeout", str(_DEEP_SEND_TIMEOUT_SEC),
+         "--exec-timeout", str(_DEEP_EXEC_TIMEOUT_SEC)]
+        if deep else []
+    )
 
     try:
         result = subprocess.run(
@@ -2365,9 +2373,17 @@ def _cmd_run_bridge_inner(args: argparse.Namespace) -> int:
     capsule_tmp = tmpdir / f"gd-codex-bridge-{run_id}.capsule.txt"
     capsule_tmp.write_text(capsule, encoding="utf-8")
 
-    # SC-1b: --deep overrides timeout to 1500; passes --mode workspace-write --send-timeout 1200 to writer
-    _effective_timeout = 1500 if _deep else getattr(args, "writer_timeout_sec", 600)
-    _writer_extra_args: list[str] = ["--mode", "workspace-write", "--send-timeout", "1200"] if _deep else []
+    # SC-1b: --deep uses a consistent timeout ladder:
+    # 2 x exec_timeout(720) <= send_wait(1500) <= writer(1700) <= controller/router(1800).
+    # send-timeout only controls the waiting client; exec-timeout is persisted in
+    # job metadata so the already-running codex-watch daemon can enforce it per job.
+    _effective_timeout = _DEEP_WRITER_TIMEOUT_SEC if _deep else getattr(args, "writer_timeout_sec", 600)
+    _writer_extra_args: list[str] = (
+        ["--mode", "workspace-write",
+         "--send-timeout", str(_DEEP_SEND_TIMEOUT_SEC),
+         "--exec-timeout", str(_DEEP_EXEC_TIMEOUT_SEC)]
+        if _deep else []
+    )
 
     try:
         result = subprocess.run(
@@ -3210,7 +3226,7 @@ def main(argv: list[str]) -> int:
                      metavar="SEC",
                      help="Writer subprocess timeout in seconds (300-1800). Default: 600.")
     p_r.add_argument("--deep", action="store_true", default=False,
-                     help="SC-1b: deep review mode; bridge_timeout=1500, passes --mode workspace-write --send-timeout 1200 to writer")
+                     help="SC-1b: deep review mode; passes workspace-write plus per-job exec/send timeout ladder to writer")
     p_r.add_argument("--plan-file", default=None,
                      help="SC-33: path to plan markdown file; deep capsule includes PLAN_FILE_PATH + plan hash + SC verify commands")
 

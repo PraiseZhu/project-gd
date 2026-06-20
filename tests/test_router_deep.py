@@ -1,6 +1,8 @@
 """Tests for SC-31: router deep mode bridge timeout ≥1800s."""
 import os
 import sys
+import pathlib
+import unittest.mock as mock
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
@@ -34,3 +36,31 @@ class TestRouterDeepTimeout:
         )
         assert "--deep" in r.stdout, f"SC-31: router must have --deep flag; got: {r.stdout[:500]}"
         assert "--plan-file" in r.stdout, f"SC-31: router must have --plan-file flag"
+
+    def test_router_controller_path_forwards_deep_and_plan_file(self):
+        """SC-31/SC-32: router's controller path preserves deep intent."""
+        from gd_review_router import _run_controller_multi_round
+
+        captured_calls = []
+
+        def fake_run(args, **kwargs):
+            captured_calls.append({"args": args, "env": kwargs.get("env")})
+            return mock.MagicMock(returncode=0)
+
+        with mock.patch("gd_review_router.subprocess.run", side_effect=fake_run):
+            rc = _run_controller_multi_round(
+                branch="combined",
+                target=pathlib.Path("/tmp/outcome.json"),
+                output_dir=pathlib.Path("/tmp/gd-router-test"),
+                invocation_id="router-test",
+                execution_result=pathlib.Path("/tmp/outcome.json"),
+                deep=True,
+                plan_file="/tmp/plan.md",
+            )
+
+        assert rc == 0
+        assert captured_calls, "controller subprocess must be invoked"
+        argv = captured_calls[0]["args"]
+        assert "--deep" in argv, "router controller path must pass --deep"
+        assert "--plan-file" in argv, "router controller path must pass --plan-file"
+        assert argv[argv.index("--plan-file") + 1] == "/tmp/plan.md"

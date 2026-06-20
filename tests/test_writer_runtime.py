@@ -136,7 +136,7 @@ exit 127
 
 # SC-29: deep timeout golden
 class TestWriterDeepTimeoutGolden:
-    def _run_writer_with_stub_and_mode(self, mode=None, send_timeout=None):
+    def _run_writer_with_stub_and_mode(self, mode=None, send_timeout=None, exec_timeout=None):
         """Run writer with given mode/timeout and capture invocation."""
         with tempfile.TemporaryDirectory() as tmpdir:
             stub_path = os.path.join(tmpdir, "codex-send-wait")
@@ -179,6 +179,8 @@ exit 127
                 cmd.extend(["--mode", mode])
             if send_timeout:
                 cmd.extend(["--send-timeout", str(send_timeout)])
+            if exec_timeout:
+                cmd.extend(["--exec-timeout", str(exec_timeout)])
 
             subprocess.run(cmd, capture_output=True, text=True)
 
@@ -188,26 +190,28 @@ exit 127
             return None
 
     def test_writer_deep_timeout_golden(self):
-        """SC-29: --mode workspace-write + --send-timeout 1200 passes correct timeout to codex-send-wait"""
+        """SC-29: deep mode passes wait timeout and per-job exec timeout to codex-send-wait"""
         # Only run after Step 1 writer changes are in place
         if not os.path.exists(WRITER_PATH):
             pytest.skip("writer not found")
         with open(WRITER_PATH) as f:
             writer_content = f.read()
-        if "--mode" not in writer_content or "send-timeout" not in writer_content:
-            pytest.skip("writer not yet updated with --mode/--send-timeout (Step 1 not done)")
+        if "--mode" not in writer_content or "send-timeout" not in writer_content or "exec-timeout" not in writer_content:
+            pytest.skip("writer not yet updated with --mode/--send-timeout/--exec-timeout")
 
-        # Test deep path: --mode workspace-write + --send-timeout 1200
-        capture_deep = self._run_writer_with_stub_and_mode("workspace-write", 1200)
+        # Test deep path: --mode workspace-write + --send-timeout + --exec-timeout
+        capture_deep = self._run_writer_with_stub_and_mode("workspace-write", 1500, 720)
         assert capture_deep is not None, "stub must be called for deep path"
         argv = capture_deep["argv"]
         assert "--mode" in argv
         mode_idx = argv.index("--mode")
         assert argv[mode_idx + 1] == "workspace-write", "deep mode must be workspace-write"
-        # CODEX_SEND_WAIT_TIMEOUT should be set to 1200 via env
-        env = capture_deep.get("env", {})
-        timeout_val = env.get("CODEX_SEND_WAIT_TIMEOUT", "")
-        assert str(timeout_val) == "1200", f"deep send-timeout must be 1200, got {timeout_val}"
+        assert "--timeout" in argv
+        wait_idx = argv.index("--timeout")
+        assert argv[wait_idx + 1] == "1500", "deep send-timeout must be forwarded as --timeout 1500"
+        assert "--exec-timeout" in argv
+        exec_idx = argv.index("--exec-timeout")
+        assert argv[exec_idx + 1] == "720", "deep exec timeout must be forwarded as per-job metadata"
 
         # Test default path: no flags
         capture_default = self._run_writer_with_stub_and_mode()
@@ -220,3 +224,4 @@ exit 127
         assert "CODEX_SEND_WAIT_TIMEOUT" not in env_def or env_def.get("CODEX_SEND_WAIT_TIMEOUT", "") == "", (
             "default path must not set CODEX_SEND_WAIT_TIMEOUT"
         )
+        assert "--exec-timeout" not in argv_def, "default path must not pass per-job exec timeout"

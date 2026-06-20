@@ -26,3 +26,4 @@ def _load_hyphenated_module(module_name: str, file_name: str) -> None:
 _load_hyphenated_module("gd_codex_bridge_review", "gd-codex-bridge-review.py")
 _load_hyphenated_module("gd_review_router", "gd-review-router.py")
 _load_hyphenated_module("gd_review_controller", "gd-review-controller.py")
+_load_hyphenated_module("gd_prepare_workcopy", "gd-prepare-workcopy.py")

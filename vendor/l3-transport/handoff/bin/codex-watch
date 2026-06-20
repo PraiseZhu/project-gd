@@ -434,6 +434,32 @@ process_capsule() {
   local cwd="" mode=""
   cwd=$(grep '^CWD=' "$meta" | cut -d= -f2- || true)
   mode=$(grep '^MODE=' "$meta" | cut -d= -f2- || true)
+  local job_exec_timeout="$CODEX_EXEC_TIMEOUT"
+  local meta_exec_timeout=""
+  meta_exec_timeout=$(read_meta_field "$meta" "EXEC_TIMEOUT")
+  if [[ -n "$meta_exec_timeout" ]]; then
+    case "$meta_exec_timeout" in
+      *[!0-9]*|0)
+        echo "WATCH_INVALID_EXEC_TIMEOUT: EXEC_TIMEOUT must be a positive integer: $meta_exec_timeout" > "$result"
+        set_status "$base" "failed"
+        log "Failed: $job_id (invalid EXEC_TIMEOUT: $meta_exec_timeout)"
+        mv "$capsule" "$HANDOFF_ARCHIVE/" 2>/dev/null || true
+        mv "$meta" "$HANDOFF_ARCHIVE/" 2>/dev/null || true
+        return 0
+        ;;
+      *)
+        if [[ "$meta_exec_timeout" -lt 30 || "$meta_exec_timeout" -gt 1800 ]]; then
+          echo "WATCH_INVALID_EXEC_TIMEOUT: EXEC_TIMEOUT out of range 30..1800: $meta_exec_timeout" > "$result"
+          set_status "$base" "failed"
+          log "Failed: $job_id (EXEC_TIMEOUT out of range: $meta_exec_timeout)"
+          mv "$capsule" "$HANDOFF_ARCHIVE/" 2>/dev/null || true
+          mv "$meta" "$HANDOFF_ARCHIVE/" 2>/dev/null || true
+          return 0
+        fi
+        job_exec_timeout="$meta_exec_timeout"
+        ;;
+    esac
+  fi
 
   if [[ -z "$cwd" ]]; then
     echo "WATCH_INVALID_CWD: CWD is empty in meta for job $job_id" > "$result"
@@ -508,14 +534,14 @@ maybe_backoff() {
     # per attempt. The healthcheck stuck detector (codex-watch-healthcheck) measures
     # (now - status mtime), NOT the heartbeat. The status mtime is set once at
     # try_claim; without a per-attempt refresh a legitimate retry chain
-    # (CODEX_EXEC_TIMEOUT x max_attempts, up to ~480s) accumulates past
+    # (job_exec_timeout x max_attempts) can accumulate past
     # STUCK_TASK_MAX_AGE=300, so the healthcheck false-kills a job that is still
     # progressing — even one that then completes (observed: job completes on
     # attempt 2 but was already reset to failed at 300s). Re-writing "running"
     # resets the stuck-clock to per-attempt, mirroring the heartbeat refresh above.
     # Invariant (asserted in tests/gd-transport-healthcheck-flap-smoke.sh):
-    # STUCK_TASK_MAX_AGE must exceed CODEX_EXEC_TIMEOUT so a single attempt never
-    # trips the stuck detector.
+    # healthcheck must derive the stuck threshold from per-job EXEC_TIMEOUT
+    # when present, and default to CODEX_EXEC_TIMEOUT otherwise.
     set_status "$base" "running"
 
     # GAP-1: select provider for this attempt (round-robin through chain)
@@ -538,18 +564,18 @@ maybe_backoff() {
     # Per-attempt codex args with provider
     local codex_args=("${codex_base_args[@]}" "-c" "model_provider=${provider}")
 
-    log "Attempt ${attempt}/${max_attempts}: $job_id (provider=${provider})"
+    log "Attempt ${attempt}/${max_attempts}: $job_id (provider=${provider}, exec_timeout=${job_exec_timeout})"
 
     # Clear per-attempt output
     > "$tmp_stdout"
     > "$tmp_stderr"
 
     local exec_exit=0
-    run_codex_with_timeout "$CODEX_EXEC_TIMEOUT" \
+    run_codex_with_timeout "$job_exec_timeout" \
       "$tmp_prompt" "$tmp_stdout" "$tmp_stderr" \
       codex "${codex_args[@]}" || exec_exit=$?
 
-    echo "attempt=${attempt} exit=${exec_exit} provider=${provider}" >> "$attempts_file"
+    echo "attempt=${attempt} exit=${exec_exit} provider=${provider} exec_timeout=${job_exec_timeout}" >> "$attempts_file"
 
     if [[ $exec_exit -eq 0 ]]; then
       # Mode-aware completion check (SC-02): discuss→RECOMMENDATION, review→VERDICT

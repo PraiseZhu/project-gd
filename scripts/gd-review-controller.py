@@ -544,8 +544,12 @@ def _invoke_bridge_mapped(
         "--raw-result", str(transport_raw),
         "--out", str(mapped_out),
     ]
+    if deep:
+        parse_args.append("--deep")
     r_parse = subprocess.run(parse_args, capture_output=True, text=True, env=env)
-    if r_parse.returncode != 0 or not mapped_out.exists():
+    # parse-transport can return non-zero for a valid mapped REQUIRES_CHANGES
+    # result. Treat only missing/unreadable mapped JSON as a transport failure.
+    if not mapped_out.exists():
         raise RuntimeError(f"parse-transport failed: {r_parse.stderr[:300]!r}")
 
     mapped = json.loads(mapped_out.read_text(encoding="utf-8"))
