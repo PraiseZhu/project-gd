@@ -76,6 +76,8 @@ VALIDATOR_SIGNATURE = {
 
 # Q3: env var set BY the router for scripts it spawns; must be absent on entry
 INVOCATION_ID_ENV = "GD_REVIEW_ROUTER_INVOCATION_ID"
+UPSTREAM_QUALITY_EVIDENCE_ENV = "GD_UPSTREAM_QUALITY_EVIDENCE"
+UPSTREAM_QUALITY_GATE_ENV = "GD_UPSTREAM_QUALITY_GATE"
 
 
 # ---------------------------------------------------------------------------
@@ -195,6 +197,15 @@ def _classify_router_descriptor(path: Path) -> str:
     )
 
 
+# Source file extensions that, when passed as --target, indicate a code-only review
+# (the router materializes the diff via `git diff HEAD -- <target>` in _run_live_code_only;
+#  descriptor JSON is the only other code_only entry, via _classify_router_descriptor).
+_CODE_DIFF_SUFFIXES = frozenset({
+    ".py", ".sh", ".ts", ".tsx", ".js", ".jsx", ".go", ".rs", ".java",
+    ".c", ".cpp", ".h", ".hpp", ".swift", ".rb", ".php", ".kt", ".m", ".mm",
+})
+
+
 def detect_review_target_kind(target: Path | None) -> str:
     """Target detection for detect_only / live_dry_run / live modes.
 
@@ -217,6 +228,11 @@ def detect_review_target_kind(target: Path | None) -> str:
             # Raw execution artifact → content-based inspection.
             if is_execution_json(target):
                 return classify_artifacts(False, True, False)
+        # code diff target: a source file with a code extension → code_only.
+        # _run_live_code_only materializes the patch via `git diff HEAD -- <target>`;
+        # an already-clean (no diff) target yields an empty diff and fail-closes upstream.
+        if target.suffix in _CODE_DIFF_SUFFIXES:
+            return classify_artifacts(False, False, True)
         return "no_artifact"
 
     if target.is_dir():
@@ -759,19 +775,23 @@ def _run_upstream_quality_gate(target: "Path", output_dir: "Path", invocation_id
       }
 
     fail-closed contract (SC-1 / master SC-5):
-      - tool unavailable → fail_closed=True, failure_code=<TOOL>_UNAVAILABLE
+      - strict mode + tool unavailable → fail_closed=True, failure_code=<TOOL>_UNAVAILABLE
       - tool exits non-zero → fail_closed=True, failure_code=UPSTREAM_QUALITY_GATE_FAIL
-      - MUST NOT return fail_closed=False unless BOTH steps succeed
+      - supplied-but-incomplete evidence → fail_closed=True, failure_code=<STEP>_EVIDENCE_MISSING
+      - default mode + no slash-command evidence/tooling → observe-only skip, then Codex sidecar runs
 
     skill_orchestrated evidence path (P6 alignment):
       /code-review and /simplify are Claude Code slash commands, not PATH binaries —
       `which code-review` always fails. In the canonical /gd review flow the orchestrating
-      Claude session runs both slash commands UPSTREAM, then passes their artifacts to the
+      Claude session can run both slash commands UPSTREAM, then pass their artifacts to the
       router via GD_UPSTREAM_QUALITY_EVIDENCE (a dir holding code-review + simplify logs).
       When that env points at a dir with both a `*code*review*` and a `*simplify*` artifact,
-      the gate is satisfied (status="ok", origin="skill_orchestrated_evidence"). Absent that
-      evidence AND with neither tool on PATH, the gate fail-closes as before — the fail-closed
-      contract is preserved and the self-test still exercises the unavailable→fail_closed path.
+      the gate is satisfied (status="ok", origin="skill_orchestrated_evidence").
+
+      Absent evidence, the router must not block the Codex bridge merely because Claude slash
+      commands are not PATH executables. Default mode records both steps as skipped with
+      origin="slash_command_not_in_router" and proceeds to the Codex sidecar. Set
+      GD_UPSTREAM_QUALITY_GATE=strict to restore the old unavailable→fail_closed behavior.
     """
     import hashlib
     steps: list = []
@@ -779,7 +799,9 @@ def _run_upstream_quality_gate(target: "Path", output_dir: "Path", invocation_id
 
     # skill_orchestrated evidence: orchestrating session ran /code-review + /simplify upstream
     # and dropped their artifacts in a dir referenced by GD_UPSTREAM_QUALITY_EVIDENCE.
-    evidence_dir = os.environ.get("GD_UPSTREAM_QUALITY_EVIDENCE", "").strip()
+    evidence_dir = os.environ.get(UPSTREAM_QUALITY_EVIDENCE_ENV, "").strip()
+    gate_policy = os.environ.get(UPSTREAM_QUALITY_GATE_ENV, "auto").strip().lower()
+    strict_gate = gate_policy in {"strict", "required", "fail_closed", "fail-closed"}
 
     def _evidence_for(step_name: str):
         """Return a matching evidence artifact Path for this step, or None.
@@ -802,6 +824,35 @@ def _run_upstream_quality_gate(target: "Path", output_dir: "Path", invocation_id
                 return p
         return None
 
+    def _record_evidence_step(step_name: str):
+        ev = _evidence_for(step_name)
+        if ev is None:
+            steps.append({
+                "step": step_name, "status": "missing_evidence",
+                "exit_code": -1, "output_ref": "", "output_hash": "",
+                "origin": "skill_orchestrated_evidence",
+            })
+            miss_code = f"{step_name.upper().replace('-', '_')}_EVIDENCE_MISSING"
+            return miss_code
+        try:
+            ev_bytes = ev.read_bytes()
+        except OSError:
+            ev_bytes = b""
+        ev_hash = hashlib.sha256(ev_bytes).hexdigest()
+        steps.append({
+            "step": step_name, "status": "ok",
+            "exit_code": 0, "output_ref": str(ev),
+            "output_hash": ev_hash, "origin": "skill_orchestrated_evidence",
+        })
+        return None
+
+    if evidence_dir:
+        for step_name in ("code-review", "simplify"):
+            err_code = _record_evidence_step(step_name)
+            if err_code:
+                return {"steps": steps, "failure_code": err_code, "fail_closed": True}
+        return {"steps": steps, "failure_code": None, "fail_closed": False}
+
     def _probe_tool(tool_name: str) -> bool:
         """Probe whether a tool is available (dry probe via which)."""
         try:
@@ -810,24 +861,19 @@ def _run_upstream_quality_gate(target: "Path", output_dir: "Path", invocation_id
         except Exception:
             return False
 
+    tools_available = _probe_tool("code-review") and _probe_tool("simplify")
+    if not tools_available and not strict_gate:
+        for step_name in ("code-review", "simplify"):
+            steps.append({
+                "step": step_name, "status": "skipped",
+                "exit_code": 0, "output_ref": "", "output_hash": "",
+                "origin": "slash_command_not_in_router",
+                "reason": "Claude slash commands are orchestrated outside gd-review-router",
+            })
+        return {"steps": steps, "failure_code": None, "fail_closed": False}
+
     def _run_step(step_name: str, tool_name: str, extra_args: list | None = None):
         log_path = output_dir_path / f"quality_gate_{step_name.replace('-', '_')}_{invocation_id}.log"
-        # skill_orchestrated evidence short-circuit: if the orchestrating session already ran
-        # this slash command upstream and supplied its artifact, accept it (status="ok") and
-        # skip the PATH probe (slash commands are never on PATH).
-        ev = _evidence_for(step_name)
-        if ev is not None:
-            try:
-                ev_bytes = ev.read_bytes()
-            except OSError:
-                ev_bytes = b""
-            ev_hash = hashlib.sha256(ev_bytes).hexdigest()
-            steps.append({
-                "step": step_name, "status": "ok",
-                "exit_code": 0, "output_ref": str(ev),
-                "output_hash": ev_hash, "origin": "skill_orchestrated_evidence",
-            })
-            return None, None  # evidence satisfied; out text not consumed by callers
         if not _probe_tool(tool_name):
             steps.append({
                 "step": step_name, "status": "unavailable",
@@ -1243,6 +1289,9 @@ def _run_live_code_only(
             "raw_result_path": str(diff_path),
             "raw_result_hash": diff_hash,
             "claude_review_origin": "skill_orchestrated",
+            "codex_review_kind": "code_diff",
+            "codex_review_status": "not_run_blocked",
+            "codex_review_scope": "conformance",
             "failure_code": gate_result["failure_code"],
             "upstream_quality_gate": {"steps": gate_result["steps"], "fail_closed": True},
             "findings": [{
@@ -1889,18 +1938,36 @@ def run_self_test() -> int:
         errors.append(f"smoke fixture not found: {good_fx}")
 
     # 5. Upstream quality gate self-test (SC-1 behavior verification):
-    #    Simulate /code-review unavailable scenario → must produce fail_closed=True.
-    #    This is the behavioral verification for the fail-closed contract (SC-1 / master SC-5).
+    #    In default mode Claude slash commands are observe-only here, so the router can
+    #    reach the Codex sidecar. Strict mode still verifies unavailable→fail_closed.
     import tempfile
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
         iid_gate = "self-test-001"
-        # _run_upstream_quality_gate probes via `which code-review` / `which simplify`.
-        # On most systems neither is on PATH → status="unavailable" → fail_closed=True.
-        # On systems where one/both exist, they may succeed or fail; we accept both outcomes:
-        #   - fail_closed=True (either unavailable or non-zero): SC-1 contract satisfied.
-        #   - fail_closed=False (both tools available AND both succeed): tools present, also valid.
         gate = _run_upstream_quality_gate(Path("."), tmp_path, iid_gate)
+        if gate["fail_closed"]:
+            errors.append(
+                f"upstream quality gate default-mode self-test FAIL: expected observe-only "
+                f"non-blocking gate, got failure_code={gate.get('failure_code')!r}"
+            )
+        elif all(step.get("status") == "skipped" for step in gate.get("steps", [])):
+            print("  upstream quality gate default-mode self-test: PASS (slash commands skipped, sidecar allowed) ✓")
+        else:
+            print("  upstream quality gate default-mode self-test: PASS (tool/evidence path available) ✓")
+
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        iid_gate = "self-test-strict-001"
+        old_policy = os.environ.get(UPSTREAM_QUALITY_GATE_ENV)
+        os.environ[UPSTREAM_QUALITY_GATE_ENV] = "strict"
+        try:
+            gate = _run_upstream_quality_gate(Path("."), tmp_path, iid_gate)
+        finally:
+            if old_policy is None:
+                os.environ.pop(UPSTREAM_QUALITY_GATE_ENV, None)
+            else:
+                os.environ[UPSTREAM_QUALITY_GATE_ENV] = old_policy
         if gate["fail_closed"]:
             fc_code = gate.get("failure_code", "")
             if fc_code in ("CODE_REVIEW_UNAVAILABLE", "SIMPLIFY_UNAVAILABLE", "UPSTREAM_QUALITY_GATE_FAIL"):

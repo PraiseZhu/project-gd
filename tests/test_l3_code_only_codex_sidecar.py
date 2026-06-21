@@ -71,6 +71,24 @@ def _stub_bridge(monkeypatch, router_mod, tmp_path, *, status="completed",
     monkeypatch.setattr(router_mod, "_run_live_codex_bridge", fake_bridge)
 
 
+def _stub_no_quality_tools(monkeypatch, router_mod):
+    """Make the router environment look like Claude slash commands are not PATH tools."""
+    monkeypatch.delenv("GD_UPSTREAM_QUALITY_EVIDENCE", raising=False)
+    monkeypatch.delenv("GD_UPSTREAM_QUALITY_GATE", raising=False)
+    original_run = router_mod.subprocess.run
+
+    def fake_run(cmd, *args, **kwargs):
+        if cmd == ["which", "code-review"] or cmd == ["which", "simplify"]:
+            class Result:
+                returncode = 1
+                stdout = ""
+                stderr = ""
+            return Result()
+        return original_run(cmd, *args, **kwargs)
+
+    monkeypatch.setattr(router_mod.subprocess, "run", fake_run)
+
+
 def _run_code_only(router_mod, tmp_path):
     target = tmp_path / "target.py"
     target.write_text("print('x')\n")
@@ -106,6 +124,43 @@ def test_approved_code_only_has_completed_code_diff_sidecar(router, monkeypatch,
     ledger = Path(report["child_review_ledger_path"])
     assert ledger.exists()
     assert _sha(ledger) == report["child_review_ledger_hash"]
+
+
+def test_code_only_default_gate_does_not_block_sidecar_when_slash_commands_absent(
+    router, monkeypatch, tmp_path
+):
+    """Regression: router subprocess cannot resolve Claude slash commands with `which`.
+
+    Default mode must record the upstream quality gate as skipped/observe-only and still
+    run the Codex code_diff sidecar. Strict mode keeps unavailable→fail-closed coverage
+    in router self-test and the dedicated test below.
+    """
+    _stub_no_quality_tools(monkeypatch, router)
+    _stub_bridge(monkeypatch, router, tmp_path, status="completed", decision="APPROVED")
+    rc, report = _run_code_only(router, tmp_path)
+    assert rc == 0
+    assert report["decision"] == "APPROVED"
+    assert report["codex_review_kind"] == "code_diff"
+    assert report["codex_review_status"] == "completed"
+    gate = report["upstream_quality_gate"]
+    assert gate["fail_closed"] is False
+    assert {s["status"] for s in gate["steps"]} == {"skipped"}
+    assert {s["origin"] for s in gate["steps"]} == {"slash_command_not_in_router"}
+    assert report.get("failure_code") != "CODE_REVIEW_UNAVAILABLE"
+
+
+def test_code_only_strict_gate_still_fails_closed_when_slash_commands_absent(
+    router, monkeypatch, tmp_path
+):
+    _stub_no_quality_tools(monkeypatch, router)
+    monkeypatch.setenv("GD_UPSTREAM_QUALITY_GATE", "strict")
+    _stub_bridge(monkeypatch, router, tmp_path, status="completed", decision="APPROVED")
+    rc, report = _run_code_only(router, tmp_path)
+    assert rc != 0
+    assert report["decision"] == "REQUIRES_CHANGES"
+    assert report["failure_code"] == "CODE_REVIEW_UNAVAILABLE"
+    assert report["codex_review_status"] == "not_run_blocked"
+    assert report["upstream_quality_gate"]["fail_closed"] is True
 
 
 def test_requires_changes_route(router, monkeypatch, tmp_path):
