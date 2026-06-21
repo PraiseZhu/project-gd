@@ -152,6 +152,9 @@ L2_KNOWN_ENTRIES=(
   "packages" "process_manager"
   "chrome-native-hosts-v2.json" "chrome-native-hosts.json"
   "memories_1.sqlite" "memories_1.sqlite-shm" "memories_1.sqlite-wal"
+  # Added 2026-06-21: codex CLI runtime state / cache / backup / plugin config (not GD mirror scope)
+  ".app-server-state-reconciled-v1" "backups" "cloud-config-bundle-cache.json"
+  "gw-models.json" "hooks.json"
 )
 L2_UNCLASSIFIED=()
 while IFS= read -r entry; do
@@ -165,6 +168,7 @@ while IFS= read -r entry; do
     case "$name" in
       .codex-global-state.json.tmp-*)  found=1 ;;  # transient state write (single dot prefix)
       ..codex-global-state.json.tmp-*) found=1 ;;  # transient state write (double dot prefix variant)
+      config.toml.bak-*)               found=1 ;;  # codex config backup (rotated by key swap)
     esac
   fi
   [ $found -eq 0 ] && L2_UNCLASSIFIED+=("$name")

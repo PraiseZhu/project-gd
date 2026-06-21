@@ -726,14 +726,19 @@ def _parse_finding(block: str) -> dict | None:
     title = title_match.group(2).strip()
 
     fields: dict[str, str] = {}
-    # SC: SC-N (or 多个，逗号分隔)
+    # SC: SC-3,SC-W2 (explicit SC line). Use extract_sc_ids so placeholder tokens
+    # like "SC-N" are not mistaken for real sc_refs.
     sc_match = re.search(r"^\s*SC:\s*(.+?)\s*$", block, re.MULTILINE)
     sc_refs: list[str] = []
     if sc_match:
-        sc_refs = SC_REF_RE.findall(sc_match.group(1))
-    # 也兼容直接在文本内嵌 SC-N
+        sc_refs = sorted(extract_sc_ids(sc_match.group(1)))
+    # fallback: embedded SC refs in body ONLY (exclude title line). Scanning the
+    # title picks up descriptive placeholders (e.g. "finding 缺 SC: SC-N 引用")
+    # which then pass sc_refs validation and wrongly yield completed instead of
+    # degraded for a missing-SC fixture.
     if not sc_refs:
-        sc_refs = SC_REF_RE.findall(block)
+        body_without_title = block.split("\n", 1)[1] if "\n" in block else ""
+        sc_refs = sorted(extract_sc_ids(body_without_title))
 
     for cn in REQUIRED_FINDING_FIELDS_CN:
         m = re.search(rf"^\s*{cn}:\s*(.+?)\s*$", block, re.MULTILINE)

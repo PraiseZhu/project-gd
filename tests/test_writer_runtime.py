@@ -51,13 +51,14 @@ class TestWriterRuntimeManifest:
 # SC-21: backup path valid and hash matches
 class TestWriterBackup:
     def test_writer_backup_valid(self):
-        """SC-21: writer_backup_path exists and hash matches pre_hash"""
+        """SC-21: writer preimage (改前 writer snapshot) exists and hash matches pre_hash.
+        Live backup under ~/.claude/scripts/ retired when writer moved to plugin
+        distribution; the preimage fixture carries the same pre-change snapshot."""
         m = _load_manifest()
-        backup_path = os.path.expanduser(m["writer_backup_path"])
-        assert os.path.exists(backup_path), f"改前 writer 备份须存在: {backup_path}"
-        backup_hash = _sha256(backup_path)
+        assert os.path.exists(PREIMAGE_PATH), f"preimage (改前 writer) 须存在: {PREIMAGE_PATH}"
+        backup_hash = _sha256(PREIMAGE_PATH)
         assert backup_hash == m["writer_pre_hash"], (
-            f"备份 hash {backup_hash} != pre_hash {m['writer_pre_hash']}"
+            f"preimage hash {backup_hash} != pre_hash {m['writer_pre_hash']}"
         )
 
 

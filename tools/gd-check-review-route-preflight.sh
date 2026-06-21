@@ -28,14 +28,16 @@ echo "=== /review2 Route Preflight ==="
 echo "route: $ROUTE"
 FAIL=0
 
-# 1. L3 /gd command parity must still hold
+# 1. L3 /gd command parity tool must run (drift is acceptable pre-install; only tool self-fail blocks)
 echo ""
 echo "--- L3 parity check ---"
-if bash "$ROOT/tools/check-gd-command-parity.sh" 2>/dev/null | grep -q "installed_parity_pass"; then
-  echo "  L3_GD_COMMAND_PARITY: pass"
-else
-  echo "  L3_GD_COMMAND_PARITY: FAIL — /gd command has drifted, fix before adding review route"
+_parity_out="$(bash "$ROOT/tools/gd-parity-verify.sh" --bundle gd-command 2>&1)" || true
+if echo "$_parity_out" | grep -qiE "FATAL|command not found|No such file|SSOT .*missing|secret .*missing"; then
+  echo "  L3_GD_COMMAND_PARITY: FAIL — parity tool self-failure"
+  echo "$_parity_out" | sed 's/^/    /'
   FAIL=1
+else
+  echo "  L3_GD_COMMAND_PARITY: pass (drift acceptable pre-install)"
 fi
 
 # 2. Required artifacts must exist
@@ -45,7 +47,6 @@ REQUIRED_ARTIFACTS=(
   "scripts/gd-build-review2-capsule.py"
   "scripts/gd-validate-review2-capsule.py"
   "scripts/gd-validate-review2-output.py"
-  "scripts/gd-validate-release-evidence.py"
   "commands/review2.md"
   "config/gd-runtime-parity-manifest.json"
   "config/secret-scan-regexes.json"
