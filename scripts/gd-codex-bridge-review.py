@@ -75,6 +75,46 @@ _DEEP_ALLOWED_COMMANDS_SECTION = (
 _DEEP_EXEC_TIMEOUT_SEC = 720
 _DEEP_SEND_TIMEOUT_SEC = 1500
 _DEEP_WRITER_TIMEOUT_SEC = 1700
+# Non-deep PLAN reviews reuse the deep timeout ladder: gpt-5.x at xhigh reasoning
+# needs >240s to review a large (20K+) plan capsule, but the daemon default is
+# CODEX_EXEC_TIMEOUT=240 / client CODEX_SEND_WAIT_TIMEOUT=540. A non-deep plan
+# review that passes NO timeout flags therefore times out twice and FAILs (root
+# cause of the 2026-06-22 AKB2 CQL plan-review failure). Kept separate from _DEEP_*
+# so changing one budget never silently moves the other. Plan review stays
+# read-only — it must NOT pass --mode workspace-write.
+_PLAN_EXEC_TIMEOUT_SEC = 720
+_PLAN_SEND_TIMEOUT_SEC = 1500
+_PLAN_WRITER_TIMEOUT_SEC = 1700
+# Controller/router upper cap the ladder must stay under (documented at the
+# dispatch sites; surfaced here so the invariant test can reference it).
+_REVIEW_LADDER_OUTER_CAP_SEC = 1800
+
+
+def _writer_timeout_args(deep: bool, kind: str, writer_timeout_sec: int = 600) -> tuple[int, list[str]]:
+    """Compute (writer subprocess timeout, extra writer CLI args) for one dispatch.
+
+    Single source of truth for the timeout ladder, shared by both dispatch sites
+    (the plan dual-lens path and the single-lens path) so they can never drift:
+
+    - deep            → workspace-write + 720/1500/1700 ladder.
+    - non-deep plan   → read-only + 720/1500/1700 ladder (NO --mode workspace-write).
+    - other non-deep  → fast path: daemon default 240 / client 540 / writer
+                        ``writer_timeout_sec`` (unchanged from prior behavior).
+
+    Ladder invariant (enforced by tests): 2*exec <= send <= writer <= 1800.
+    """
+    if deep:
+        return _DEEP_WRITER_TIMEOUT_SEC, [
+            "--mode", "workspace-write",
+            "--send-timeout", str(_DEEP_SEND_TIMEOUT_SEC),
+            "--exec-timeout", str(_DEEP_EXEC_TIMEOUT_SEC),
+        ]
+    if kind == "plan":
+        return _PLAN_WRITER_TIMEOUT_SEC, [
+            "--send-timeout", str(_PLAN_SEND_TIMEOUT_SEC),
+            "--exec-timeout", str(_PLAN_EXEC_TIMEOUT_SEC),
+        ]
+    return writer_timeout_sec, []
 
 # v1 (compat) template files
 TEMPLATE_BY_KIND_V1 = {
@@ -2053,13 +2093,7 @@ def _run_lens_dispatch(
     capsule_tmp = tmpdir / f"gd-codex-bridge-{run_id}.capsule.txt"
     capsule_tmp.write_text(capsule_text, encoding="utf-8")
 
-    _effective_timeout = _DEEP_WRITER_TIMEOUT_SEC if deep else 600
-    _writer_extra_args: list[str] = (
-        ["--mode", "workspace-write",
-         "--send-timeout", str(_DEEP_SEND_TIMEOUT_SEC),
-         "--exec-timeout", str(_DEEP_EXEC_TIMEOUT_SEC)]
-        if deep else []
-    )
+    _effective_timeout, _writer_extra_args = _writer_timeout_args(deep, kind)
 
     try:
         result = subprocess.run(
@@ -2422,17 +2456,13 @@ def _cmd_run_bridge_inner(args: argparse.Namespace) -> int:
     capsule_tmp = tmpdir / f"gd-codex-bridge-{run_id}.capsule.txt"
     capsule_tmp.write_text(capsule, encoding="utf-8")
 
-    # SC-1b: --deep uses a consistent timeout ladder:
+    # SC-1b: deep AND non-deep plan reviews use a consistent timeout ladder:
     # 2 x exec_timeout(720) <= send_wait(1500) <= writer(1700) <= controller/router(1800).
     # send-timeout only controls the waiting client; exec-timeout is persisted in
     # job metadata so the already-running codex-watch daemon can enforce it per job.
-    _effective_timeout = _DEEP_WRITER_TIMEOUT_SEC if _deep else getattr(args, "writer_timeout_sec", 600)
-    _writer_extra_args: list[str] = (
-        ["--mode", "workspace-write",
-         "--send-timeout", str(_DEEP_SEND_TIMEOUT_SEC),
-         "--exec-timeout", str(_DEEP_EXEC_TIMEOUT_SEC)]
-        if _deep else []
-    )
+    # Other non-deep kinds keep the fast 240/540/600 budget. See _writer_timeout_args.
+    _effective_timeout, _writer_extra_args = _writer_timeout_args(
+        _deep, args.kind, getattr(args, "writer_timeout_sec", 600))
 
     try:
         result = subprocess.run(

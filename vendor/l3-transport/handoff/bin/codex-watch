@@ -605,17 +605,24 @@ maybe_backoff() {
         break
       fi
     elif [[ $exec_exit -eq 124 ]]; then
-      # Timeout
+      # Timeout. A codex exec timeout is compute-bound and deterministic: re-running
+      # the SAME provider at the SAME exec_timeout just times out again (observed:
+      # the 2026-06-22 AKB2 plan review burned attempt 1 AND attempt 2 at 240s each
+      # — 8 wasted minutes for a guaranteed second failure). Only retry a timeout
+      # when the chain offers a DIFFERENT provider to rotate to (chain_len > 1);
+      # with a single-provider chain, fail fast after one attempt. Non-timeout
+      # errors (else branch below) still retry — those can be transient.
       cp "$tmp_stderr" "$stderr_file"
       echo "$exec_exit" > "$exit_file"
-      if [[ $attempt -lt $max_attempts ]]; then
+      if [[ $attempt -lt $max_attempts && $chain_len -gt 1 ]]; then
         maybe_backoff
-        log "Timeout: $job_id (attempt=${attempt}, retrying)"
+        log "Timeout: $job_id (attempt=${attempt}, rotating provider)"
         continue
       fi
       echo "WATCH_REVIEW_FAILED: codex exec timeout (exit=124) for job $job_id (attempt=${attempt})" > "$result"
-      log "Failed: $job_id (codex exec timeout after ${attempt} attempts)"
+      log "Failed: $job_id (codex exec timeout after ${attempt} attempt(s), no provider rotation)"
       final_status="failed"
+      break
     else
       # Non-zero exit — save artifacts and retry once
       cp "$tmp_stderr" "$stderr_file"
