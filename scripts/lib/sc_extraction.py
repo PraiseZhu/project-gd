@@ -24,7 +24,15 @@ _PLACEHOLDER_SC_IDS: frozenset[str] = frozenset(
 
 # Fix B/Issue1: 结构化 ID 定义 —— checklist `- [ ] SC-*` + T-N 任务头 `##/### T0`。
 # target 的「声明 ID」只认结构化定义，不含正文 mention（如 REVIEW_FOCUS 里的 SC-conformance 散提）。
-_CHECKLIST_SC_RE = re.compile(r"^\s*-\s*\[[ xX]\]\s*(" + SC_ID_RE.pattern + r")\b", re.MULTILINE)
+# Issue4: SC-ID 常被 markdown 星号强调包裹（`- [ ] **SC-1（…）**：…`）。`(?:\*+\s*)?` 容忍
+# checkbox 与 SC-ID 之间的 `*`/`**`/`***` 强调标记（+ 可选空白），否则粗体 checklist
+# 的 SC 全提不到 → target_sc_ids 空 → L3 把真 SC-ID 误判为 FAKE_EVIDENCE（2026-06-22 AKB2
+# CQL plan-review 失败根因）。强调容忍仅作用于 checklist 行，不放宽正文散提的排除。
+# 仅星号：下划线 `__` 强调在本仓计划中不出现，且 `_` 是 word 字符会与 SC_ID_RE 开头的 `\b`
+# 冲突，故不支持（避免过度工程）。
+_CHECKLIST_SC_RE = re.compile(
+    r"^\s*-\s*\[[ xX]\]\s*(?:\*+\s*)?(" + SC_ID_RE.pattern + r")\b", re.MULTILINE
+)
 _TASK_HEADER_RE = re.compile(r"^#{1,6}\s+(T\d+)\b", re.MULTILINE)
 
 # Fix B/Issue3: review 引用 ID 的宽口径 —— codex 在 `| T0 |` 行 / `SC: T0` 引用 T-N，
