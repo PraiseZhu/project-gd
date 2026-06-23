@@ -180,6 +180,51 @@ def parse_writer_result_path(writer_stdout: str) -> str | None:
     return m.group(1).strip()
 
 
+# Review Trust §Step 1 companion: parse the writer's structured terminal-status
+# line `[REVIEW] STATUS: <status> reason=<reason>`. The writer emits this only
+# on non-approved outcomes (transport_unavailable / codex_exit_N / no_verdict /
+# malformed) so the bridge can classify a failure mode from stdout alone,
+# without parsing stderr or bucketing every failure as a generic transport_failed.
+WRITER_STATUS_RE = re.compile(
+    r"^\[REVIEW\] STATUS:\s*(\S+)\s+reason=(\S+)\s*$", re.MULTILINE
+)
+
+
+def parse_writer_status_line(writer_stdout: str) -> tuple[str, str] | None:
+    """Extract `[REVIEW] STATUS: <status> reason=<reason>` from writer stdout.
+    Returns (status, reason) or None when the line is absent (approved /
+    requires_changes path, or a writer version that doesn't emit it).
+    """
+    m = WRITER_STATUS_RE.search(writer_stdout)
+    if not m:
+        return None
+    return m.group(1).strip(), m.group(2).strip()
+
+
+# Layer 4 (downstream gate signal): parse the writer's `[REVIEW] REVIEW_QUALITY:
+# <value>` line so the bridge can stamp capsule provenance onto the mapped result.
+# The writer emits this on every path (additive — does not alter VERDICT/exit).
+# 'pre_fed' means the capsule carried VALIDATION_EVIDENCE (review1-style pre-fed
+# conclusions); downstream gates must not treat a pre_fed APPROVED as a trusted
+# deep-review. Absent → None; caller defaults to 'standard'.
+REVIEW_QUALITY_RE = re.compile(
+    r"^\[REVIEW\] REVIEW_QUALITY:\s*(\S+)", re.MULTILINE
+)
+
+
+def parse_writer_review_quality(writer_stdout: str) -> str | None:
+    """Extract `[REVIEW] REVIEW_QUALITY: <value>` from writer stdout.
+
+    Returns 'standard' | 'pre_fed' | None (absent → caller defaults to standard).
+    Pure regex, like parse_writer_result_path / parse_writer_status_line, so unit
+    tests can probe the parser without touching disk.
+    """
+    m = REVIEW_QUALITY_RE.search(writer_stdout)
+    if not m:
+        return None
+    return m.group(1).strip()
+
+
 # ----------------------------- Constants ----------------------------- #
 
 # Plan 8 v4.1 Step 7: bridge supports both v2 (default) and v1 (--compat-v1).
@@ -2116,22 +2161,24 @@ def _run_lens_dispatch(
     writer_stdout = result.stdout
     writer_stderr = result.stderr
     writer_exit = result.returncode
+    _wstatus = parse_writer_status_line(writer_stdout)
+    _wstatus_tag = f"[{_wstatus[0]}/{_wstatus[1]}] " if _wstatus else ""
     result_path = parse_writer_result_path(writer_stdout)
 
     if "[REVIEW] ⚠️ DEGRADED" in writer_stdout:
         raise _LensDispatchFailed(
             _failed_mapped("codex", kind, target_str,
-                           f"writer DEGRADED: {writer_stdout.strip()[:200]}", "degraded"),
+                           f"{_wstatus_tag}writer DEGRADED: {writer_stdout.strip()[:200]}", "degraded"),
             result_path or None, 1)
     if "[REVIEW] ✗ MALFORMED" in writer_stdout:
         raise _LensDispatchFailed(
             _failed_mapped("codex", kind, target_str,
-                           f"writer MALFORMED: {writer_stdout.strip()[:200]}", "degraded"),
+                           f"{_wstatus_tag}writer MALFORMED: {writer_stdout.strip()[:200]}", "degraded"),
             result_path or None, 1)
     if "[REVIEW] ✗ FAILED" in writer_stdout or writer_exit != 0:
         raise _LensDispatchFailed(
             _failed_mapped("codex", kind, target_str,
-                           f"writer FAILED exit={writer_exit}: "
+                           f"{_wstatus_tag}writer FAILED exit={writer_exit}: "
                            f"{(writer_stdout + writer_stderr).strip()[:200]}"),
             result_path or None, 1)
     if not result_path or not Path(result_path).exists():
@@ -2144,6 +2191,12 @@ def _run_lens_dispatch(
 
     raw_text = Path(result_path).read_text(encoding="utf-8")
     mapped, _errs = parse_raw_to_mapped(kind, target_str, raw_text, compat_v1=compat_v1)
+    # Layer 4: stamp capsule provenance onto the mapped result so the downstream
+    # chain (merge-loop loop_report → router route_report → validator) can refuse
+    # to treat a pre_fed APPROVED as a trusted deep-review. Additive.
+    _rq = parse_writer_review_quality(writer_stdout)
+    if _rq:
+        mapped["review_quality"] = _rq
     return mapped, result_path
 
 
@@ -2503,6 +2556,12 @@ def _cmd_run_bridge_inner(args: argparse.Namespace) -> int:
     writer_exit = result.returncode
 
     # 解析 writer stdout 找 result path（Review Trust §Step 1：用共享 helper）。
+    # Structured writer failure classification (transport_unavailable / codex_exit_N
+    # / no_verdict / malformed). None on the approved path. Prefixed onto the
+    # mapped degraded_reason so downstream sees the specific mode, not a stdout
+    # fragment. Does not change branch order or exit semantics.
+    _wstatus = parse_writer_status_line(writer_stdout)
+    _wstatus_tag = f"[{_wstatus[0]}/{_wstatus[1]}] " if _wstatus else ""
     # 严格防御：path 存在性下游另查；这里只做正则提取，让 test driver 能纯离线探测。
     result_path = parse_writer_result_path(writer_stdout)
 
@@ -2511,7 +2570,7 @@ def _cmd_run_bridge_inner(args: argparse.Namespace) -> int:
     # codex 输出中（误把成功 review 当 transport degraded）。只匹配 writer 自己的 marker。
     if "[REVIEW] ⚠️ DEGRADED" in writer_stdout:
         mapped = _failed_mapped("codex", args.kind, target_str,
-                                f"writer DEGRADED: {writer_stdout.strip()[:200]}", "degraded")
+                                f"{_wstatus_tag}writer DEGRADED: {writer_stdout.strip()[:200]}", "degraded")
         out_path.write_text(json.dumps(mapped, ensure_ascii=False, indent=2), encoding="utf-8")
         print("GD_CODEX_BRIDGE_STATUS: degraded")
         print("GD_REVIEW_DECISION: FAILED")
@@ -2520,7 +2579,7 @@ def _cmd_run_bridge_inner(args: argparse.Namespace) -> int:
         return 1
     if "[REVIEW] ✗ MALFORMED" in writer_stdout:
         mapped = _failed_mapped("codex", args.kind, target_str,
-                                f"writer MALFORMED: {writer_stdout.strip()[:200]}", "degraded")
+                                f"{_wstatus_tag}writer MALFORMED: {writer_stdout.strip()[:200]}", "degraded")
         out_path.write_text(json.dumps(mapped, ensure_ascii=False, indent=2), encoding="utf-8")
         print("GD_CODEX_BRIDGE_STATUS: degraded")
         print("GD_REVIEW_DECISION: FAILED")
@@ -2529,7 +2588,7 @@ def _cmd_run_bridge_inner(args: argparse.Namespace) -> int:
         return 1
     if "[REVIEW] ✗ FAILED" in writer_stdout or writer_exit != 0:
         mapped = _failed_mapped("codex", args.kind, target_str,
-                                f"writer FAILED exit={writer_exit}: "
+                                f"{_wstatus_tag}writer FAILED exit={writer_exit}: "
                                 f"{(writer_stdout + writer_stderr).strip()[:200]}")
         out_path.write_text(json.dumps(mapped, ensure_ascii=False, indent=2), encoding="utf-8")
         print("GD_CODEX_BRIDGE_STATUS: failed_to_run")

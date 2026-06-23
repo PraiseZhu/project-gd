@@ -829,13 +829,14 @@ def _invoke_bridge_mapped(
     # SC-11/SC-32: deep mode — add --deep flag, --queue-job-id, --plan-file; timeout ≥1800s
     # Transport-healthcheck-flap fix (timeout-layer ordering): the controller's
     # bridge_timeout wraps `run-bridge`, which internally polls codex-send-wait
-    # (CODEX_SEND_WAIT_TIMEOUT=540s). The daemon's worst-case budget is
-    # max_attempts(2) x CODEX_EXEC_TIMEOUT(240) ≈ 480s. The old 420s killed
-    # run-bridge BEFORE a legitimate daemon retry could finish (observed: job
-    # completes on attempt 2 at ~433s, but controller timed out at 420s →
-    # CONVERGENCE_TIMEOUT on a job that actually succeeded). Order must hold:
-    # daemon_budget(~480) < send_wait(540) < controller bridge_timeout(600).
-    bridge_timeout = 600
+    # (CODEX_SEND_WAIT_TIMEOUT, default 900s — raised from 540 in the L1 fix).
+    # The daemon's worst-case budget is max_attempts(2) x CODEX_EXEC_TIMEOUT(240)
+    # ≈ 480s. Order must hold: daemon_budget(480) < send_wait(900) < controller(1000).
+    # NOTE: kept as an explicit constant (not derived) so the flap-smoke Case 5
+    # invariant check (`controller >= send_wait`) can statically read both values
+    # and FAIL if send_wait is ever raised past controller. If send_wait's default
+    # changes, bump this to stay above it.
+    bridge_timeout = 1000
     if deep:
         run_args.append("--deep")
         bridge_timeout = 1800

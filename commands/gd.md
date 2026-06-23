@@ -556,6 +556,12 @@ cross-review 所需的 codex 传输栈为安装者一次性前置（codex CLI + 
 - `wrapper_schema_fail`：raw `.result` 真存在但 bridge wrapper 拒收（如 finding 缺 SC-N）。**transport_status 仍是 transport_ok**，不要标 `codex_transport_unavailable`。
 - `gd_review_decision: REQUIRES_CHANGES`：Codex 真审完成、给出真 finding。这是**有效的 Codex 双审结果**，**不是**transport failure；后续按 merge/auto-fix 流程处理，**不得**用 `codex_transport_unavailable` 描述。
 
+### Capsule provenance（review capsule 来源强制）
+
+`/gd review` 的审查 capsule **必须**经 `scripts/gd-codex-bridge-review.py run-bridge`（内部 `build_capsule_text`）产出，**禁止**手工构造 capsule 直接调 `vendor/l3-transport/scripts/review-result-writer.sh`。原因：标准深审 capsule（`build_capsule_text`）只声明审查对象（`PRIMARY_TARGET` / `PRIMARY_TARGET_PATH` / `PRIMARY_TARGET_HASH` + `MANDATORY VERIFY STEP` + `EXPECTED_SC_IDS`），让 Codex 独立查证；而 review1 风格的手工 capsule 直接喂结论（`VALIDATION_EVIDENCE` 等），Codex 会复述结论而非独立深审，产出"格式 APPROVED 但非独立验证"的浅审。
+
+writer 对 capsule 做 fail-visible 检测：含 `^VALIDATION_EVIDENCE:` 字段时标 `last_review_quality=pre_fed` 并 stderr 警告。下游 gate 不得把 `review_quality=pre_fed` 的 APPROVED 当可信深审结论用（L1 `/review1` 合法使用精简 capsule，不在本禁令内）。
+
 ### 10-job aggregate v2
 
 `/gd review` 全链路 cross-review 由 `scripts/gd-aggregate-codex-cross-review.py` 跑，输出符合 `schema/gd-codex-cross-review-aggregate.schema.json` 的 v2 aggregate JSON。覆盖 10 个 required role：master_plan / 7 subplans / parent_close / release_evidence。

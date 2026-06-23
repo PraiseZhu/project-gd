@@ -348,7 +348,7 @@ run_codex_with_timeout() {
   local timeout_sec="$1" stdin_file="$2" stdout_file="$3" stderr_file="$4"
   shift 4
   python3 - "$timeout_sec" "$stdin_file" "$stdout_file" "$stderr_file" "$@" <<'PYEOF'
-import subprocess, sys, signal, os, time
+import subprocess, sys, signal, os, time, threading
 
 timeout = int(sys.argv[1])
 stdin_file  = sys.argv[2]
@@ -356,12 +356,40 @@ stdout_file = sys.argv[3]
 stderr_file = sys.argv[4]
 cmd = sys.argv[5:]
 
+# P3-a: reap codex's process group if the watcher (codex-watch main) dies
+# while a job is in flight. A SIGKILL'd or launchd-kickstarted watcher leaves
+# the worker subshell + codex chain reparented to init, still burning API /
+# compute with no one to collect it. codex runs in its OWN session
+# (start_new_session=True below), so we must killpg(getpgid(proc.pid)) —
+# killpg(getpgid(0)) would only kill ourselves, leaving codex orphaned.
+# The thread starts AFTER proc exists and captures proc by closure. No-op when
+# CODEX_WATCH_PID is unset (other callers). Polls every 2s; worst-case orphan
+# window = 2s (watcher SIGKILL → next poll → killpg).
+_watcher_pid = os.environ.get("CODEX_WATCH_PID")
+try:
+    _watcher_pid = int(_watcher_pid) if _watcher_pid else None
+except ValueError:
+    _watcher_pid = None
+
 try:
     with open(stdin_file, 'rb') as fin, \
          open(stdout_file, 'wb') as fout, \
          open(stderr_file, 'wb') as ferr:
         proc = subprocess.Popen(cmd, stdin=fin, stdout=fout, stderr=ferr,
                                 start_new_session=True)
+        if _watcher_pid:
+            def _reap_on_parent_death():
+                while True:
+                    try:
+                        os.kill(_watcher_pid, 0)
+                    except OSError:
+                        try:
+                            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                        except (OSError, ProcessLookupError):
+                            pass
+                        os._exit(137)
+                    time.sleep(2)
+            threading.Thread(target=_reap_on_parent_death, daemon=True).start()
         proc.wait(timeout=timeout)
         sys.exit(proc.returncode)
 except subprocess.TimeoutExpired:
@@ -420,6 +448,12 @@ process_capsule() {
   # leaving the job stuck at status=running. Stale markers from an abnormally
   # killed daemon are cleared by sweep_stale_worker_markers() on next startup.
   : > "$worker_running_marker"
+
+  # P3-a: expose the watcher PID so run_codex_with_timeout's python3 wrapper
+  # can reap the codex process group if the watcher dies mid-job. $$ is the
+  # watcher PID (invariant across this subshell — bash $$ does not change in
+  # a `(...)` fork), so kill -0 $$ fails iff the watcher main process is gone.
+  export CODEX_WATCH_PID=$$
 
   if [[ -n "$batch_id" ]]; then
     # Batch mode: emit started event with running_count = current + 1
@@ -571,9 +605,24 @@ maybe_backoff() {
     > "$tmp_stderr"
 
     local exec_exit=0
+    # Periodically refresh status mtime during codex exec so healthcheck's stuck
+    # detector (which measures status mtime, NOT heartbeat) does not false-kill a
+    # legitimate long attempt (deep review at gpt-5.x xhigh can run >EXEC_TIMEOUT).
+    # The toucher dies with the watcher: $$ is the watcher PID (POSIX: $$ is
+    # invariant across subshells), so a SIGKILLed watcher stops the toucher and
+    # healthcheck can still declare the job stuck after EXEC_TIMEOUT+grace.
+    # P3-b: interval is configurable (CODEX_WATCH_TOUCH_INTERVAL, default 30s) and
+    # must stay well under STUCK_TASK_MAX_AGE (= EXEC_TIMEOUT + grace, floor 780)
+    # so the toucher refreshes mtime faster than the stuck detector can trip.
+    # No change to retry / heartbeat-attempt-boundary semantics. macOS bash 3.2
+    # safe (no ${var^^}, declare -A, or other 4+ features).
+    ( while kill -0 $$ 2>/dev/null; do touch "${base}.status" 2>/dev/null; sleep "${CODEX_WATCH_TOUCH_INTERVAL:-30}"; done ) &
+    local _touch_pid=$!
     run_codex_with_timeout "$job_exec_timeout" \
       "$tmp_prompt" "$tmp_stdout" "$tmp_stderr" \
       codex "${codex_args[@]}" || exec_exit=$?
+    kill "$_touch_pid" 2>/dev/null || true
+    wait "$_touch_pid" 2>/dev/null || true
 
     echo "attempt=${attempt} exit=${exec_exit} provider=${provider} exec_timeout=${job_exec_timeout}" >> "$attempts_file"
 
