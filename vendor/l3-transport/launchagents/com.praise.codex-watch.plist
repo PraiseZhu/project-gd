@@ -19,6 +19,8 @@
 		<string>0</string>
 		<key>CODEX_SEND_WAIT_TIMEOUT</key>
 		<string>540</string>
+		<key>CODEX_EXEC_TIMEOUT</key>
+		<string>720</string>
 		<key>CLAUDE_PLUGIN_DATA</key>
 		<string>__CLAUDE_PLUGIN_DATA__</string>
 		<key>TAPTAP_API_KEY</key>
