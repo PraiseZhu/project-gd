@@ -67,7 +67,7 @@ Project GD 现以 **Claude Code 插件**形式分发（`.claude-plugin/plugin.js
 ```
 /review1 · /review2 · /gd
   → review-result-writer.sh / codex-consult.sh / gd-codex-bridge-review.py
-  → ~/.claude/handoff/bin/codex-send-wait
+  → ${CLAUDE_PLUGIN_DATA}/gd-handoff/bin/codex-send-wait  (state-paths.sh 解析)
   → codex-watch daemon (com.praise.codex-watch LaunchAgent)
   → codex exec   ← 外部 codex CLI 二进制
   → TAPSVC 代理 (config.toml: model_provider=tapsvc, model=codex/gpt-5.5, base_url=https://llm-proxy.tapsvc.com/v1, effort=xhigh)
@@ -76,16 +76,16 @@ Project GD 现以 **Claude Code 插件**形式分发（`.claude-plugin/plugin.js
 链路通畅需同时满足（任一缺失整链断；排障按此顺序查）：
 
 1. **codex CLI 在 PATH**：`command -v codex`。装法 `npm i -g @openai/codex --prefix ~/.local`（用户级，避开 `/usr/local` 的 root 权限）。
-2. **transport 部署到 live**：`~/.claude/handoff/bin/{codex-send-wait,codex-watch,...}`。用 `vendor/l3-transport/scripts/install-transport.sh --yes` 从 vendor 部署（含 LaunchAgent + SHA 校验 + 幂等 + 备份）。
+2. **transport 部署到 live**：`${CLAUDE_PLUGIN_DATA}/gd-handoff/bin/{codex-send-wait,codex-watch,...}`（state-paths.sh 解析；CLAUDE_PLUGIN_DATA 默认 ~/.claude/plugins/data/codex-openai-codex）。用 `vendor/l3-transport/scripts/install-transport.sh --yes` 从 vendor 部署（含 LaunchAgent + SHA 校验 + 幂等 + 备份）。
 3. **daemon 在线**：`launchctl list | grep com.praise.codex-watch`。
-4. **daemon 持有 TAPSVC key**：config.toml 配 `env_key="TAPTAP_API_KEY"`，codex **强制读该环境变量**（不回退 auth.json）。daemon 由 launchd 启动、**不读 shell profile**，故须 `launchctl setenv TAPTAP_API_KEY <sk-key>`（会话级，**重启失效**）或写进 plist 的 `EnvironmentVariables`。手动 `codex exec` 能成功而 daemon 失败，通常就是这条。
-5. **bash 版本**：codex-watch 经 `/bin/bash`（macOS 3.2）运行，**禁用 bash 4+ 特性**（`${var^^}`/`${var,,}`/`declare -A`），用 `printf | tr` 替代——否则 `bad substitution` 导致 daemon 卡 `running`、客户端 540s 超时。
+4. **daemon 持有 TAPSVC key**：config.toml 实际用 `experimental_bearer_token` 字段明文内联承载访问令牌（codex 直接读 config.toml，不走 env、不回退 auth.json）；daemon 与手动 `codex exec` 读同一 config.toml，故此条通常不再成 daemon-only 失败点。daemon 由 launchd 启动、**不读 shell profile**。**注**：旧文记载的 `env_key` + `launchctl setenv TAPTAP_API_KEY` 机制当前 config 未采用（plist 仍渲染 TAPTAP_API_KEY 但 codex 不读它）；若改回 env_key 模式才须 launchctl setenv。明文令牌存于 ~/.codex/config.toml（不入 git，本地明文存储）。
+5. **bash 版本**：codex-watch 经 `/bin/bash`（macOS 3.2）运行，**禁用 bash 4+ 特性**（`${var^^}`/`${var,,}`/`declare -A`），用 `printf | tr` 替代——否则 `bad substitution` 导致 daemon 卡 `running`、客户端 900s 超时。
 
 ## vendor ↔ live 方向（改 transport 前必看）
 
 `vendor/l3-transport/` 是 transport **权威源**：
-- `handoff/bin/*` + `handoff/lib/*` + `launchagents/*.plist` → `install-transport.sh` 部署到 `~/.claude/handoff` 与 `~/Library/LaunchAgents`（live）。
-- `scripts/{codex-consult.sh,review-result-writer.sh}` → **直接从 vendor 运行**，不部署（避免双拷贝漂移），但内部仍硬编码 `~/.claude/handoff` 引用（待解耦，见 vendor README）。
+- `handoff/bin/*` + `handoff/lib/*` + `launchagents/*.plist` → `install-transport.sh` 部署到 `${CLAUDE_PLUGIN_DATA}/gd-handoff`（state-paths.sh 解析）与 `~/Library/LaunchAgents`（live）。
+- `scripts/{codex-consult.sh,review-result-writer.sh}` → **直接从 vendor 运行**，不部署（避免双拷贝漂移），经 state-paths.sh 解析 `${HANDOFF_BIN}`，不硬编码路径（旧文记载的 `~/.claude/handoff` 硬编码已解耦）。
 
 改 daemon 行为的正确做法：**改 vendor 源 → 重新 `install-transport.sh`**，并保持 vendor 与 live 文件 hash 一致（install-transport 幂等依赖此）。
 
@@ -142,7 +142,7 @@ lint：仓库用 ruff（`.ruff_cache` 存在）但无项目级配置文件，按
 ## 已废弃的 v6 约束（PROJECT_GOAL 仍在写，勿照搬）
 
 项目已生产化，下列 lab-only 约束**不再成立**：
-- ~~"`~/.claude/**` 一律不写"~~ → 现主动部署 transport 到 `~/.claude/handoff` + 命令到 `~/.claude/commands`；有 `deploy-live` skill。
+- ~~"`~/.claude/**` 一律不写"~~ → 现主动部署 transport 到 `${CLAUDE_PLUGIN_DATA}/gd-handoff`（state-paths.sh 解析）+ 命令到 `~/.claude/commands`；有 `deploy-live` skill。
 - ~~"不注册 slash command"~~ → `/gd`、`/review1`、`/review2` 已注册。
 - ~~"不新增 daemon"~~ → `codex-watch` daemon 是链路核心。
 - ~~"`bin/rev` 是入口"~~ → 已被 `/gd` slash command 取代；`bin/` 现仅存 `gd-sync-codex-chain.sh`。
