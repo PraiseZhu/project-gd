@@ -225,8 +225,8 @@ cat > "$TMP/sc12-target.md" <<'EOF'
 # Plan master
 line2
 line3
-- SC-1: build the parser
-- SC-2: wire the validator
+- [ ] SC-1: build the parser
+- [ ] SC-2: wire the validator
 line7
 EOF
 cat > "$TMP/sc12-valid.md" <<'EOF'

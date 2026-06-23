@@ -18,7 +18,7 @@
 		<key>CODEX_RETRY_BACKOFF</key>
 		<string>0</string>
 		<key>CODEX_SEND_WAIT_TIMEOUT</key>
-		<string>540</string>
+		<string>1500</string>
 		<key>CODEX_EXEC_TIMEOUT</key>
 		<string>720</string>
 		<key>CLAUDE_PLUGIN_DATA</key>

@@ -156,6 +156,32 @@ else
   fail "Case 6: touch_interval($TOUCH_IV) too close to stuck_max($STUCK_MAX); widen headroom"
 fi
 
+# --- Case 7: timeout-ladder invariant (T-P1) — daemon_worst < send_wait < controller ---
+# The daemon runs at plist CODEX_EXEC_TIMEOUT (NOT the script default 240), so
+# worst-case = max_attempts(2) × EXEC. If send_wait < daemon_worst, a review
+# whose attempt 1 fails and retries (attempt 2) gets killed mid-flight (T-P0 root
+# cause: archive attempt=2 exit=124). Read the REAL plist EXEC_TIMEOUT, max_attempts
+# from codex-watch source, send_wait from WRITER default, controller from controller.py.
+WRITER="$REPO_ROOT/vendor/l3-transport/scripts/review-result-writer.sh"
+PLIST="$REPO_ROOT/vendor/l3-transport/launchagents/com.praise.codex-watch.plist"
+EXEC_TO=$(/usr/bin/grep -A1 "CODEX_EXEC_TIMEOUT" "$PLIST" 2>/dev/null | /usr/bin/grep -oE "[0-9]+" | head -1 || true)
+[[ -n "$EXEC_TO" ]] || EXEC_TO=720
+MAX_ATT=$(/usr/bin/grep -oE "max_attempts[^0-9]*[0-9]+" "$CW" 2>/dev/null | head -1 | /usr/bin/grep -oE "[0-9]+" || true)
+[[ -n "$MAX_ATT" ]] || MAX_ATT=2
+DAEMON_WORST=$((MAX_ATT * EXEC_TO))
+# send_wait default (writer: CODEX_SEND_WAIT_TIMEOUT:-<N>). grep WRITER not codex-watch.
+SEND_WAIT=$(/usr/bin/grep -oE 'CODEX_SEND_WAIT_TIMEOUT:-[0-9]+' "$WRITER" 2>/dev/null | head -1 | /usr/bin/grep -oE '[0-9]+' || true)
+[[ -n "$SEND_WAIT" ]] || SEND_WAIT=1500
+# controller bridge_timeout non-deep (controller.py: bridge_timeout = <N>)
+CONTROLLER=$(/usr/bin/grep -E '^\s*bridge_timeout = [0-9]+' "$REPO_ROOT/scripts/gd-review-controller.py" 2>/dev/null | head -1 | /usr/bin/grep -oE '[0-9]+' | head -1 || true)
+[[ -n "$CONTROLLER" ]] || CONTROLLER=1700
+echo "Case 7 config: EXEC_TO=$EXEC_TO max_attempts=$MAX_ATT daemon_worst=$DAEMON_WORST send_wait=$SEND_WAIT controller=$CONTROLLER"
+if [[ "$DAEMON_WORST" -lt "$SEND_WAIT" && "$SEND_WAIT" -le "$CONTROLLER" ]]; then
+  pass "Case 7: invariant daemon_worst($DAEMON_WORST) < send_wait($SEND_WAIT) <= controller($CONTROLLER)"
+else
+  fail "Case 7: invariant BROKEN daemon_worst($DAEMON_WORST) send_wait($SEND_WAIT) controller($CONTROLLER) — a retrying review will be killed mid-flight"
+fi
+
 echo ""
 echo "=== summary: PASS=$PASS FAIL=$FAIL ==="
 if [[ $FAIL -eq 0 ]]; then

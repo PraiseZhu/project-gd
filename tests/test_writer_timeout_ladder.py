@@ -1,11 +1,13 @@
 """SC-1.1 / SC-1.2 / SC-1.3 — writer timeout ladder for the codex review dispatch.
 
-Root cause guarded here: a non-deep PLAN review previously passed NO timeout flags
+Root cause guarded here: a non-deep review previously passed NO timeout flags
 (`else []`), so codex-watch fell back to the daemon default exec_timeout=240 /
-client send_wait=540. gpt-5.x at xhigh reasoning needs >240s on a large plan
-capsule, so both attempts timed out and the review FAILED (2026-06-22 AKB2 CQL run).
-`_writer_timeout_args` now gives non-deep plan reviews the same 720/1500/1700 ladder
-the deep path already uses — but read-only (no --mode workspace-write).
+client send_wait=540. But the daemon actually runs at plist CODEX_EXEC_TIMEOUT=720
+(raised from 240), so worst-case = 2*720 = 1440s; the old fast-path send_wait=540/900
+< 1440 broke the invariant and killed a retrying review mid-flight (2026-06-22 AKB2
+CQL run; T-P0 archive: attempt=2 exit=124). `_writer_timeout_args` now gives ALL
+kinds the same 720/1500/1700 ladder (deep adds --mode workspace-write) so the
+invariant daemon_worst(1440) < send_wait(1500) < writer(1700) holds uniformly.
 """
 import os
 import sys
@@ -24,10 +26,14 @@ from gd_codex_bridge_review import (
     _PLAN_EXEC_TIMEOUT_SEC,
     _PLAN_SEND_TIMEOUT_SEC,
     _PLAN_WRITER_TIMEOUT_SEC,
+    _NON_DEEP_EXEC_TIMEOUT_SEC,
+    _NON_DEEP_SEND_TIMEOUT_SEC,
+    _NON_DEEP_WRITER_TIMEOUT_SEC,
     _REVIEW_LADDER_OUTER_CAP_SEC,
 )
 
-# Non-deep, non-plan kinds that must keep the fast (unchanged) budget.
+# Non-deep, non-plan kinds — T-P0: now ALSO use the ladder (was fast 600/no-flags,
+# which broke daemon_worst(1440) < send_wait and killed retrying reviews).
 _OTHER_KINDS = ["code", "code_diff", "execution_outcome", "combined", "discuss"]
 
 
@@ -57,20 +63,32 @@ class TestPlanNonDeepLadder:
         assert writer_timeout == 1700
 
 
-class TestOtherKindsUnchanged:
-    """SC-1.2 regression guard: non-deep non-plan kinds keep 240/540/600, no flags."""
+class TestOtherKindsUseLadder:
+    """T-P0: non-deep non-plan kinds ALSO use the ladder (720/1500/1700), read-only.
+
+    The old fast path (600/no flags) broke daemon_worst(1440) < send_wait and killed
+    retrying reviews mid-flight. Now all kinds hold the invariant uniformly.
+    """
 
     @pytest.mark.parametrize("kind", _OTHER_KINDS)
-    def test_other_nondeep_has_no_timeout_flags(self, kind):
+    def test_other_nondeep_carries_full_ladder(self, kind):
         writer_timeout, extra = _writer_timeout_args(deep=False, kind=kind)
-        assert extra == [], f"{kind} must not pass timeout/mode flags"
-        assert writer_timeout == 600, f"{kind} must keep the fast 600s writer default"
+        assert writer_timeout == _NON_DEEP_WRITER_TIMEOUT_SEC == 1700, f"{kind} writer_timeout"
+        assert _flag_value(extra, "--exec-timeout") == str(_NON_DEEP_EXEC_TIMEOUT_SEC) == "720", f"{kind} exec"
+        assert _flag_value(extra, "--send-timeout") == str(_NON_DEEP_SEND_TIMEOUT_SEC) == "1500", f"{kind} send"
 
     @pytest.mark.parametrize("kind", _OTHER_KINDS)
-    def test_other_nondeep_honors_explicit_writer_timeout(self, kind):
-        writer_timeout, extra = _writer_timeout_args(deep=False, kind=kind, writer_timeout_sec=900)
-        assert writer_timeout == 900
-        assert extra == []
+    def test_other_nondeep_stays_read_only(self, kind):
+        _, extra = _writer_timeout_args(deep=False, kind=kind)
+        assert "--mode" not in extra
+        assert "workspace-write" not in extra
+
+    @pytest.mark.parametrize("kind", _OTHER_KINDS)
+    def test_other_nondeep_ignores_legacy_fast_default(self, kind):
+        """The legacy 600s writer_timeout_sec arg is ignored — ladder is mandatory (T-P0)."""
+        writer_timeout, extra = _writer_timeout_args(deep=False, kind=kind, writer_timeout_sec=600)
+        assert writer_timeout == 1700
+        assert _flag_value(extra, "--send-timeout") == "1500"
 
 
 class TestDeepUnchanged:
@@ -93,6 +111,7 @@ class TestLadderInvariant:
         [
             (_DEEP_EXEC_TIMEOUT_SEC, _DEEP_SEND_TIMEOUT_SEC, _DEEP_WRITER_TIMEOUT_SEC),
             (_PLAN_EXEC_TIMEOUT_SEC, _PLAN_SEND_TIMEOUT_SEC, _PLAN_WRITER_TIMEOUT_SEC),
+            (_NON_DEEP_EXEC_TIMEOUT_SEC, _NON_DEEP_SEND_TIMEOUT_SEC, _NON_DEEP_WRITER_TIMEOUT_SEC),
         ],
     )
     def test_ladder_is_monotonic_and_capped(self, exec_s, send_s, writer_s):

@@ -10,6 +10,7 @@ ERROR: FAKE_EVIDENCE_DETECTED: Finding #1 has no path:line evidence pointing to 
 L3_RESULT: FAKE_EVIDENCE_DETECTED (2 error(s), verdict=REQUIRES_CHANGES)
 EXIT:1
 === requires-changes-plan ===
+ERROR: FAKE_EVIDENCE_DETECTED: SC-ID refs not in target: ['SC-3'] (target has [])
 ERROR: FAKE_EVIDENCE_DETECTED: Finding #1 has no path:line evidence pointing to target 'raw-requires-changes-plan.md' (found 0 ref(s) to other files — reviewer must cite 'raw-requires-changes-plan.md:<line>')
-L3_RESULT: FAKE_EVIDENCE_DETECTED (1 error(s), verdict=REQUIRES_CHANGES)
+L3_RESULT: FAKE_EVIDENCE_DETECTED (2 error(s), verdict=REQUIRES_CHANGES)
 EXIT:1

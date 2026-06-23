@@ -827,16 +827,16 @@ def _invoke_bridge_mapped(
         "--live-transport",
     ]
     # SC-11/SC-32: deep mode — add --deep flag, --queue-job-id, --plan-file; timeout ≥1800s
-    # Transport-healthcheck-flap fix (timeout-layer ordering): the controller's
-    # bridge_timeout wraps `run-bridge`, which internally polls codex-send-wait
-    # (CODEX_SEND_WAIT_TIMEOUT, default 900s — raised from 540 in the L1 fix).
-    # The daemon's worst-case budget is max_attempts(2) x CODEX_EXEC_TIMEOUT(240)
-    # ≈ 480s. Order must hold: daemon_budget(480) < send_wait(900) < controller(1000).
-    # NOTE: kept as an explicit constant (not derived) so the flap-smoke Case 5
-    # invariant check (`controller >= send_wait`) can statically read both values
-    # and FAIL if send_wait is ever raised past controller. If send_wait's default
-    # changes, bump this to stay above it.
-    bridge_timeout = 1000
+    # Timeout-layer ordering (T-P0 fix): the controller's bridge_timeout wraps
+    # `run-bridge`, which internally polls codex-send-wait. The daemon runs at plist
+    # CODEX_EXEC_TIMEOUT=720 (NOT the script default 240), so worst-case budget =
+    # max_attempts(2) × 720 = 1440s. _writer_timeout_args now passes the uniform
+    # ladder (exec=720 / send_wait=1500 / writer=1700) for ALL kinds, so the
+    # invariant holds: daemon_worst(1440) < send_wait(1500) < writer(1700) <= controller.
+    # bridge_timeout must stay >= writer(1700); kept as explicit constant so the
+    # flap-smoke invariant check can statically read it and FAIL if send_wait ever
+    # exceeds controller. If send_wait's default changes, bump this to stay above it.
+    bridge_timeout = 1700
     if deep:
         run_args.append("--deep")
         bridge_timeout = 1800

@@ -85,6 +85,17 @@ _DEEP_WRITER_TIMEOUT_SEC = 1700
 _PLAN_EXEC_TIMEOUT_SEC = 720
 _PLAN_SEND_TIMEOUT_SEC = 1500
 _PLAN_WRITER_TIMEOUT_SEC = 1700
+# Non-deep non-plan (fast path) MUST also hold the ladder invariant
+# daemon_worst(2*EXEC=1440) < send_wait < writer: the daemon runs at plist
+# CODEX_EXEC_TIMEOUT=720 (not the script default 240), so worst-case = 2*720 = 1440.
+# The old fast path passed NO timeout flags → writer default send_wait=900 < 1440
+# → a non-deep review whose attempt 1 fails and retries (attempt 2 reaches ~1440s)
+# gets killed by the client send_wait(900) mid-flight (root cause of T-P0, witnessed
+# in archive: attempt=2 exit=124). Reuse the same ladder as deep/plan so the
+# invariant 2*exec(1440) < send(1500) < writer(1700) holds uniformly.
+_NON_DEEP_EXEC_TIMEOUT_SEC = 720
+_NON_DEEP_SEND_TIMEOUT_SEC = 1500
+_NON_DEEP_WRITER_TIMEOUT_SEC = 1700
 # Controller/router upper cap the ladder must stay under (documented at the
 # dispatch sites; surfaced here so the invariant test can reference it).
 _REVIEW_LADDER_OUTER_CAP_SEC = 1800
@@ -98,10 +109,11 @@ def _writer_timeout_args(deep: bool, kind: str, writer_timeout_sec: int = 600) -
 
     - deep            → workspace-write + 720/1500/1700 ladder.
     - non-deep plan   → read-only + 720/1500/1700 ladder (NO --mode workspace-write).
-    - other non-deep  → fast path: daemon default 240 / client 540 / writer
-                        ``writer_timeout_sec`` (unchanged from prior behavior).
+    - other non-deep  → 720/1500/1700 ladder (T-P0: daemon runs at plist EXEC=720,
+                        worst-case 2*720=1440; the old fast-path send_wait=900 broke
+                        the invariant and killed retrying reviews mid-flight).
 
-    Ladder invariant (enforced by tests): 2*exec <= send <= writer <= 1800.
+    Ladder invariant (enforced by tests): 2*exec(1440) <= send(1500) <= writer(1700).
     """
     if deep:
         return _DEEP_WRITER_TIMEOUT_SEC, [
@@ -114,7 +126,11 @@ def _writer_timeout_args(deep: bool, kind: str, writer_timeout_sec: int = 600) -
             "--send-timeout", str(_PLAN_SEND_TIMEOUT_SEC),
             "--exec-timeout", str(_PLAN_EXEC_TIMEOUT_SEC),
         ]
-    return writer_timeout_sec, []
+    # T-P0: non-deep non-plan also holds the invariant (daemon plist EXEC=720).
+    return _NON_DEEP_WRITER_TIMEOUT_SEC, [
+        "--send-timeout", str(_NON_DEEP_SEND_TIMEOUT_SEC),
+        "--exec-timeout", str(_NON_DEEP_EXEC_TIMEOUT_SEC),
+    ]
 
 # v1 (compat) template files
 TEMPLATE_BY_KIND_V1 = {

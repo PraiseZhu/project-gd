@@ -34,7 +34,12 @@ REVIEW_CWD="${PWD}"
 NO_STOP_MARKER=0
 OUT_DIR=""
 MODE="review-only"
-SEND_TIMEOUT="${CODEX_SEND_WAIT_TIMEOUT:-900}"
+# T-P0: default send_wait must exceed daemon worst-case (max_attempts(2) ×
+# CODEX_EXEC_TIMEOUT(720 plist) = 1440) or a review whose attempt 1 fails and
+# retries gets killed mid-flight (archive: attempt=2 exit=124). 1500 keeps the
+# invariant daemon_worst(1440) < send_wait(1500) < controller(1700). Callers that
+# pass --send-timeout (bridge) override this; L1 /review1 + direct writer calls use it.
+SEND_TIMEOUT="${CODEX_SEND_WAIT_TIMEOUT:-1500}"
 EXEC_TIMEOUT=""
 
 while [[ $# -gt 0 ]]; do
