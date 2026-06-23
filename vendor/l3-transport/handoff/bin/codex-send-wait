@@ -14,7 +14,7 @@ set -euo pipefail
 source "$(dirname "$0")/../lib/state-paths.sh"
 source "$(dirname "$0")/../lib/watch-state.sh"
 
-TIMEOUT="${CODEX_SEND_WAIT_TIMEOUT:-540}"
+TIMEOUT="${CODEX_SEND_WAIT_TIMEOUT:-900}"
 POLL_INTERVAL=2
 
 usage() {
