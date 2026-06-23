@@ -10,7 +10,7 @@ source "$(dirname "$0")/../lib/watch-state.sh"
 HANDOFF_LOCK="${HANDOFF_STATE}/codex-watch.lock"
 HANDOFF_HEARTBEAT="${HANDOFF_STATE}/heartbeat"
 HEARTBEAT_MAX_AGE=120
-STUCK_TASK_MAX_AGE=300
+STUCK_TASK_MAX_AGE="${STUCK_TASK_MAX_AGE:-780}"  # floor for jobs w/o per-job EXEC_TIMEOUT; aligns w/ daemon CODEX_EXEC_TIMEOUT=720 + STUCK_TASK_EXEC_GRACE=60
 STUCK_TASK_EXEC_GRACE=60
 LAUNCHD_LABEL="com.praise.codex-watch"
 GUI_UID=$(id -u)
