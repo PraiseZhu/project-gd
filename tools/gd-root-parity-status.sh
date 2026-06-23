@@ -3,7 +3,9 @@
 set -euo pipefail
 
 MAIN="$(cd "$(dirname "$0")/.." && pwd)"
-INSTALLED_GD="$HOME/.claude/commands/gd.md"
+# plugin 分发后 installed = plugin cache（installed_plugins.json 记录当前 installed version）
+_INSTALLED_DIR=$(jq -r '.plugins["project-gd@project-gd-marketplace"][0].installPath // empty' "$HOME/.claude/plugins/installed_plugins.json" 2>/dev/null)
+INSTALLED_GD="${_INSTALLED_DIR:+$_INSTALLED_DIR/commands/gd.md}"
 
 echo "=== GD Root Parity Status ==="
 echo "main_root: $MAIN"
