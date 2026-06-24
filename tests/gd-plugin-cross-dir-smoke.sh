@@ -180,11 +180,48 @@ case "$MODE" in
     esac
     # ── setup.sh --self-check：验证预设摘要元数据符合规格 ──
     SC_OUT="$(bash "$PLUGIN_ROOT/scripts/gd-plugin-setup.sh" --self-check 2>/dev/null)"
-    echo "$SC_OUT" | grep -q 'FIELDS=4'      || fail "--self-check FIELDS 不符"
+    echo "$SC_OUT" | grep -q 'FIELDS=5'      || fail "--self-check FIELDS 不符"
     echo "$SC_OUT" | grep -q 'FREEFORM=0'    || fail "--self-check FREEFORM 不符"
     echo "$SC_OUT" | grep -q 'KEY_TYPES=2'   || fail "--self-check KEY_TYPES 不符"
     echo "$SC_OUT" | grep -q 'BUILTIN_KEY=0' || fail "--self-check BUILTIN_KEY 不符"
-    echo "[smoke] ✓ self-check — FIELDS=4 FREEFORM=0 KEY_TYPES=2 BUILTIN_KEY=0"
+    echo "$SC_OUT" | grep -q 'RUNTIME_ENV='  || fail "--self-check 缺 RUNTIME_ENV"
+    echo "$SC_OUT" | grep -q 'GD_PROJECT_ROOT=' || fail "--self-check 缺 GD_PROJECT_ROOT"
+    echo "$SC_OUT" | grep -q 'SHELLS_GENERATED=' || fail "--self-check 缺 SHELLS_GENERATED"
+    echo "[smoke] ✓ self-check — FIELDS=5 FREEFORM=0 KEY_TYPES=2 BUILTIN_KEY=0 + runtime_env/薄壳状态"
+    # ── --gen-shells / --rm-shells：薄壳生成与移除可重跑 ──
+    # 用临时 CLAUDE_PLUGIN_DATA 隔离，避免污染真实插件 data 目录（内联传 env，不 export）
+    SHELL_DATA="$(mktemp -d "${TMPDIR:-/tmp}/gd-shell-XXXXXX")"
+    GEN_OUT="$(CLAUDE_PLUGIN_DATA="$SHELL_DATA" bash "$PLUGIN_ROOT/scripts/gd-plugin-setup.sh" --gen-shells 2>&1)" \
+      || fail "--gen-shells 退出非 0"
+    echo "$GEN_OUT" | grep -q '已生成 7 个 maker 薄壳' || fail "--gen-shells 未报生成 7 薄壳"
+    n=0
+    for s in gd gd-plan gd-review-plan gd-exec gd-review gd-setup review1 review2; do
+      [ -f "$PLUGIN_ROOT/.claude/skills/$s/SKILL.md" ] && n=$((n + 1))
+    done
+    [ "$n" -eq 7 ] || fail "--gen-shells 后应存在 7 个薄壳，实际 $n"
+    # 幂等：再生成一次仍 7 个
+    CLAUDE_PLUGIN_DATA="$SHELL_DATA" bash "$PLUGIN_ROOT/scripts/gd-plugin-setup.sh" --gen-shells >/dev/null 2>&1 \
+      || fail "--gen-shells 二次生成退出非 0（幂等失败）"
+    # claude_code 守卫：config 显式 claude_code 时拒生成
+    printf '{"runtime_env":"claude_code","gd_project_root":"%s"}' "$PLUGIN_ROOT" \
+      > "$SHELL_DATA/gd-setup-config.json"
+    if CLAUDE_PLUGIN_DATA="$SHELL_DATA" bash "$PLUGIN_ROOT/scripts/gd-plugin-setup.sh" --gen-shells >/dev/null 2>&1; then
+      fail "runtime_env=claude_code 时 --gen-shells 应退出非 0（守卫失效）"
+    fi
+    # 恢复 xdt_maker 上下文后 --rm-shells 清空
+    printf '{"runtime_env":"xdt_maker","gd_project_root":"%s"}' "$PLUGIN_ROOT" \
+      > "$SHELL_DATA/gd-setup-config.json"
+    RM_OUT="$(CLAUDE_PLUGIN_DATA="$SHELL_DATA" bash "$PLUGIN_ROOT/scripts/gd-plugin-setup.sh" --rm-shells 2>&1)" \
+      || fail "--rm-shells 退出非 0"
+    echo "$RM_OUT" | grep -q '已移除 7 个 maker 薄壳' || fail "--rm-shells 未报移除 7 薄壳"
+    for s in gd gd-plan gd-review-plan gd-exec gd-review gd-setup review1 review2; do
+      [ -e "$PLUGIN_ROOT/.claude/skills/$s" ] && fail "--rm-shells 后 $s 仍存在"
+    done
+    rm -rf "$SHELL_DATA"
+    echo "[smoke] ✓ gen/rm-shells — 生成 7 薄壳 + 幂等 + claude_code 守卫 + rm 清空"
+    # 收尾：为本仓库恢复默认薄壳（无 CLAUDE_PLUGIN_DATA → 脚本推断 root + 无守卫，直接生成）
+    bash "$PLUGIN_ROOT/scripts/gd-plugin-setup.sh" --gen-shells >/dev/null 2>&1 \
+      || fail "收尾 --gen-shells 恢复失败"
     exit 0
     ;;
 

@@ -21,11 +21,26 @@
 
 set -euo pipefail
 
+# Resolve transport paths from the SAME state-paths.sh the daemon installer uses,
+# so CODEX_BIN (${HANDOFF_BIN}/codex-send-wait) and HANDOFF_ROOT stay in sync.
+_WRITER_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../handoff/lib/state-paths.sh
+. "$_WRITER_SCRIPT_DIR/../handoff/lib/state-paths.sh"
+
 CAPSULE_FILE=""
 BASELINE_KEY=""
 REVIEW_KIND=""
 REVIEW_CWD="${PWD}"
 NO_STOP_MARKER=0
+OUT_DIR=""
+MODE="review-only"
+# T-P0: default send_wait must exceed daemon worst-case (max_attempts(2) ×
+# CODEX_EXEC_TIMEOUT(720 plist) = 1440) or a review whose attempt 1 fails and
+# retries gets killed mid-flight (archive: attempt=2 exit=124). 1500 keeps the
+# invariant daemon_worst(1440) < send_wait(1500) < controller(1700). Callers that
+# pass --send-timeout (bridge) override this; L1 /review1 + direct writer calls use it.
+SEND_TIMEOUT="${CODEX_SEND_WAIT_TIMEOUT:-1500}"
+EXEC_TIMEOUT=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -33,7 +48,11 @@ while [[ $# -gt 0 ]]; do
     --baseline-key) BASELINE_KEY="$2"; shift 2 ;;
     --review-kind) REVIEW_KIND="$2"; shift 2 ;;
     --cwd) REVIEW_CWD="$2"; shift 2 ;;
+    --out-dir) OUT_DIR="$2"; shift 2 ;;
     --no-stop-marker) NO_STOP_MARKER=1; shift ;;
+    --mode) MODE="$2"; shift 2 ;;
+    --send-timeout) SEND_TIMEOUT="$2"; shift 2 ;;
+    --exec-timeout) EXEC_TIMEOUT="$2"; shift 2 ;;
     *) echo "[REVIEW] ✗ FAILED — unknown arg: $1" >&2; exit 1 ;;
   esac
 done
@@ -48,8 +67,12 @@ if [[ ! -f "$CAPSULE_FILE" ]]; then
   exit 1
 fi
 
-BASELINE_DIR="$HOME/.claude/review-baselines/${BASELINE_KEY}"
-mkdir -p "$BASELINE_DIR"
+# Write isolation: baselines default to the update-safe plugin data dir
+# (${CLAUDE_PLUGIN_DATA}), falling back to ${HOME}/.claude — never the plugin
+# install dir. --out-dir lets the caller override the baselines root entirely.
+BASELINE_ROOT="${OUT_DIR:-${CLAUDE_PLUGIN_DATA:-$HOME/.claude}/gd-review-baselines}"
+BASELINE_DIR="${BASELINE_ROOT}/${BASELINE_KEY}"
+mkdir -p "$BASELINE_DIR" || { echo "[REVIEW] ✗ FAILED — 无法创建产物目录: $BASELINE_DIR" >&2; exit 1; }
 
 TIMESTAMP=$(date -u +%Y%m%dT%H%M%SZ)
 LAST_ERROR_PATH=""
@@ -57,10 +80,16 @@ LAST_ERROR_PATH=""
 # Writer-required gate: locate intent marker so we can mark it writer_called at end
 _SESSION_ID="${CLAUDE_SESSION_ID:-unknown}"
 _SESSION_ID_SAFE="$(printf '%s' "$_SESSION_ID" | tr -cd 'A-Za-z0-9_-' | cut -c1-64)"
-WRITER_MARKER_FILE="$HOME/.claude/state/review-writer-required/${_SESSION_ID_SAFE}.json"
+WRITER_MARKER_FILE="${CLAUDE_PLUGIN_DATA:-$HOME/.claude}/gd-state/review-writer-required/${_SESSION_ID_SAFE}.json"
 
-# Save capsule copy
-cp "$CAPSULE_FILE" "${BASELINE_DIR}/capsule-${TIMESTAMP}.txt"
+# Save capsule copy.
+# T1 (fail-loud): under `set -e` a failed cp (e.g. read-only / full disk) would
+# abort the script with NO stdout, so the client sees silence instead of a
+# definite failure. Emit [REVIEW] ✗ FAILED explicitly before exiting.
+if ! cp "$CAPSULE_FILE" "${BASELINE_DIR}/capsule-${TIMESTAMP}.txt"; then
+  echo "[REVIEW] ✗ FAILED — 无法写入 capsule 副本: ${BASELINE_DIR}/capsule-${TIMESTAMP}.txt"
+  exit 1
+fi
 
 # Extract capsule metadata for state tracking
 CAPSULE_DOMAIN=$(grep -m1 '^REVIEW_DOMAIN:' "$CAPSULE_FILE" | sed 's/^REVIEW_DOMAIN:[[:space:]]*//' || echo "N/A")
@@ -71,6 +100,19 @@ CAPSULE_PLAN_ALIGNMENT_PRESENT=$(grep -m1 '^PLAN_ALIGNMENT_PRESENT:' "$CAPSULE_F
 CAPSULE_REVIEW_FOCUS=$(grep -m1 '^REVIEW_FOCUS:' "$CAPSULE_FILE" | sed 's/^REVIEW_FOCUS:[[:space:]]*//' || echo "N/A")
 CAPSULE_REVIEW_FOCUS_SOURCE=$(grep -m1 '^REVIEW_FOCUS_SOURCE:' "$CAPSULE_FILE" | sed 's/^REVIEW_FOCUS_SOURCE:[[:space:]]*//' || echo "domain_matrix")
 CAPSULE_DOMAIN_OVERRIDE_REASON=$(grep -m1 '^DOMAIN_OVERRIDE_REASON:' "$CAPSULE_FILE" | sed 's/^DOMAIN_OVERRIDE_REASON:[[:space:]]*//' || echo "N/A")
+
+# Layer 3 fail-visible (B1-nature): detect pre-fed conclusion capsules.
+# Standard deep capsules (build_capsule_text via gd-codex-bridge-review.py
+# run-bridge) never emit VALIDATION_EVIDENCE; only review1's manual template
+# does (commands/review1.md). Its presence means conclusions were fed to Codex,
+# so an APPROVED may be echoed rather than independently deep-reviewed. Warn +
+# stamp baseline (last_review_quality=pre_fed) so downstream gates don't treat
+# a shallow APPROVED as a trusted deep-review. Does NOT alter VERDICT/exit/SC-4.
+REVIEW_QUALITY="standard"
+if grep -q '^VALIDATION_EVIDENCE:' "$CAPSULE_FILE"; then
+  REVIEW_QUALITY="pre_fed"
+  echo "[审查] ⚠️ capsule 含 VALIDATION_EVIDENCE（pre-fed 结论字段）；codex 可能复述而非独立深审。review_quality=pre_fed（下游不得当可信深审 APPROVED 用）" >&2
+fi
 
 # Per-finding validation helper (lightweight: 问题/证据/影响/最小修复/验收)
 _validate_finding_block() {
@@ -84,13 +126,18 @@ _validate_finding_block() {
   echo "$block" | grep -q '验收:' || MISSING_FIELDS="${MISSING_FIELDS}${prefix}: 验收, "
 }
 
-# Send to Codex watch
-CODEX_BIN="$HOME/.claude/handoff/bin/codex-send-wait"
+# Send to Codex watch — CODEX_BIN resolved via state-paths.sh ${HANDOFF_BIN}
+# (same coordination root as the daemon), no $HOME/.claude/handoff hardcode.
+CODEX_BIN="${HANDOFF_BIN}/codex-send-wait"
 CODEX_OUTPUT=""
 CODEX_EXIT=0
 
 if [[ -x "$CODEX_BIN" ]]; then
-  CODEX_OUTPUT=$("$CODEX_BIN" --cwd "$REVIEW_CWD" --mode review-only --payload-file "$CAPSULE_FILE" 2>&1) || CODEX_EXIT=$?
+  CODEX_ARGS=(--cwd "$REVIEW_CWD" --mode "$MODE" --payload-file "$CAPSULE_FILE" --timeout "$SEND_TIMEOUT")
+  if [[ -n "$EXEC_TIMEOUT" ]]; then
+    CODEX_ARGS+=(--exec-timeout "$EXEC_TIMEOUT")
+  fi
+  CODEX_OUTPUT=$("$CODEX_BIN" "${CODEX_ARGS[@]}" 2>&1) || CODEX_EXIT=$?
 else
   CODEX_EXIT=127
 fi
@@ -99,21 +146,39 @@ fi
 VERDICT=""
 VERDICT_STATUS=""
 RESULT_FILE=""
+# Machine-readable failure classification for stdout consumers (bridge).
+# Set at each non-approved branch; emitted as a single `[REVIEW] STATUS:` line
+# before exit so the bridge can distinguish failure modes without parsing stderr.
+# Does NOT change exit semantics or control flow — only augments stdout.
+LAST_FAILURE_REASON=""
 
-if [[ $CODEX_EXIT -eq 127 ]]; then
+# exit 127 = codex-send-wait binary missing; exit 2 = watch unavailable (SC-3 DEGRADED).
+# Both are transport-unavailable, not review failures — must not be bucketed as FAILED.
+if [[ $CODEX_EXIT -eq 127 || $CODEX_EXIT -eq 2 ]]; then
   VERDICT_STATUS="degraded_unreviewed"
+  LAST_FAILURE_REASON="transport_unavailable"
   echo "[REVIEW] ⚠️ DEGRADED — watch unavailable, capsule saved to ${BASELINE_DIR}/capsule-${TIMESTAMP}.txt"
+  echo "[审查] ⚠️ 缺 codex 传输栈：未找到可执行 codex-send-wait（路径 ${CODEX_BIN}）。" >&2
+  echo "[审查] 跨审 fail-closed，不产出通过结论；请先按 README 部署传输栈（codex CLI + 自备 key + install-transport.sh 部署 daemon）后重试。" >&2
 elif [[ $CODEX_EXIT -ne 0 ]]; then
   VERDICT_STATUS="failed"
+  LAST_FAILURE_REASON="codex_exit_${CODEX_EXIT}"
   ERROR_LOG="${BASELINE_DIR}/error-${TIMESTAMP}.log"
   echo "$CODEX_OUTPUT" > "$ERROR_LOG" 2>/dev/null || true
   LAST_ERROR_PATH="$ERROR_LOG"
   echo "[REVIEW] ✗ FAILED — codex-send-wait exit $CODEX_EXIT"
   echo "Failure log: ${ERROR_LOG}"
 else
-  # Save result first
+  # Save result first.
+  # T1 (fail-loud): the result file is the canonical landing of the codex
+  # verdict — if this redirect fails under `set -e` the script would die
+  # silently after a SUCCESSFUL codex run, making the client believe no result
+  # came back. Emit an explicit [REVIEW] ✗ FAILED instead of aborting quietly.
   RESULT_FILE="${BASELINE_DIR}/result-${TIMESTAMP}.md"
-  echo "$CODEX_OUTPUT" > "$RESULT_FILE"
+  if ! echo "$CODEX_OUTPUT" > "$RESULT_FILE"; then
+    echo "[REVIEW] ✗ FAILED — codex 返回成功但结果文件落盘失败: $RESULT_FILE"
+    exit 1
+  fi
 
   # Parse VERDICT from output
   if echo "$CODEX_OUTPUT" | grep -q 'VERDICT: APPROVED'; then
@@ -124,6 +189,7 @@ else
     VERDICT_STATUS="requires_changes"
   else
     VERDICT_STATUS="failed"
+    LAST_FAILURE_REASON="no_verdict"
     echo "[REVIEW] ✗ FAILED — no VERDICT in Codex output"
   fi
 
@@ -189,6 +255,7 @@ ${vline}"
     if [[ -n "$MISSING_FIELDS" ]]; then
       VERDICT_STATUS="malformed"
       VERDICT="MALFORMED"
+      LAST_FAILURE_REASON="malformed_missing_fields"
       echo "[REVIEW] ✗ MALFORMED — missing: ${MISSING_FIELDS}. Full result: ${RESULT_FILE}"
     fi
   fi
@@ -297,19 +364,48 @@ fi
 PLAN_ALIGNMENT_BOOL="false"
 [[ "$CAPSULE_PLAN_ALIGNMENT_PRESENT" == "true" ]] && PLAN_ALIGNMENT_BOOL="true"
 
+# SC-4: a non-success attempt (failed/degraded/malformed) against an ALREADY-approved
+# baseline must NOT clobber the prior gate verdict. The attempt still records its
+# evidence (error log, result file, last_error_path) but leaves the approved baseline
+# intact so a transient codex/watch failure can't downgrade a passed gate.
+PRESERVE_APPROVED=0
+if [[ "$VERDICT_STATUS" != "approved" && "$VERDICT_STATUS" != "requires_changes" && -f "$BASELINE_FILE" ]]; then
+  if [[ "$REVIEW_KIND" == "plan" ]]; then
+    _prior_status="$(jq -r '.review_status // ""' "$BASELINE_FILE" 2>/dev/null || true)"
+  else
+    _prior_status="$(jq -r '.last_code_review_status // ""' "$BASELINE_FILE" 2>/dev/null || true)"
+  fi
+  if [[ "$_prior_status" == "approved" ]]; then
+    PRESERVE_APPROVED=1
+  fi
+fi
+
 # Build jq filter: plan reviews update .review_status/.verdict; code reviews use separate fields
-if [[ "$REVIEW_KIND" == "plan" ]]; then
+if [[ "$PRESERVE_APPROVED" -eq 1 ]]; then
+  # Preserve path: stamp the failed attempt WITHOUT touching the approved gate fields
+  # (review_status / verdict / result_path / last_code_*). last_review_focus is skipped
+  # in the common block below via $preserve_approved.
+  if [[ "$REVIEW_KIND" == "plan" ]]; then
+    JQ_STATE_FILTER='
+       .last_failed_attempt_status = $status |
+       .last_failed_attempt_at = $reviewed_at |'
+  else
+    JQ_STATE_FILTER='
+       .last_code_failed_attempt_status = $status |
+       .last_code_failed_attempt_at = $reviewed_at |'
+  fi
+elif [[ "$REVIEW_KIND" == "plan" ]]; then
   JQ_STATE_FILTER='
-   .review_status = $status |
-   .verdict = $verdict |
-   .reviewed_at = $reviewed_at |
-   .result_path = $result_path |'
+     .review_status = $status |
+     .verdict = $verdict |
+     .reviewed_at = $reviewed_at |
+     .result_path = $result_path |'
 else
   JQ_STATE_FILTER='
-   .last_code_review_status = $status |
-   .last_code_verdict = $verdict |
-   .last_code_reviewed_at = $reviewed_at |
-   .last_code_result_path = $result_path |'
+     .last_code_review_status = $status |
+     .last_code_verdict = $verdict |
+     .last_code_reviewed_at = $reviewed_at |
+     .last_code_result_path = $result_path |'
 fi
 
 jq --arg status "$VERDICT_STATUS" \
@@ -330,7 +426,10 @@ jq --arg status "$VERDICT_STATUS" \
    --arg last_review_focus_source "$CAPSULE_REVIEW_FOCUS_SOURCE" \
    --arg last_domain_override_reason "$CAPSULE_DOMAIN_OVERRIDE_REASON" \
    --arg last_error_path "${LAST_ERROR_PATH:-}" \
+   --arg last_review_quality "$REVIEW_QUALITY" \
+   --argjson preserve_approved "$PRESERVE_APPROVED" \
    "${JQ_STATE_FILTER}"'
+   .last_review_quality = $last_review_quality |
    .last_review_kind = $last_review_kind |
    .last_review_domain = $last_review_domain |
    .last_result_path = $last_result_path |
@@ -341,8 +440,10 @@ jq --arg status "$VERDICT_STATUS" \
    .last_direct_downstream = $last_direct_downstream |
    .plan_review_alignment = $plan_review_alignment |
    .plan_review_alignment_present = $plan_review_alignment_present |
-   .last_review_focus = $last_review_focus |
-   .last_review_focus_source = $last_review_focus_source |
+   (if $preserve_approved == 1 then . else
+     (.last_review_focus = $last_review_focus |
+      .last_review_focus_source = $last_review_focus_source)
+   end) |
    .last_domain_override_reason = $last_domain_override_reason |
    .last_error_path = (if $last_error_path == "" then null else $last_error_path end)
    ' \
@@ -390,3 +491,29 @@ if [[ -f "$WRITER_MARKER_FILE" ]] && command -v jq >/dev/null 2>&1; then
      && mv "$_MARKER_TMP" "$WRITER_MARKER_FILE" \
      || rm -f "$_MARKER_TMP"
 fi
+
+# Structured stdout terminal-status line for machine consumers (bridge).
+# Non-approved statuses emit no verdict line in the block above (only stderr
+# `[REVIEW] ✗ ...`); this single stdout line lets the bridge classify the
+# failure as transport_unavailable / codex_exit_N / no_verdict / malformed
+# without parsing stderr. APPROVED/REQUIRES_CHANGES already printed their
+# stdout above — they are excluded to keep the success-path stdout byte-identical.
+case "$VERDICT_STATUS" in
+  approved|requires_changes) ;;
+  *) echo "[REVIEW] STATUS: ${VERDICT_STATUS} reason=${LAST_FAILURE_REASON:-unknown}" ;;
+esac
+
+# Layer 4 (downstream gate signal): emit review_quality on stdout so the
+# bridge→merge-loop→router chain can propagate capsule provenance into the
+# route report; the route validator then refuses to treat a pre_fed APPROVED
+# as a trusted deep-review. Additive — does not alter VERDICT/exit semantics.
+echo "[REVIEW] REVIEW_QUALITY: ${REVIEW_QUALITY}"
+
+case "$VERDICT_STATUS" in
+  approved|requires_changes)
+    exit 0
+    ;;
+  *)
+    exit 1
+    ;;
+esac

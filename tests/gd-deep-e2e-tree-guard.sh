@@ -8,7 +8,7 @@ cd "$PROJECT_ROOT"
 
 RESULTS_DIR="plans/gd/2026-06-13-codex-deep-review/results"
 MANIFEST="fixtures/deep-review/writer-runtime-manifest.json"
-WRITER_PATH="$HOME/.claude/scripts/review-result-writer.sh"
+WRITER_PATH="$PROJECT_ROOT/vendor/l3-transport/scripts/review-result-writer.sh"
 
 # Snapshot before
 BEFORE_STATUS=$(git status --porcelain 2>&1 | grep -v "^?? ${RESULTS_DIR}/" || true)
@@ -22,12 +22,13 @@ if [ "$ACTUAL_HASH" != "$EXPECTED_HASH" ]; then
   exit 1
 fi
 
-# Verify backup still exists
-BACKUP_PATH=$(python3 -c "import json, os; m=json.load(open('${MANIFEST}')); print(os.path.expanduser(m.get('writer_backup_path','')))")
-if [ ! -f "$BACKUP_PATH" ]; then
-  echo "SC-18 FAIL: writer backup missing: $BACKUP_PATH"
-  exit 1
-fi
+# Writer backup check — SUPERSEDED: writer now runs from vendor (run-in-place),
+# no longer deployed to ~/.claude/scripts/ with a .deep-review-backup. Skip backup.
+# BACKUP_PATH=$(python3 -c "import json, os; m=json.load(open('${MANIFEST}')); print(os.path.expanduser(m.get('writer_backup_path','')))")
+# if [ ! -f "$BACKUP_PATH" ]; then
+#   echo "SC-18 FAIL: writer backup missing: $BACKUP_PATH"
+#   exit 1
+# fi
 
 # Snapshot after (nothing should have changed — no e2e run in SC-18 scope)
 AFTER_STATUS=$(git status --porcelain 2>&1 | grep -v "^?? ${RESULTS_DIR}/" || true)
@@ -40,6 +41,6 @@ if [ "$BEFORE_STATUS" != "$AFTER_STATUS" ] || [ "$BEFORE_DIFF" != "$AFTER_DIFF" 
   exit 1
 fi
 
-echo "SC-18 PASS: tree clean, writer hash matches, backup present"
+echo "SC-18 PASS: tree clean, writer hash matches (backup check superseded — writer runs from vendor)"
 echo "  writer_expected_hash: $EXPECTED_HASH"
-echo "  backup_path: $BACKUP_PATH"
+echo "  writer_path: $WRITER_PATH"
