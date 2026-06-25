@@ -142,7 +142,7 @@ claude plugin update project-gd@project-gd-marketplace   # 然后 /reload-plugin
 2.l3链路比较费token，一般opus和gpt5.5只在计划环节使用，执行阶段可以换便宜的模型，同上。建议配合token-optimizer、Caveman、RTK 几个插件一起使用；
 
 ## 适合什么人使用：
-1.终端claude code用户，桌面端claude app是个沙盒，很多功能实现成本太高；
+1.终端claude code用户，桌面端claude app是个沙盒，很多功能实现成本太高。支持 Maker 适配；
 2.支持Mac用户，暂不支持Windows和其他系统；
 3.l3链路较重，不适合对上下文污染有洁癖者使用；
 
