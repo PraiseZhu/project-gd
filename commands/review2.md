@@ -1,3 +1,7 @@
+---
+description: L2 profile-aware Codex 审查工作台。subcommand-aware 调度 Codex 深度审查，输出不授予发布批准（仅 tools/gd-codex-chain-release-status.sh 产出 READY_FOR_COMMIT）。
+---
+
 # /review2 Command
 
 > **Source of truth**: `${CLAUDE_PLUGIN_ROOT}/commands/review2.md`（随插件分发，命令安装由 `/plugin` 机制接管，无开发者机器命令副本）
