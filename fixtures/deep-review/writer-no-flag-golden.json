@@ -1,5 +1,5 @@
 {
-  "_description": "Golden capture of review-result-writer.sh no-flag invocation to codex-send-wait. Captured 2026-06-14 before Step 1 writer modification.",
+  "_description": "Golden capture of review-result-writer.sh no-flag invocation to codex-send-wait. Captured 2026-06-14; resynced 2026-06-25 after T-P0 writer upgrade — the no-flag path now forwards the default send_wait (1500) as --timeout so daemon_worst(1440) < send_wait(1500) holds uniformly. writer_pre_hash is unchanged (284049b): the writer source was not modified in this update, only the argv golden was resynced to match actual behavior (the previous argv omitted --timeout, making this a dead file guarded by skipped tests).",
   "writer_pre_hash": "284049b99543e3f53c83b2c920c42e305edf2bbe21020b1db552ed4c4aaac3de",
   "codex_send_wait_argv": [
     "--cwd",
@@ -7,17 +7,22 @@
     "--mode",
     "review-only",
     "--payload-file",
-    "<CAPSULE_FILE>"
+    "<CAPSULE_FILE>",
+    "--timeout",
+    "1500"
   ],
   "mode_value": "review-only",
   "timeout_env": null,
   "argv_pattern": {
     "--mode": "review-only",
-    "has_send_timeout_env": false
+    "has_send_timeout_env": false,
+    "has_default_send_timeout_arg": true,
+    "default_send_timeout": "1500"
   },
   "invariants": {
     "mode_must_be": "review-only",
-    "no_extra_flags": true,
+    "default_send_timeout_must_be": "1500",
+    "no_exec_timeout_for_no_flag": true,
     "codex_send_wait_timeout_env_absent": true
   }
 }

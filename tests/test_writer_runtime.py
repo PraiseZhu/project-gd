@@ -65,10 +65,21 @@ class TestWriterBackup:
 # SC-1: writer no-flag golden - default behavior unchanged
 class TestWriterNoFlagGolden:
     def _run_writer_with_stub(self, extra_args=None):
-        """Run writer with stub codex-send-wait and capture invocation."""
+        """Run vendor writer in-place with a stub codex-send-wait and capture argv.
+
+        Isolation model (mirrors test_writer_prefed_detection): do NOT copy the
+        writer — run ACTIVE_WRITER_PATH in place so its `source ../handoff/lib/
+        state-paths.sh` resolves (the relative source path breaks when the writer
+        is copied to tmpdir, which is why the previous copy-and-replace approach
+        failed to invoke the stub). Override HANDOFF_ROOT via env so state-paths.sh
+        points HANDOFF_BIN at a tmpdir stub that captures the codex-send-wait argv.
+        --out-dir + CLAUDE_PLUGIN_DATA keep all writes inside tmpdir.
+        """
         with tempfile.TemporaryDirectory() as tmpdir:
-            # Create stub that captures invocation
-            stub_path = os.path.join(tmpdir, "codex-send-wait")
+            handoff_root = os.path.join(tmpdir, "handoff")
+            bin_dir = os.path.join(handoff_root, "bin")
+            os.makedirs(bin_dir, exist_ok=True)
+            stub_path = os.path.join(bin_dir, "codex-send-wait")
             capture_path = os.path.join(tmpdir, "capture.json")
             with open(stub_path, "w") as f:
                 f.write(f"""#!/usr/bin/env bash
@@ -79,55 +90,37 @@ exit 127
 """)
             os.chmod(stub_path, 0o755)
 
-            # Create modified writer with stub path
-            with open(ACTIVE_WRITER_PATH) as f:
-                writer_src = f.read()
-            # vendor writer uses ${HANDOFF_BIN}/codex-send-wait (state-paths.sh resolved);
-            # replace the literal so the stub is called instead of the real transport.
-            writer_src = writer_src.replace(
-                '${HANDOFF_BIN}/codex-send-wait',
-                f'{tmpdir}/codex-send-wait'
-            )
-            # also match legacy hardcoded path (pre-state-paths.sh writers)
-            writer_src = writer_src.replace(
-                '$HOME/.claude/handoff/bin/codex-send-wait',
-                f'{tmpdir}/codex-send-wait'
-            )
-            writer_test_path = os.path.join(tmpdir, "writer-test.sh")
-            with open(writer_test_path, "w") as f:
-                f.write(writer_src)
-            os.chmod(writer_test_path, 0o755)
-
-            # Create capsule
             capsule_path = os.path.join(tmpdir, "test-capsule.txt")
             with open(capsule_path, "w") as f:
                 f.write("REVIEW_KIND: plan\nREVIEW_FOCUS: test\n\n# Test\n")
 
-            # Create baseline dir
-            baseline_dir = os.path.expanduser("~/.claude/review-baselines/test-noflag-golden")
-            os.makedirs(baseline_dir, exist_ok=True)
-
-            # Run writer
+            out_dir = os.path.join(tmpdir, "baselines")
+            env = {
+                "HOME": os.environ["HOME"],
+                "PATH": os.environ["PATH"],
+                "HANDOFF_ROOT": handoff_root,
+                "CLAUDE_PLUGIN_DATA": tmpdir,
+            }
             cmd = [
-                "bash", writer_test_path,
+                "bash", ACTIVE_WRITER_PATH,
                 "--capsule-file", capsule_path,
                 "--baseline-key", "test-noflag-golden",
                 "--review-kind", "plan",
-                "--cwd", "/tmp"
+                "--cwd", "/tmp",
+                "--out-dir", out_dir,
             ]
             if extra_args:
                 cmd.extend(extra_args)
-            subprocess.run(cmd, capture_output=True, text=True)
+            subprocess.run(cmd, capture_output=True, text=True, env=env)
 
-            # Return capture
             if os.path.exists(capture_path):
                 with open(capture_path) as f:
                     return json.load(f)
             return None
 
-    @pytest.mark.skip(reason="vendor writer sources state-paths.sh (relative path); tmpdir copy breaks source → stub not called. Stub path covered by test_writer_prefed_detection (3 tests with HANDOFF_ROOT env isolation).")
     def test_writer_no_flag_golden(self):
-        """SC-1: writer with no --mode flag passes --mode review-only to codex-send-wait"""
+        """SC-1: writer with no --mode flag passes --mode review-only + default
+        --timeout 1500 to codex-send-wait, and does NOT forward per-job --exec-timeout."""
         capture = self._run_writer_with_stub()
         assert capture is not None, "stub must have been called"
         argv = capture["argv"]
@@ -135,20 +128,31 @@ exit 127
         assert "--mode" in argv, "--mode must be in argv"
         mode_idx = argv.index("--mode")
         assert argv[mode_idx + 1] == "review-only", "default mode must be review-only"
-        # Must NOT have CODEX_SEND_WAIT_TIMEOUT env (before deep changes)
-        # After changes with --mode default, env should also be absent
+        # T-P0: no-flag path now forwards the default send_wait as --timeout (1500),
+        # so daemon_worst(1440) < send_wait(1500) holds even when the caller passes no flags.
+        assert "--timeout" in argv, "no-flag writer must forward default send_wait as --timeout"
+        timeout_idx = argv.index("--timeout")
+        assert argv[timeout_idx + 1] == "1500", "default send_wait must be 1500 (> daemon worst-case 1440)"
+        # No-flag path must not attach per-job --exec-timeout (only deep/bridge does)
+        assert "--exec-timeout" not in argv, "no-flag path must not pass per-job exec timeout"
+        # Writer consumes CODEX_SEND_WAIT_TIMEOUT env into the --timeout argv; it must
+        # not leak the env var through to the codex-send-wait child process.
         env = capture.get("env", {})
         assert "CODEX_SEND_WAIT_TIMEOUT" not in env or env.get("CODEX_SEND_WAIT_TIMEOUT") == "", (
-            "no-flag writer must not set CODEX_SEND_WAIT_TIMEOUT"
+            "no-flag writer must not pass CODEX_SEND_WAIT_TIMEOUT env through to codex-send-wait"
         )
 
 
 # SC-29: deep timeout golden
 class TestWriterDeepTimeoutGolden:
     def _run_writer_with_stub_and_mode(self, mode=None, send_timeout=None, exec_timeout=None):
-        """Run writer with given mode/timeout and capture invocation."""
+        """Run vendor writer in-place with stub codex-send-wait and capture argv,
+        for the deep timeout golden path. See _run_writer_with_stub for isolation model."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            stub_path = os.path.join(tmpdir, "codex-send-wait")
+            handoff_root = os.path.join(tmpdir, "handoff")
+            bin_dir = os.path.join(handoff_root, "bin")
+            os.makedirs(bin_dir, exist_ok=True)
+            stub_path = os.path.join(bin_dir, "codex-send-wait")
             capture_path = os.path.join(tmpdir, "capture.json")
             with open(stub_path, "w") as f:
                 f.write(f"""#!/usr/bin/env bash
@@ -159,30 +163,24 @@ exit 127
 """)
             os.chmod(stub_path, 0o755)
 
-            with open(ACTIVE_WRITER_PATH) as f:
-                writer_src = f.read()
-            writer_src = writer_src.replace(
-                '$HOME/.claude/handoff/bin/codex-send-wait',
-                f'{tmpdir}/codex-send-wait'
-            )
-            writer_test_path = os.path.join(tmpdir, "writer-test.sh")
-            with open(writer_test_path, "w") as f:
-                f.write(writer_src)
-            os.chmod(writer_test_path, 0o755)
-
             capsule_path = os.path.join(tmpdir, "test-capsule.txt")
             with open(capsule_path, "w") as f:
                 f.write("REVIEW_KIND: plan\nREVIEW_FOCUS: test\n\n# Test\n")
 
-            baseline_dir = os.path.expanduser("~/.claude/review-baselines/test-timeout-golden")
-            os.makedirs(baseline_dir, exist_ok=True)
-
+            out_dir = os.path.join(tmpdir, "baselines")
+            env = {
+                "HOME": os.environ["HOME"],
+                "PATH": os.environ["PATH"],
+                "HANDOFF_ROOT": handoff_root,
+                "CLAUDE_PLUGIN_DATA": tmpdir,
+            }
             cmd = [
-                "bash", writer_test_path,
+                "bash", ACTIVE_WRITER_PATH,
                 "--capsule-file", capsule_path,
                 "--baseline-key", "test-timeout-golden",
                 "--review-kind", "plan",
-                "--cwd", "/tmp"
+                "--cwd", "/tmp",
+                "--out-dir", out_dir,
             ]
             if mode:
                 cmd.extend(["--mode", mode])
@@ -191,14 +189,13 @@ exit 127
             if exec_timeout:
                 cmd.extend(["--exec-timeout", str(exec_timeout)])
 
-            subprocess.run(cmd, capture_output=True, text=True)
+            subprocess.run(cmd, capture_output=True, text=True, env=env)
 
             if os.path.exists(capture_path):
                 with open(capture_path) as f:
                     return json.load(f)
             return None
 
-    @pytest.mark.skip(reason="vendor writer sources state-paths.sh (relative path); tmpdir copy breaks source → stub not called. Stub path covered by test_writer_prefed_detection + test_writer_timeout_ladder.")
     def test_writer_deep_timeout_golden(self):
         """SC-29: deep mode passes wait timeout and per-job exec timeout to codex-send-wait"""
         # Only run after Step 1 writer changes are in place
