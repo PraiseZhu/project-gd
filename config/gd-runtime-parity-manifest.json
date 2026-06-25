@@ -24,10 +24,10 @@
   },
   "bundles": {
     "review2_command": {
-      "description": "/review2 profile-aware Codex workbench command: Project GD source → ~/.claude/commands/review2.md. Strict parity — same gate type as gd_command. apply_requires_explicit_authorization: true (live install needs ledger entry).",
+      "description": "/review2 profile-aware Codex workbench command: Project GD source → plugin marketplace runtime (~/.claude/plugins/marketplaces/project-gd-marketplace/commands/review2.md). FR-007 retires the legacy ~/.claude/commands/ copy (plugin-distributed); strict parity checks source vs marketplace runtime. apply_requires_explicit_authorization + install_script retained for the legacy manual-install path only.",
       "gate_type": "strict_parity",
       "source_path": "commands/review2.md",
-      "runtime_path": "/Users/praise/.claude/commands/review2.md",
+      "runtime_path": "/Users/praise/.claude/plugins/marketplaces/project-gd-marketplace/commands/review2.md",
       "direction": "source_to_runtime",
       "mode": "single_file",
       "hash_algorithm": "sha256",
@@ -41,10 +41,10 @@
       "release_status": "not_installed"
     },
     "gd_command": {
-      "description": "/gd Claude command: Project GD source → ~/.claude/commands/gd.md",
+      "description": "/gd Claude command: Project GD source → plugin marketplace runtime (~/.claude/plugins/marketplaces/project-gd-marketplace/commands/gd.md). FR-007 retires the legacy ~/.claude/commands/ copy (plugin-distributed, no command copy written); strict parity checks source vs marketplace runtime.",
       "gate_type": "strict_parity",
       "source_path": "commands/gd.md",
-      "runtime_path": "/Users/praise/.claude/commands/gd.md",
+      "runtime_path": "/Users/praise/.claude/plugins/marketplaces/project-gd-marketplace/commands/gd.md",
       "direction": "source_to_runtime",
       "mode": "single_file",
       "hash_algorithm": "sha256",

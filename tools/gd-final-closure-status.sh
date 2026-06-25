@@ -36,9 +36,9 @@ check "final gate rejects final-transport-failed-approved" \
 check "final gate rejects final-zero-child-approved" \
   bash -c '! python3 scripts/gd-validate-parent-close-gate.py fixtures/negative/final-zero-child-approved.json 2>/dev/null'
 
-# 4. Installed parity (SHA256 — canonical via check-gd-command-parity.sh)
+# 4. Installed parity (SHA256 — plugin marketplace runtime; FR-007 retired the legacy ~/.claude/commands/ copy)
 main_hash=$(shasum -a 256 commands/gd.md 2>/dev/null | awk '{print $1}' || echo "MISSING")
-inst_hash=$(shasum -a 256 "$HOME/.claude/commands/gd.md" 2>/dev/null | awk '{print $1}' || echo "MISSING")
+inst_hash=$(shasum -a 256 "$HOME/.claude/plugins/marketplaces/project-gd-marketplace/commands/gd.md" 2>/dev/null | awk '{print $1}' || echo "MISSING")
 if [ "$main_hash" = "$inst_hash" ]; then
   echo "  PASS: installed parity (sha256=$main_hash)"
   PASS=$((PASS+1))
