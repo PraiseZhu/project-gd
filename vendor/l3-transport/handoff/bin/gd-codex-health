@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# gd-codex-health — canonical, read-only health verdict for the L3 codex transport.
+#
+# THIS IS THE SINGLE SANCTIONED LIVENESS PROBE. When deciding whether the codex
+# review chain (/gd, /review1, /review2) is usable, trust ONLY this command's
+# `CODEX_TRANSPORT:` line + exit code. Do NOT improvise diagnosis from:
+#   - `ps | grep codex-watch`  → false "no process": ps truncates the long command
+#     path before the `codex-watch` segment, so grep misses a live daemon. If you
+#     must check the process, use `ps -p "$(cat <state>/codex-watch.pid)"`.
+#   - `*launchd.log`           → NOT a liveness signal. launchd only writes it on
+#     crash/restart, so an OLD crash line stays frozen and reads as "current state".
+#     Liveness is the three signals below, never launchd.log.
+#
+# Latency != liveness: heavy review jobs take 6-7 min each and queue behind others
+# (max_parallel=2). A client waiting a few minutes with no result is QUEUE DELAY,
+# not a dead transport — confirm with this probe before declaring fail-closed.
+#
+# Exit code mirrors watch_state(): 0=RUNNING(usable) 2=DEGRADED 1=STOPPED(unusable).
+# Pure read-only: sources the same state-paths.sh/watch-state.sh as the daemon,
+# touches no state files.
+set -euo pipefail
+source "$(dirname "$0")/../lib/state-paths.sh"
+source "$(dirname "$0")/../lib/watch-state.sh"
+
+# watch_state() returns 1/2 for DEGRADED/STOPPED; capture rc WITHOUT letting
+# `set -e` abort before we print the verdict (if-condition is set -e exempt).
+if state_line=$(watch_state); then rc=0; else rc=$?; fi
+hb=$(heartbeat_age)
+counts=$(queue_counts)
+
+# Most recent Completed job from the activity log (informational freshness signal).
+last_completed="none"
+if [[ -f "$HANDOFF_LOG" ]]; then
+  lc=$(grep -E '\] Completed: ' "$HANDOFF_LOG" 2>/dev/null | tail -1 || true)
+  [[ -n "$lc" ]] && last_completed="$lc"
+fi
+
+case "$rc" in
+  0) human="USABLE — codex 双审可正常跑" ;;
+  2) human="DEGRADED — 进程探测受限但 heartbeat 新鲜，通常仍可用，留意" ;;
+  *) human="UNUSABLE — 链路确实停了，此时才 fail-closed，按下方信号排查" ;;
+esac
+
+echo "CODEX_TRANSPORT: ${state_line}"
+echo "  verdict       : ${human}"
+echo "  heartbeat_age : ${hb}s (fresh if <= ${HEARTBEAT_MAX_AGE:-120})"
+echo "  queue         : ${counts}"
+echo "  last_completed: ${last_completed}"
+echo "  reminder      : launchd.log 是崩溃残留、不是活性信号；ps grep 会假阴性。只信本行 verdict。"
+exit "$rc"
