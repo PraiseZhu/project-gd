@@ -75,9 +75,13 @@ Project GD 现以 **Claude Code 插件**形式分发（`.claude-plugin/plugin.js
 
 链路通畅需同时满足（任一缺失整链断；排障按此顺序查）：
 
+> **排障第一步——活性判据（唯一可信）**：跑 `${CLAUDE_PLUGIN_DATA}/gd-handoff/bin/gd-codex-health`，只信它的 `CODEX_TRANSPORT:` 行 + exit code（`0`=可用 / `2`=DEGRADED / `1`=停）。read-only，复用 daemon 同款 `watch-state.sh`，一行汇总 watcher 状态 + heartbeat 年龄 + 队列 + 最近 Completed。
+> **禁止**据以下信号下"链路死了"结论：① `ps | grep codex-watch` 会**假阴性**（ps 截断命令路径，到不了 `codex-watch` 段；查进程用 `ps -p "$(cat <state>/codex-watch.pid)"`）；② `*launchd.log` **不是活性信号**（只在崩溃/重启时写，旧崩溃行冻结在顶部、读着像"当前状态"——已三次骗出"transport 死了"误判）。
+> **latency ≠ liveness**：重审任务单个 6-7 分钟 + `max_parallel=2` 排队，客户端等几分钟没结果是**排队延迟、不是死**——先 `gd-codex-health` 确认再决定是否 fail-closed。
+
 1. **codex CLI 在 PATH**：`command -v codex`。装法 `npm i -g @openai/codex --prefix ~/.local`（用户级，避开 `/usr/local` 的 root 权限）。
 2. **transport 部署到 live**：`${CLAUDE_PLUGIN_DATA}/gd-handoff/bin/{codex-send-wait,codex-watch,...}`（state-paths.sh 解析；CLAUDE_PLUGIN_DATA 默认 ~/.claude/plugins/data/codex-openai-codex）。用 `vendor/l3-transport/scripts/install-transport.sh --yes` 从 vendor 部署（含 LaunchAgent + SHA 校验 + 幂等 + 备份）。
-3. **daemon 在线**：`launchctl list | grep com.praise.codex-watch`。
+3. **daemon 在线**：首选 `gd-codex-health`（见上方活性判据）。`launchctl list | grep com.praise.codex-watch` 仅作辅助——它显示的 PID 可能是上次注册值，须 `ps -p` 复核，单独不足以判活。
 4. **daemon 持有 TAPSVC key**：config.toml 实际用 `experimental_bearer_token` 字段明文内联承载访问令牌（codex 直接读 config.toml，不走 env、不回退 auth.json）；daemon 与手动 `codex exec` 读同一 config.toml，故此条通常不再成 daemon-only 失败点。daemon 由 launchd 启动、**不读 shell profile**。**注**：旧文记载的 `env_key` + `launchctl setenv TAPTAP_API_KEY` 机制当前 config 未采用（plist 仍渲染 TAPTAP_API_KEY 但 codex 不读它）；若改回 env_key 模式才须 launchctl setenv。明文令牌存于 ~/.codex/config.toml（不入 git，本地明文存储）。
 5. **bash 版本**：codex-watch 经 `/bin/bash`（macOS 3.2）运行，**禁用 bash 4+ 特性**（`${var^^}`/`${var,,}`/`declare -A`），用 `printf | tr` 替代——否则 `bad substitution` 导致 daemon 卡 `running`、客户端 900s 超时。
 
